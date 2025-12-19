@@ -1,4 +1,3 @@
-tweetapus
-bin/
-obj/
+tweetapus-gtk-c
 *.o
+tweetapus/
