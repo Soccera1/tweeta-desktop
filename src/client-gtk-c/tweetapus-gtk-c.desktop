@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Tweetapus GTK C
+Exec=tweetapus-gtk-c
+Type=Application
+Icon=network-transmit-receive
+Categories=Network;
+Comment=A GTK3 client for Tweetapus, written in C.
