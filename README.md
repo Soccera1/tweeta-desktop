@@ -11,8 +11,19 @@ Detailed documentation is available in the [docs/](docs/index.md) directory.
 
 ## Building
 
+To build the client, you will need to have GTK3, libcurl, and json-glib installed.
 
-To build the client, you will need to have GTK3, libcurl, and json-glib installed. You can then run `make` to build the client.
+### Using Make
+
+Run `make` to build the client.
+
+### Using Meson/Ninja
+
+Run the following commands:
+```bash
+meson setup build
+ninja -C build
+```
 
 ## Running
 
