@@ -169,6 +169,40 @@ static void test_session_persistence() {
     g_free(tmp_dir);
 }
 
+static void test_parse_profile() {
+    const char *json_input = "{\"profile\": {\"name\": \"Test User\", \"username\": \"testuser\", \"bio\": \"This is a test bio\", \"follower_count\": 100, \"following_count\": 50, \"post_count\": 10}}";
+    struct Profile *p = parse_profile(json_input);
+
+    g_assert_nonnull(p);
+    g_assert_cmpstr(p->name, ==, "Test User");
+    g_assert_cmpstr(p->username, ==, "testuser");
+    g_assert_cmpstr(p->bio, ==, "This is a test bio");
+    g_assert_cmpint(p->follower_count, ==, 100);
+    g_assert_cmpint(p->following_count, ==, 50);
+    g_assert_cmpint(p->post_count, ==, 10);
+
+    g_free(p->name);
+    g_free(p->username);
+    g_free(p->bio);
+    g_free(p);
+}
+
+static void test_parse_profile_replies() {
+    const char *json_input = "{\"replies\": [{\"id\": \"456\", \"content\": \"Test reply\", \"author\": {\"name\": \"Replier\", \"username\": \"replier\"}}]}";
+    GList *tweets = parse_profile_replies(json_input);
+
+    g_assert_nonnull(tweets);
+    g_assert_cmpint(g_list_length(tweets), ==, 1);
+
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    g_assert_cmpstr(t->content, ==, "Test reply");
+    g_assert_cmpstr(t->author_name, ==, "Replier");
+    g_assert_cmpstr(t->author_username, ==, "replier");
+    g_assert_cmpstr(t->id, ==, "456");
+
+    free_tweets(tweets);
+}
+
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     g_test_add_func("/writememorycallback/basic", test_writememorycallback);
@@ -176,5 +210,7 @@ int main(int argc, char** argv) {
     g_test_add_func("/parselogin/basic", test_parse_login_response);
     g_test_add_func("/constructpayload/basic", test_construct_tweet_payload);
     g_test_add_func("/session/persistence", test_session_persistence);
+    g_test_add_func("/parseprofile/basic", test_parse_profile);
+    g_test_add_func("/parseprofile/replies", test_parse_profile_replies);
     return g_test_run();
 }

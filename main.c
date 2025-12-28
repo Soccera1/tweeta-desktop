@@ -25,6 +25,15 @@ static GtkWidget *g_login_button = NULL;
 static GtkWidget *g_compose_button = NULL;
 static GtkWidget *g_user_label = NULL;
 static GtkWidget *g_main_list_box = NULL;
+static GtkWidget *g_stack = NULL;
+static GtkWidget *g_back_button = NULL;
+
+// Profile widgets
+static GtkWidget *g_profile_name_label = NULL;
+static GtkWidget *g_profile_bio_label = NULL;
+static GtkWidget *g_profile_stats_label = NULL;
+static GtkWidget *g_profile_tweets_list = NULL;
+static GtkWidget *g_profile_replies_list = NULL;
 
 // Represents a single tweet
 struct Tweet {
@@ -32,6 +41,16 @@ struct Tweet {
   gchar *author_name;
   gchar *author_username;
   gchar *id;
+};
+
+// Represents profile data
+struct Profile {
+    gchar *name;
+    gchar *username;
+    gchar *bio;
+    int follower_count;
+    int following_count;
+    int post_count;
 };
 
 // Memory buffer for curl
@@ -45,7 +64,20 @@ struct AsyncData {
     GtkListBox *list_box;
     GList *tweets;
     gboolean success;
+    struct Profile *profile;
+    gchar *username;
 };
+
+static void start_loading_tweets(GtkListBox *list_box);
+static void show_profile(const gchar *username);
+
+static void
+on_author_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)user_data;
+    const gchar *username = g_object_get_data(G_OBJECT(button), "username");
+    show_profile(username);
+}
 
 static gchar*
 get_config_path()
@@ -618,21 +650,26 @@ create_tweet_widget(struct Tweet *tweet)
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     gchar *author_str = g_strdup_printf("%s (@%s)", tweet->author_name, tweet->author_username);
 
-    GtkWidget *author_label = gtk_label_new(author_str);
-    gtk_label_set_xalign(GTK_LABEL(author_label), 0.0);
+    GtkWidget *author_btn = gtk_button_new_with_label(author_str);
+    gtk_button_set_relief(GTK_BUTTON(author_btn), GTK_RELIEF_NONE);
+    gtk_widget_set_halign(author_btn, GTK_ALIGN_START);
+    
     // Make author bold
+    GtkWidget *label = gtk_bin_get_child(GTK_BIN(author_btn));
     PangoAttrList *attrs = pango_attr_list_new();
     pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
-    gtk_label_set_attributes(GTK_LABEL(author_label), attrs);
+    gtk_label_set_attributes(GTK_LABEL(label), attrs);
     pango_attr_list_unref(attrs);
 
+    g_object_set_data_full(G_OBJECT(author_btn), "username", g_strdup(tweet->author_username), g_free);
+    g_signal_connect(author_btn, "clicked", G_CALLBACK(on_author_clicked), NULL);
 
     GtkWidget *content_label = gtk_label_new(tweet->content);
     gtk_label_set_xalign(GTK_LABEL(content_label), 0.0);
     gtk_label_set_line_wrap(GTK_LABEL(content_label), TRUE);
     gtk_label_set_selectable(GTK_LABEL(content_label), TRUE);
 
-    gtk_box_pack_start(GTK_BOX(box), author_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), author_btn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(box), content_label, FALSE, FALSE, 0);
 
     // Reply Button
@@ -732,12 +769,242 @@ start_loading_tweets(GtkListBox *list_box)
     g_thread_new("tweet-loader", fetch_tweets_thread, data);
 }
 
+static struct Profile*
+parse_profile(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    struct Profile *profile = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "profile")) {
+            JsonObject *p_obj = json_object_get_object_member(obj, "profile");
+            profile = g_new0(struct Profile, 1);
+            profile->name = g_strdup(json_object_get_string_member(p_obj, "name"));
+            profile->username = g_strdup(json_object_get_string_member(p_obj, "username"));
+            profile->bio = g_strdup(json_object_get_string_member(p_obj, "bio"));
+            profile->follower_count = json_object_get_int_member(p_obj, "follower_count");
+            profile->following_count = json_object_get_int_member(p_obj, "following_count");
+            profile->post_count = json_object_get_int_member(p_obj, "post_count");
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return profile;
+}
+
+static GList*
+parse_profile_replies(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    GList *tweets = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "replies")) {
+            JsonArray *replies = json_object_get_array_member(obj, "replies");
+            for (guint i = 0; i < json_array_get_length(replies); i++) {
+                JsonNode *reply_node = json_array_get_element(replies, i);
+                JsonObject *reply_obj = json_node_get_object(reply_node);
+                JsonObject *author_obj = json_object_get_object_member(reply_obj, "author");
+
+                struct Tweet *tweet = g_new0(struct Tweet, 1);
+                tweet->content = g_strdup(json_object_get_string_member(reply_obj, "content"));
+                tweet->author_name = g_strdup(json_object_get_string_member(author_obj, "name"));
+                tweet->author_username = g_strdup(json_object_get_string_member(author_obj, "username"));
+                tweet->id = g_strdup(json_object_get_string_member(reply_obj, "id"));
+                tweets = g_list_append(tweets, tweet);
+            }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return tweets;
+}
+
+static void
+on_back_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "timeline");
+    gtk_widget_hide(g_back_button);
+}
+
+static gboolean
+on_profile_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    
+    if (async_data->success && async_data->profile) {
+        gchar *stats_str = g_strdup_printf("%d Followers · %d Following · %d Posts", 
+                                          async_data->profile->follower_count,
+                                          async_data->profile->following_count,
+                                          async_data->profile->post_count);
+        
+        gtk_label_set_text(GTK_LABEL(g_profile_name_label), async_data->profile->name);
+        gtk_label_set_text(GTK_LABEL(g_profile_bio_label), async_data->profile->bio ? async_data->profile->bio : "");
+        gtk_label_set_text(GTK_LABEL(g_profile_stats_label), stats_str);
+        g_free(stats_str);
+
+        // Populate lists if tweets were fetched (profile endpoint returns first 10 posts)
+        if (async_data->tweets) {
+            populate_tweet_list(GTK_LIST_BOX(g_profile_tweets_list), async_data->tweets);
+            free_tweets(async_data->tweets);
+        }
+    } else {
+        gtk_label_set_text(GTK_LABEL(g_profile_name_label), "Error loading profile");
+    }
+
+    if (async_data->profile) {
+        g_free(async_data->profile->name);
+        g_free(async_data->profile->username);
+        g_free(async_data->profile->bio);
+        g_free(async_data->profile);
+    }
+    g_free(async_data->username);
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean
+on_profile_replies_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    if (async_data->success && async_data->tweets) {
+        populate_tweet_list(GTK_LIST_BOX(g_profile_replies_list), async_data->tweets);
+        free_tweets(async_data->tweets);
+    }
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_profile_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+    gchar *url = g_strdup_printf("%s/profile/%s", API_BASE_URL, async_data->username);
+
+    if (fetch_url(url, &chunk, NULL)) {
+        async_data->profile = parse_profile(chunk.memory);
+        // Reuse parse_tweets for posts
+        async_data->tweets = parse_tweets(chunk.memory);
+        async_data->success = (async_data->profile != NULL);
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+    g_free(url);
+
+    g_idle_add(on_profile_loaded, async_data);
+    return NULL;
+}
+
+static gpointer
+fetch_profile_replies_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+    gchar *url = g_strdup_printf("%s/profile/%s/replies", API_BASE_URL, async_data->username);
+
+    if (fetch_url(url, &chunk, NULL)) {
+        async_data->tweets = parse_profile_replies(chunk.memory);
+        async_data->success = (async_data->tweets != NULL);
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+    g_free(url);
+    g_free(async_data->username);
+
+    g_idle_add(on_profile_replies_loaded, async_data);
+    return NULL;
+}
+
+static void
+show_profile(const gchar *username)
+{
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "profile");
+    gtk_widget_show(g_back_button);
+
+    gtk_label_set_text(GTK_LABEL(g_profile_name_label), "Loading...");
+    gtk_label_set_text(GTK_LABEL(g_profile_bio_label), "");
+    gtk_label_set_text(GTK_LABEL(g_profile_stats_label), "");
+    
+    // Clear lists
+    populate_tweet_list(GTK_LIST_BOX(g_profile_tweets_list), NULL);
+    populate_tweet_list(GTK_LIST_BOX(g_profile_replies_list), NULL);
+
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->username = g_strdup(username);
+    g_thread_new("profile-loader", fetch_profile_thread, data);
+
+    struct AsyncData *reply_data = g_new0(struct AsyncData, 1);
+    reply_data->username = g_strdup(username);
+    g_thread_new("profile-reply-loader", fetch_profile_replies_thread, reply_data);
+}
+
 static void
 on_refresh_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)widget;
     (void)user_data;
     start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+}
+
+static GtkWidget*
+create_profile_view()
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(box), 10);
+
+    g_profile_name_label = gtk_label_new("");
+    gtk_widget_set_halign(g_profile_name_label, GTK_ALIGN_START);
+    PangoAttrList *attrs = pango_attr_list_new();
+    pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+    pango_attr_list_insert(attrs, pango_attr_scale_new(1.5));
+    gtk_label_set_attributes(GTK_LABEL(g_profile_name_label), attrs);
+    pango_attr_list_unref(attrs);
+
+    g_profile_bio_label = gtk_label_new("");
+    gtk_label_set_line_wrap(GTK_LABEL(g_profile_bio_label), TRUE);
+    gtk_widget_set_halign(g_profile_bio_label, GTK_ALIGN_START);
+
+    g_profile_stats_label = gtk_label_new("");
+    gtk_widget_set_halign(g_profile_stats_label, GTK_ALIGN_START);
+
+    gtk_box_pack_start(GTK_BOX(box), g_profile_name_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), g_profile_bio_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), g_profile_stats_label, FALSE, FALSE, 0);
+
+    GtkWidget *notebook = gtk_notebook_new();
+    
+    // Tweets tab
+    GtkWidget *tweets_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_profile_tweets_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_profile_tweets_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(tweets_scroll), g_profile_tweets_list);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), tweets_scroll, gtk_label_new("Tweets"));
+
+    // Replies tab
+    GtkWidget *replies_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_profile_replies_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_profile_replies_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(replies_scroll), g_profile_replies_list);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), replies_scroll, gtk_label_new("Replies"));
+
+    gtk_box_pack_start(GTK_BOX(box), notebook, TRUE, TRUE, 0);
+
+    return box;
 }
 
 static GtkWidget*
@@ -753,6 +1020,12 @@ create_window()
     gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), TRUE);
     gtk_header_bar_set_title(GTK_HEADER_BAR(header), "Tweetapus");
     gtk_window_set_titlebar(GTK_WINDOW(window), header);
+
+    // Back Button (Left)
+    g_back_button = gtk_button_new_from_icon_name("go-previous-symbolic", GTK_ICON_SIZE_BUTTON);
+    gtk_widget_set_no_show_all(g_back_button, TRUE);
+    g_signal_connect(g_back_button, "clicked", G_CALLBACK(on_back_clicked), NULL);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), g_back_button);
 
     // Compose Button (Left)
     g_compose_button = gtk_button_new_with_label("Compose");
@@ -774,39 +1047,70 @@ create_window()
     g_user_label = gtk_label_new("Not logged in");
     gtk_header_bar_pack_end(GTK_HEADER_BAR(header), g_user_label);
 
+    g_stack = gtk_stack_new();
+    gtk_stack_set_transition_type(GTK_STACK(g_stack), GTK_STACK_TRANSITION_TYPE_SLIDE_LEFT_RIGHT);
+    gtk_container_add(GTK_CONTAINER(window), g_stack);
+
+    // Timeline View
+    GtkWidget *timeline_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_main_list_box = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_main_list_box), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(timeline_scroll), g_main_list_box);
+    gtk_stack_add_named(GTK_STACK(g_stack), timeline_scroll, "timeline");
+
+    // Profile View
+    GtkWidget *profile_view = create_profile_view();
+    gtk_stack_add_named(GTK_STACK(g_stack), profile_view, "profile");
+
     return window;
 }
 
 int main(int argc, char *argv[]) {
+
     GtkWidget *window;
-    GtkWidget *scrolled_window;
+
+
 
     gtk_init(&argc, &argv);
+
     curl_global_init(CURL_GLOBAL_ALL);
+
+
 
     window = create_window();
 
-    scrolled_window = gtk_scrolled_window_new(NULL, NULL);
-    gtk_container_add(GTK_CONTAINER(window), scrolled_window);
 
-    g_main_list_box = gtk_list_box_new();
-    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_main_list_box), GTK_SELECTION_NONE);
-    gtk_container_add(GTK_CONTAINER(scrolled_window), g_main_list_box);
 
     load_session();
+
     update_login_ui();
 
+
+
     // Initial Show
+
     gtk_widget_show_all(window);
 
+
+
     // Start loading
+
     start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+
+
 
     gtk_main();
 
+
+
     curl_global_cleanup();
+
     g_free(g_auth_token);
+
     g_free(g_current_username);
 
+
+
     return 0;
+
 }
