@@ -31,12 +31,12 @@ clean:
 install:
 	install -Dm755 $(TARGET) /usr/local/bin/$(TARGET)
 	install -Dm644 tweetapus-gtk-c.desktop /usr/local/share/applications/tweetapus-gtk-c.desktop
-	install -Dm644 tweetapus-gtk-c.1 /usr/local/share/man/man1/tweetapus-gtk-c.1
+	install -Dm644 tweetapus-gtk-c.1 /usr/local/share/man/man1/tweetapus-gtk.1
 
 uninstall:
 	rm -f /usr/local/bin/$(TARGET)
 	rm -f /usr/local/share/applications/tweetapus-gtk-c.desktop
-	rm -f /usr/local/share/man/man1/tweetapus-gtk-c.1
+	rm -f /usr/local/share/man/man1/tweetapus-gtk.1
 
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
