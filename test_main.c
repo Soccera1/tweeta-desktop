@@ -256,6 +256,39 @@ static void test_parse_tweets_with_attachments() {
     free_tweets(tweets);
 }
 
+static void test_parse_conversations() {
+    const char *json_input = "{\"conversations\": [{\"id\": \"c1\", \"type\": \"direct\", \"displayName\": \"Test User\", \"displayAvatar\": \"/avatar.png\", \"last_message_content\": \"Hello\", \"last_message_time\": \"2023-10-27T10:00:00Z\", \"unread_count\": 1}]}";
+    GList *convs = parse_conversations(json_input);
+
+    g_assert_nonnull(convs);
+    g_assert_cmpint(g_list_length(convs), ==, 1);
+
+    struct Conversation *c = (struct Conversation *)convs->data;
+    g_assert_cmpstr(c->id, ==, "c1");
+    g_assert_cmpstr(c->type, ==, "direct");
+    g_assert_cmpstr(c->display_name, ==, "Test User");
+    g_assert_cmpstr(c->display_avatar, ==, "/avatar.png");
+    g_assert_cmpstr(c->last_message_content, ==, "Hello");
+    g_assert_cmpint(c->unread_count, ==, 1);
+
+    free_conversations(convs);
+}
+
+static void test_parse_messages() {
+    const char *json_input = "{\"messages\": [{\"id\": \"m1\", \"conversation_id\": \"c1\", \"sender_id\": \"u1\", \"content\": \"Hello\", \"username\": \"testuser\", \"name\": \"Test User\", \"avatar\": \"/avatar.png\", \"created_at\": \"2023-10-27T10:00:00Z\"}]}";
+    GList *msgs = parse_messages(json_input);
+
+    g_assert_nonnull(msgs);
+    g_assert_cmpint(g_list_length(msgs), ==, 1);
+
+    struct DirectMessage *m = (struct DirectMessage *)msgs->data;
+    g_assert_cmpstr(m->id, ==, "m1");
+    g_assert_cmpstr(m->content, ==, "Hello");
+    g_assert_cmpstr(m->username, ==, "testuser");
+
+    free_messages(msgs);
+}
+
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     g_test_add_func("/parsetweets/basic", test_parse_tweets);
@@ -267,5 +300,8 @@ int main(int argc, char** argv) {
     g_test_add_func("/parseprofile/replies", test_parse_profile_replies);
     g_test_add_func("/parseusers/basic", test_parse_users);
     g_test_add_func("/parsenotifications/basic", test_parse_notifications);
+    g_test_add_func("/parseconversations/basic", test_parse_conversations);
+    g_test_add_func("/parsemessages/basic", test_parse_messages);
     return g_test_run();
 }
+    

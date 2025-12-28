@@ -22,6 +22,7 @@ The header bar contains the following controls:
 - **Back Button**: Appears when you are in Profile or Search views to return to the previous view.
 - **Compose Button**: Opens a dialog to post a new tweet (requires login).
 - **Notifications Button**: Opens your notification inbox (requires login).
+- **Messages Button**: Opens your direct message conversations (requires login).
 - **Refresh Button**: Refreshes the current timeline or view.
 - **Login/Logout Button**: Click to log in or log out of your Tweetapus account.
 - **User Label**: Displays your login status and username.
@@ -54,6 +55,14 @@ Displays information about a specific user:
 Displays search results categorized into two tabs:
 - **Users**: Matching user accounts.
 - **Tweets**: Matching posts.
+
+### Direct Messages
+
+View and participate in private conversations:
+- **Conversations List**: Displays a list of all your active conversations with last message previews and unread counts.
+- **Message View**: Click on a conversation to view the full message history.
+- **Sending Messages**: Type your message in the entry at the bottom of a conversation and click **Send** or press **Enter**.
+- **Unread Status**: New messages are automatically marked as read when you open the conversation.
 
 ## Posting a Tweet
 

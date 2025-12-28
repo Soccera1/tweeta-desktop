@@ -316,6 +316,119 @@ parse_notifications(const gchar *json_data)
     return notifications;
 }
 
+GList*
+parse_conversations(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    GList *conversations = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "conversations")) {
+            JsonArray *conv_array = json_object_get_array_member(obj, "conversations");
+            for (guint i = 0; i < json_array_get_length(conv_array); i++) {
+                JsonNode *conv_node = json_array_get_element(conv_array, i);
+                JsonObject *conv_obj = json_node_get_object(conv_node);
+                struct Conversation *conv = g_new0(struct Conversation, 1);
+                
+                conv->id = g_strdup(json_object_get_string_member(conv_obj, "id"));
+                conv->type = g_strdup(json_object_get_string_member(conv_obj, "type"));
+                
+                if (json_object_has_member(conv_obj, "title") && !json_node_is_null(json_object_get_member(conv_obj, "title"))) {
+                    conv->title = g_strdup(json_object_get_string_member(conv_obj, "title"));
+                }
+                
+                if (json_object_has_member(conv_obj, "displayName") && !json_node_is_null(json_object_get_member(conv_obj, "displayName"))) {
+                    conv->display_name = g_strdup(json_object_get_string_member(conv_obj, "displayName"));
+                }
+                
+                if (json_object_has_member(conv_obj, "displayAvatar") && !json_node_is_null(json_object_get_member(conv_obj, "displayAvatar"))) {
+                    conv->display_avatar = g_strdup(json_object_get_string_member(conv_obj, "displayAvatar"));
+                }
+
+                if (json_object_has_member(conv_obj, "last_message_content") && !json_node_is_null(json_object_get_member(conv_obj, "last_message_content"))) {
+                    conv->last_message_content = g_strdup(json_object_get_string_member(conv_obj, "last_message_content"));
+                }
+
+                if (json_object_has_member(conv_obj, "last_message_time") && !json_node_is_null(json_object_get_member(conv_obj, "last_message_time"))) {
+                    conv->last_message_time = g_strdup(json_object_get_string_member(conv_obj, "last_message_time"));
+                }
+
+                conv->unread_count = json_object_get_int_member(conv_obj, "unread_count");
+                
+                conversations = g_list_append(conversations, conv);
+            }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return conversations;
+}
+
+GList*
+parse_messages(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    GList *messages = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "messages")) {
+            JsonArray *msg_array = json_object_get_array_member(obj, "messages");
+            for (guint i = 0; i < json_array_get_length(msg_array); i++) {
+                JsonNode *msg_node = json_array_get_element(msg_array, i);
+                JsonObject *msg_obj = json_node_get_object(msg_node);
+                struct DirectMessage *msg = g_new0(struct DirectMessage, 1);
+                
+                msg->id = g_strdup(json_object_get_string_member(msg_obj, "id"));
+                msg->conversation_id = g_strdup(json_object_get_string_member(msg_obj, "conversation_id"));
+                msg->sender_id = g_strdup(json_object_get_string_member(msg_obj, "sender_id"));
+                msg->content = g_strdup(json_object_get_string_member(msg_obj, "content"));
+                msg->username = g_strdup(json_object_get_string_member(msg_obj, "username"));
+                msg->name = g_strdup(json_object_get_string_member(msg_obj, "name"));
+                
+                if (json_object_has_member(msg_obj, "avatar") && !json_node_is_null(json_object_get_member(msg_obj, "avatar"))) {
+                    msg->avatar = g_strdup(json_object_get_string_member(msg_obj, "avatar"));
+                }
+                
+                msg->created_at = g_strdup(json_object_get_string_member(msg_obj, "created_at"));
+                msg->attachments = parse_attachments(msg_obj);
+                
+                messages = g_list_append(messages, msg);
+            }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return messages;
+}
+
+gchar*
+construct_dm_payload(const gchar *content)
+{
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "content");
+    json_builder_add_string_value(builder, content);
+    json_builder_end_object(builder);
+
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, json_builder_get_root(builder));
+    gchar *post_data = json_generator_to_data(gen, NULL);
+
+    g_object_unref(gen);
+    g_object_unref(builder);
+    return post_data;
+}
+
 gboolean
 parse_login_response(const gchar *json_data, gchar **token_out, gchar **username_out)
 {
@@ -448,4 +561,55 @@ void
 free_notifications(GList *notifications)
 {
     g_list_free_full(notifications, free_notification);
+}
+
+void
+free_conversation(gpointer data)
+{
+    struct Conversation *conv = data;
+    if (conv) {
+        g_free(conv->id);
+        g_free(conv->type);
+        g_free(conv->title);
+        g_free(conv->display_name);
+        g_free(conv->display_avatar);
+        g_free(conv->last_message_content);
+        g_free(conv->last_message_time);
+        if (conv->participants) {
+            g_list_free_full(conv->participants, free_user);
+        }
+        g_free(conv);
+    }
+}
+
+void
+free_conversations(GList *conversations)
+{
+    g_list_free_full(conversations, free_conversation);
+}
+
+void
+free_message(gpointer data)
+{
+    struct DirectMessage *msg = data;
+    if (msg) {
+        g_free(msg->id);
+        g_free(msg->conversation_id);
+        g_free(msg->sender_id);
+        g_free(msg->content);
+        g_free(msg->username);
+        g_free(msg->name);
+        g_free(msg->avatar);
+        g_free(msg->created_at);
+        if (msg->attachments) {
+            g_list_free_full(msg->attachments, free_attachment);
+        }
+        g_free(msg);
+    }
+}
+
+void
+free_messages(GList *messages)
+{
+    g_list_free_full(messages, free_message);
 }

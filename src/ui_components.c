@@ -747,3 +747,157 @@ populate_notification_list(GtkListBox *list_box, GList *notifications)
         gtk_list_box_insert(list_box, notif_widget, -1);
     }
 }
+
+static void
+on_conversation_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)user_data;
+    const gchar *conv_id = g_object_get_data(G_OBJECT(widget), "conversation_id");
+    const gchar *display_name = g_object_get_data(G_OBJECT(widget), "display_name");
+    
+    if (conv_id) {
+        gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "dm_messages");
+        gtk_label_set_text(GTK_LABEL(g_dm_title_label), display_name ? display_name : "Messages");
+        g_object_set_data_full(G_OBJECT(g_dm_messages_list), "conversation_id", g_strdup(conv_id), g_free);
+        start_loading_messages(GTK_LIST_BOX(g_dm_messages_list), conv_id);
+
+        // Mark as read
+        gchar *url = g_strdup_printf(DM_MARK_READ_URL, conv_id);
+        struct MemoryStruct chunk;
+        if (fetch_url(url, &chunk, "", "PATCH")) {
+            free(chunk.memory);
+        }
+        g_free(url);
+    }
+}
+
+GtkWidget*
+create_conversation_widget(struct Conversation *conv)
+{
+    GtkWidget *event_box = gtk_event_box_new();
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(hbox), 10);
+    
+    GtkWidget *avatar_image = gtk_image_new_from_icon_name("avatar-default", GTK_ICON_SIZE_DIALOG);
+    gtk_widget_set_size_request(avatar_image, 48, 48);
+    if (conv->display_avatar) {
+        load_avatar(avatar_image, conv->display_avatar, 48);
+    }
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    
+    GtkWidget *name_label = gtk_label_new(NULL);
+    gchar *name_markup = g_strdup_printf("<b>%s</b>", conv->display_name ? conv->display_name : "Unknown");
+    gtk_label_set_markup(GTK_LABEL(name_label), name_markup);
+    gtk_label_set_xalign(GTK_LABEL(name_label), 0.0);
+    g_free(name_markup);
+
+    GtkWidget *last_msg_label = gtk_label_new(conv->last_message_content);
+    gtk_label_set_xalign(GTK_LABEL(last_msg_label), 0.0);
+    gtk_label_set_ellipsize(GTK_LABEL(last_msg_label), PANGO_ELLIPSIZE_END);
+    GtkStyleContext *context = gtk_widget_get_style_context(last_msg_label);
+    gtk_style_context_add_class(context, "dim-label");
+
+    gtk_box_pack_start(GTK_BOX(vbox), name_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), last_msg_label, FALSE, FALSE, 0);
+
+    gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), vbox, TRUE, TRUE, 0);
+
+    if (conv->unread_count > 0) {
+        gchar *unread_text = g_strdup_printf("%d", conv->unread_count);
+        GtkWidget *badge = gtk_label_new(unread_text);
+        g_free(unread_text);
+        gtk_box_pack_end(GTK_BOX(hbox), badge, FALSE, FALSE, 0);
+    }
+
+    gtk_container_add(GTK_CONTAINER(event_box), hbox);
+    g_object_set_data_full(G_OBJECT(event_box), "conversation_id", g_strdup(conv->id), g_free);
+    g_object_set_data_full(G_OBJECT(event_box), "display_name", g_strdup(conv->display_name), g_free);
+    g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_conversation_clicked), NULL);
+
+    GtkWidget *outer_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_box_pack_start(GTK_BOX(outer_vbox), event_box, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(outer_vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
+
+    return outer_vbox;
+}
+
+void
+populate_conversation_list(GtkListBox *list_box, GList *conversations)
+{
+    GList *children, *iter;
+    children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    for (GList *l = conversations; l != NULL; l = l->next) {
+        GtkWidget *conv_widget = create_conversation_widget(l->data);
+        gtk_widget_show_all(conv_widget);
+        gtk_list_box_insert(list_box, conv_widget, -1);
+    }
+}
+
+GtkWidget*
+create_message_widget(struct DirectMessage *msg)
+{
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(hbox), 5);
+    
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    
+    GtkWidget *avatar_image = gtk_image_new_from_icon_name("avatar-default", GTK_ICON_SIZE_MENU);
+    gtk_widget_set_size_request(avatar_image, 32, 32);
+    if (msg->avatar) {
+        load_avatar(avatar_image, msg->avatar, 32);
+    }
+
+    gchar *header_text = g_strdup_printf("<b>%s</b> (@%s) · %s", msg->name, msg->username, msg->created_at);
+    GtkWidget *header_label = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(header_label), header_text);
+    gtk_label_set_xalign(GTK_LABEL(header_label), 0.0);
+    g_free(header_text);
+
+    GtkWidget *content_label = gtk_label_new(msg->content);
+    gtk_label_set_xalign(GTK_LABEL(content_label), 0.0);
+    gtk_label_set_line_wrap(GTK_LABEL(content_label), TRUE);
+    gtk_label_set_selectable(GTK_LABEL(content_label), TRUE);
+
+    gtk_box_pack_start(GTK_BOX(vbox), header_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), content_label, FALSE, FALSE, 0);
+    
+    add_attachments_to_box(GTK_BOX(vbox), msg->attachments);
+
+    gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), vbox, TRUE, TRUE, 0);
+
+    return hbox;
+}
+
+void
+populate_message_list(GtkListBox *list_box, GList *messages)
+{
+    GList *children, *iter;
+    children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    // Messages come in descending order from API, we want to show them in order
+    for (GList *l = g_list_last(messages); l != NULL; l = l->prev) {
+        GtkWidget *msg_widget = create_message_widget(l->data);
+        gtk_widget_show_all(msg_widget);
+        gtk_list_box_insert(list_box, msg_widget, -1);
+    }
+    
+    // Scroll to bottom
+    GtkWidget *scrolled = gtk_widget_get_parent(GTK_WIDGET(list_box));
+    if (GTK_IS_VIEWPORT(scrolled)) {
+        scrolled = gtk_widget_get_parent(scrolled);
+    }
+    if (GTK_IS_SCROLLED_WINDOW(scrolled)) {
+        GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(scrolled));
+        gtk_adjustment_set_value(adj, gtk_adjustment_get_upper(adj) - gtk_adjustment_get_page_size(adj));
+    }
+}

@@ -19,5 +19,9 @@
 #define BOOKMARK_ADD_URL API_BASE_URL "/bookmarks/add"
 #define BOOKMARK_REMOVE_URL API_BASE_URL "/bookmarks/remove"
 #define EMOJIS_URL API_BASE_URL "/emojis"
+#define DM_CONVERSATIONS_URL API_BASE_URL "/dm/conversations"
+#define DM_MESSAGES_URL API_BASE_URL "/dm/conversations/%s"
+#define DM_SEND_MESSAGE_URL API_BASE_URL "/dm/conversations/%s/messages"
+#define DM_MARK_READ_URL API_BASE_URL "/dm/conversations/%s/read"
 
 #endif // CONSTANTS_H

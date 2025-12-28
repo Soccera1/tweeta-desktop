@@ -20,6 +20,12 @@ static guint active_tweets_request_id = 0;
 static GMutex load_notifications_mutex;
 static guint active_notifications_request_id = 0;
 
+static GMutex load_conversations_mutex;
+static guint active_conversations_request_id = 0;
+
+static GMutex load_messages_mutex;
+static guint active_messages_request_id = 0;
+
 void update_login_ui()
 {
     if (g_current_username) {
@@ -666,8 +672,13 @@ void on_back_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)widget;
     (void)user_data;
-    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "timeline");
-    gtk_widget_hide(g_back_button);
+    const gchar *current_view = gtk_stack_get_visible_child_name(GTK_STACK(g_stack));
+    if (g_strcmp0(current_view, "dm_messages") == 0) {
+        gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "messages");
+    } else {
+        gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "timeline");
+        gtk_widget_hide(g_back_button);
+    }
 }
 
 void on_refresh_clicked(GtkWidget *widget, gpointer user_data)
@@ -677,6 +688,13 @@ void on_refresh_clicked(GtkWidget *widget, gpointer user_data)
     const gchar *current_view = gtk_stack_get_visible_child_name(GTK_STACK(g_stack));
     if (g_strcmp0(current_view, "notifications") == 0) {
         start_loading_notifications(GTK_LIST_BOX(g_notifications_list));
+    } else if (g_strcmp0(current_view, "messages") == 0) {
+        start_loading_conversations(GTK_LIST_BOX(g_conversations_list));
+    } else if (g_strcmp0(current_view, "dm_messages") == 0) {
+        const gchar *conv_id = g_object_get_data(G_OBJECT(g_dm_messages_list), "conversation_id");
+        if (conv_id) {
+            start_loading_messages(GTK_LIST_BOX(g_dm_messages_list), conv_id);
+        }
     } else {
         start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
     }
@@ -793,6 +811,186 @@ void on_mark_all_read_clicked(GtkWidget *widget, gpointer user_data)
         free(chunk.memory);
         start_loading_notifications(GTK_LIST_BOX(g_notifications_list));
     }
+}
+
+static gboolean on_conversations_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    
+    g_mutex_lock(&load_conversations_mutex);
+    gboolean is_active = (async_data->request_id == active_conversations_request_id);
+    g_mutex_unlock(&load_conversations_mutex);
+    
+    if (!is_active) {
+        if (async_data->conversations) {
+            free_conversations(async_data->conversations);
+        }
+        g_free(async_data);
+        return G_SOURCE_REMOVE;
+    }
+
+    if (async_data->success && async_data->conversations) {
+        populate_conversation_list(async_data->list_box, async_data->conversations);
+        free_conversations(async_data->conversations);
+    } else {
+        GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+
+        GtkWidget *error_label = gtk_label_new(async_data->success ? "No conversations." : "Failed to load conversations.");
+        gtk_widget_show(error_label);
+        gtk_list_box_insert(async_data->list_box, error_label, -1);
+    }
+
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer fetch_conversations_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+
+    if (fetch_url(DM_CONVERSATIONS_URL, &chunk, NULL, "GET")) {
+        async_data->conversations = parse_conversations(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+
+    g_idle_add(on_conversations_loaded, async_data);
+    return NULL;
+}
+
+void start_loading_conversations(GtkListBox *list_box)
+{
+    if (!g_auth_token) return;
+
+    g_mutex_lock(&load_conversations_mutex);
+    active_conversations_request_id++;
+    guint current_request_id = active_conversations_request_id;
+    g_mutex_unlock(&load_conversations_mutex);
+    
+    GList *children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+    
+    GtkWidget *loading_label = gtk_label_new("Loading conversations...");
+    gtk_widget_show(loading_label);
+    gtk_list_box_insert(list_box, loading_label, -1);
+
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->list_box = list_box;
+    data->request_id = current_request_id;
+    
+    g_thread_new("conversation-loader", fetch_conversations_thread, data);
+}
+
+static gboolean on_messages_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    
+    g_mutex_lock(&load_messages_mutex);
+    gboolean is_active = (async_data->request_id == active_messages_request_id);
+    g_mutex_unlock(&load_messages_mutex);
+    
+    if (!is_active) {
+        if (async_data->messages) {
+            free_messages(async_data->messages);
+        }
+        g_free(async_data->conversation_id);
+        g_free(async_data);
+        return G_SOURCE_REMOVE;
+    }
+
+    if (async_data->success && async_data->messages) {
+        populate_message_list(async_data->list_box, async_data->messages);
+        free_messages(async_data->messages);
+    } else {
+        GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+
+        GtkWidget *error_label = gtk_label_new(async_data->success ? "No messages." : "Failed to load messages.");
+        gtk_widget_show(error_label);
+        gtk_list_box_insert(async_data->list_box, error_label, -1);
+    }
+
+    g_free(async_data->conversation_id);
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer fetch_messages_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+    gchar *url = g_strdup_printf(DM_MESSAGES_URL, async_data->conversation_id);
+
+    if (fetch_url(url, &chunk, NULL, "GET")) {
+        async_data->messages = parse_messages(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+
+    g_free(url);
+    g_idle_add(on_messages_loaded, async_data);
+    return NULL;
+}
+
+void start_loading_messages(GtkListBox *list_box, const gchar *conversation_id)
+{
+    if (!g_auth_token) return;
+
+    g_mutex_lock(&load_messages_mutex);
+    active_messages_request_id++;
+    guint current_request_id = active_messages_request_id;
+    g_mutex_unlock(&load_messages_mutex);
+    
+    GList *children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+    
+    GtkWidget *loading_label = gtk_label_new("Loading messages...");
+    gtk_widget_show(loading_label);
+    gtk_list_box_insert(list_box, loading_label, -1);
+
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->list_box = list_box;
+    data->request_id = current_request_id;
+    data->conversation_id = g_strdup(conversation_id);
+    
+    g_thread_new("message-loader", fetch_messages_thread, data);
+}
+
+void on_messages_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+    
+    if (!g_auth_token) {
+        GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+        GtkWindow *window = GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL;
+        GtkWidget *error_dialog = gtk_message_dialog_new(window,
+                                 GTK_DIALOG_DESTROY_WITH_PARENT,
+                                 GTK_MESSAGE_ERROR,
+                                 GTK_BUTTONS_CLOSE,
+                                 "You must be logged in to view messages.");
+        gtk_dialog_run(GTK_DIALOG(error_dialog));
+        gtk_widget_destroy(error_dialog);
+        return;
+    }
+
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "messages");
+    gtk_widget_show(g_back_button);
+    start_loading_conversations(GTK_LIST_BOX(g_conversations_list));
 }
 
 static gboolean on_users_loaded(gpointer data)

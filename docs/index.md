@@ -20,6 +20,7 @@ Tweetapus Desktop provides a lightweight, native experience for interacting with
 - **Search**: Search for users and posts across the platform.
 - **Authentication**: Secure login and session persistence.
 - **Tweeting**: Post new tweets and reply to others.
+- **Direct Messages**: Send and receive private messages with other users.
 - **Native Experience**: A GTK3 application that integrates well with Linux desktop environments.
 
 ## License

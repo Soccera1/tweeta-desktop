@@ -55,6 +55,30 @@ struct Notification {
     gchar *created_at;
 };
 
+struct DirectMessage {
+    gchar *id;
+    gchar *conversation_id;
+    gchar *sender_id;
+    gchar *content;
+    gchar *username;
+    gchar *name;
+    gchar *avatar;
+    gchar *created_at;
+    GList *attachments;
+};
+
+struct Conversation {
+    gchar *id;
+    gchar *type;
+    gchar *title;
+    gchar *display_name;
+    gchar *display_avatar;
+    gchar *last_message_content;
+    gchar *last_message_time;
+    int unread_count;
+    GList *participants; // List of Profile*
+};
+
 // Memory buffer for curl
 struct MemoryStruct {
   char *memory;
@@ -67,10 +91,13 @@ struct AsyncData {
     GList *tweets;
     GList *users;
     GList *notifications;
+    GList *conversations;
+    GList *messages;
     gboolean success;
     struct Profile *profile;
     gchar *username;
     gchar *query;
+    gchar *conversation_id;
     guint request_id;  // Track which request instance this is
     gboolean is_append;
     gchar *before_id;

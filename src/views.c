@@ -2,6 +2,9 @@
 #include "globals.h"
 #include "ui_components.h"
 #include "actions.h"
+#include "constants.h"
+#include "json_utils.h"
+#include "network.h"
 
 GtkWidget*
 create_profile_view()
@@ -121,6 +124,78 @@ create_conversation_view()
     return scroll;
 }
 
+static void
+on_dm_send_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+    const gchar *content = gtk_entry_get_text(GTK_ENTRY(g_dm_entry));
+    const gchar *conv_id = g_object_get_data(G_OBJECT(g_dm_messages_list), "conversation_id");
+
+    if (content && strlen(content) > 0 && conv_id) {
+        gchar *url = g_strdup_printf(DM_SEND_MESSAGE_URL, conv_id);
+        gchar *post_data = construct_dm_payload(content);
+        struct MemoryStruct chunk;
+
+        if (fetch_url(url, &chunk, post_data, "POST")) {
+            gtk_entry_set_text(GTK_ENTRY(g_dm_entry), "");
+            start_loading_messages(GTK_LIST_BOX(g_dm_messages_list), conv_id);
+            free(chunk.memory);
+        }
+        
+        g_free(post_data);
+        g_free(url);
+    }
+}
+
+GtkWidget*
+create_messages_view()
+{
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_conversations_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_conversations_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(scroll), g_conversations_list);
+    return scroll;
+}
+
+GtkWidget*
+create_dm_messages_view()
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    
+    GtkWidget *header_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(header_box), 10);
+    g_dm_title_label = gtk_label_new("Messages");
+    PangoAttrList *attrs = pango_attr_list_new();
+    pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+    gtk_label_set_attributes(GTK_LABEL(g_dm_title_label), attrs);
+    pango_attr_list_unref(attrs);
+    gtk_box_pack_start(GTK_BOX(header_box), g_dm_title_label, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(box), header_box, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
+
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_dm_messages_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_dm_messages_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(scroll), g_dm_messages_list);
+    gtk_box_pack_start(GTK_BOX(box), scroll, TRUE, TRUE, 0);
+    
+    GtkWidget *input_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_container_set_border_width(GTK_CONTAINER(input_hbox), 5);
+    g_dm_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_dm_entry), "Type a message...");
+    g_signal_connect(g_dm_entry, "activate", G_CALLBACK(on_dm_send_clicked), NULL);
+    
+    GtkWidget *send_btn = gtk_button_new_with_label("Send");
+    g_signal_connect(send_btn, "clicked", G_CALLBACK(on_dm_send_clicked), NULL);
+    
+    gtk_box_pack_start(GTK_BOX(input_hbox), g_dm_entry, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(input_hbox), send_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), input_hbox, FALSE, FALSE, 0);
+
+    return box;
+}
+
 GtkWidget*
 create_window()
 {
@@ -156,6 +231,11 @@ create_window()
     GtkWidget *notif_button = gtk_button_new_from_icon_name("preferences-desktop-notification-symbolic", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(notif_button, "clicked", G_CALLBACK(on_notifications_clicked), NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), notif_button);
+
+    // Messages Button (Left)
+    GtkWidget *messages_button = gtk_button_new_from_icon_name("mail-unread-symbolic", GTK_ICON_SIZE_BUTTON);
+    g_signal_connect(messages_button, "clicked", G_CALLBACK(on_messages_clicked), NULL);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), messages_button);
 
     // Refresh Button (Left)
     GtkWidget *refresh_button = gtk_button_new_from_icon_name("view-refresh-symbolic", GTK_ICON_SIZE_BUTTON);
@@ -195,6 +275,14 @@ create_window()
     // Notifications View
     GtkWidget *notifications_view = create_notifications_view();
     gtk_stack_add_named(GTK_STACK(g_stack), notifications_view, "notifications");
+
+    // Messages View
+    GtkWidget *messages_view = create_messages_view();
+    gtk_stack_add_named(GTK_STACK(g_stack), messages_view, "messages");
+
+    // DM Messages View
+    GtkWidget *dm_messages_view = create_dm_messages_view();
+    gtk_stack_add_named(GTK_STACK(g_stack), dm_messages_view, "dm_messages");
 
     // Conversation View
     GtkWidget *conversation_view = create_conversation_view();
