@@ -1,0 +1,3 @@
+There should be a gitignored directory named tweeta or tweetapus, or similar. This contains the source code for the tweetapus social media platform, in which this program is a desktop application for.
+If there is no such directory and you need reference data, ask the user to download the directory, or download it from https://github.com/tweetapus/tweetapus. NEVER for ANY reason change the tweetapus direcory, except to pull changes with git from upstream! It is there for REFERENCE and it is deployed elsewhere, in a location the user does not control! NEVER change it.
+Each time you make a major change, update the test suite to cover this.
