@@ -67,7 +67,13 @@ parse_tweets(const gchar *json_data)
 
             tweet->liked = FALSE;
             if (json_object_has_member(post_object, "liked_by_user")) {
-                tweet->liked = json_object_get_boolean_member(post_object, "liked_by_user");
+                JsonNode *node = json_object_get_member(post_object, "liked_by_user");
+                if (JSON_NODE_HOLDS_VALUE(node)) {
+                    if (json_node_get_value_type(node) == G_TYPE_BOOLEAN)
+                        tweet->liked = json_node_get_boolean(node);
+                    else if (json_node_get_value_type(node) == G_TYPE_INT64)
+                        tweet->liked = json_node_get_int(node) != 0;
+                }
             } else if (json_object_has_member(post_object, "liked")) {
                 tweet->liked = json_object_get_boolean_member(post_object, "liked");
             } else if (json_object_has_member(post_object, "is_liked")) {
@@ -77,7 +83,15 @@ parse_tweets(const gchar *json_data)
             }
 
             tweet->retweeted = FALSE;
-            if (json_object_has_member(post_object, "retweeted")) {
+            if (json_object_has_member(post_object, "retweeted_by_user")) {
+                JsonNode *node = json_object_get_member(post_object, "retweeted_by_user");
+                if (JSON_NODE_HOLDS_VALUE(node)) {
+                    if (json_node_get_value_type(node) == G_TYPE_BOOLEAN)
+                        tweet->retweeted = json_node_get_boolean(node);
+                    else if (json_node_get_value_type(node) == G_TYPE_INT64)
+                        tweet->retweeted = json_node_get_int(node) != 0;
+                }
+            } else if (json_object_has_member(post_object, "retweeted")) {
                 tweet->retweeted = json_object_get_boolean_member(post_object, "retweeted");
             } else if (json_object_has_member(post_object, "is_retweeted")) {
                 tweet->retweeted = json_object_get_boolean_member(post_object, "is_retweeted");
@@ -175,7 +189,13 @@ parse_profile_replies(const gchar *json_data)
 
                 tweet->liked = FALSE;
                 if (json_object_has_member(reply_obj, "liked_by_user")) {
-                    tweet->liked = json_object_get_boolean_member(reply_obj, "liked_by_user");
+                    JsonNode *node = json_object_get_member(reply_obj, "liked_by_user");
+                    if (JSON_NODE_HOLDS_VALUE(node)) {
+                        if (json_node_get_value_type(node) == G_TYPE_BOOLEAN)
+                            tweet->liked = json_node_get_boolean(node);
+                        else if (json_node_get_value_type(node) == G_TYPE_INT64)
+                            tweet->liked = json_node_get_int(node) != 0;
+                    }
                 } else if (json_object_has_member(reply_obj, "liked")) {
                     tweet->liked = json_object_get_boolean_member(reply_obj, "liked");
                 } else if (json_object_has_member(reply_obj, "is_liked")) {
@@ -185,7 +205,15 @@ parse_profile_replies(const gchar *json_data)
                 }
 
                 tweet->retweeted = FALSE;
-                if (json_object_has_member(reply_obj, "retweeted")) {
+                if (json_object_has_member(reply_obj, "retweeted_by_user")) {
+                    JsonNode *node = json_object_get_member(reply_obj, "retweeted_by_user");
+                    if (JSON_NODE_HOLDS_VALUE(node)) {
+                        if (json_node_get_value_type(node) == G_TYPE_BOOLEAN)
+                            tweet->retweeted = json_node_get_boolean(node);
+                        else if (json_node_get_value_type(node) == G_TYPE_INT64)
+                            tweet->retweeted = json_node_get_int(node) != 0;
+                    }
+                } else if (json_object_has_member(reply_obj, "retweeted")) {
                     tweet->retweeted = json_object_get_boolean_member(reply_obj, "retweeted");
                 } else if (json_object_has_member(reply_obj, "is_retweeted")) {
                     tweet->retweeted = json_object_get_boolean_member(reply_obj, "is_retweeted");
