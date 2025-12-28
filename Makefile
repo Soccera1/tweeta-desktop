@@ -16,6 +16,9 @@ TEST_TARGET=test_runner
 
 all: $(TARGET)
 
+static: main.o
+	$(CC) $(LDFLAGS) -static -o $(TARGET)-static main.o $(shell pkg-config --static --libs gtk+-3.0 json-glib-1.0 libcurl)
+
 $(TARGET): main.o
 	$(CC) $(LDFLAGS) -o $(TARGET) main.o $(LDLIBS)
 
@@ -23,7 +26,7 @@ main.o: main.c
 	$(CC) $(CFLAGS) -c main.c
 
 clean:
-	rm -f *.o $(TARGET) $(TEST_TARGET)
+	rm -f *.o $(TARGET) $(TARGET)-static $(TEST_TARGET)
 
 install:
 	install -Dm755 $(TARGET) /usr/local/bin/$(TARGET)
