@@ -5,6 +5,10 @@ A minimal GTK3 X11 client in C for tweetapus.
 (c) 2025 Lily
 Licensed under the AGPLv3 license
 
+## Documentation
+
+Detailed documentation is available in the [docs/](docs/index.md) directory.
+
 ## Building
 
 
