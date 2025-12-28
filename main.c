@@ -732,6 +732,14 @@ start_loading_tweets(GtkListBox *list_box)
     g_thread_new("tweet-loader", fetch_tweets_thread, data);
 }
 
+static void
+on_refresh_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+    start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+}
+
 static GtkWidget*
 create_window()
 {
@@ -751,6 +759,11 @@ create_window()
     gtk_widget_set_sensitive(g_compose_button, FALSE); // Disabled initially
     g_signal_connect(g_compose_button, "clicked", G_CALLBACK(on_compose_clicked), window);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), g_compose_button);
+
+    // Refresh Button (Left)
+    GtkWidget *refresh_button = gtk_button_new_from_icon_name("view-refresh-symbolic", GTK_ICON_SIZE_BUTTON);
+    g_signal_connect(refresh_button, "clicked", G_CALLBACK(on_refresh_clicked), NULL);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), refresh_button);
 
     // Login Button (Right)
     g_login_button = gtk_button_new_with_label("Login");
