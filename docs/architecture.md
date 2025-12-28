@@ -24,7 +24,14 @@ The application uses `json-glib` to handle API responses and local session stora
 - Parsers exist for tweets, profiles, users, and login responses.
 - `JsonBuilder` and `JsonGenerator` are used for constructing JSON payloads for POST requests.
 
-### 4. Asynchronicity (GLib Threads)
+### 4. Image Handling (GdkPixbuf)
+
+The application handles profile pictures (avatars) asynchronously:
+- `load_avatar()`: Initiates an asynchronous download and scaling of an image.
+- `fetch_avatar_thread()`: Downloads the image in the background and loads it into a `GdkPixbuf`.
+- Placeholders are shown while images are loading or if they fail to load.
+
+### 5. Asynchronicity (GLib Threads)
 
 To prevent the UI from freezing during network requests, Tweetapus Desktop uses GLib threads:
 - `g_thread_new()`: Spawns a background thread for fetching data.

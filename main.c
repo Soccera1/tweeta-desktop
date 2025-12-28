@@ -14,6 +14,8 @@
 #include <glib/gstdio.h>
 
 #define API_BASE_URL "https://tweeta.tiago.zip/api"
+#define BASE_DOMAIN "https://tweeta.tiago.zip"
+#define AVATAR_SIZE 48
 #define PUBLIC_TWEETS_URL API_BASE_URL "/public-tweets"
 #define LOGIN_URL API_BASE_URL "/auth/basic-login"
 #define POST_TWEET_URL API_BASE_URL "/tweets/"
@@ -39,6 +41,7 @@ static GtkWidget *g_search_tweets_list = NULL;
 static GtkWidget *g_profile_name_label = NULL;
 static GtkWidget *g_profile_bio_label = NULL;
 static GtkWidget *g_profile_stats_label = NULL;
+static GtkWidget *g_profile_avatar_image = NULL;
 static GtkWidget *g_profile_tweets_list = NULL;
 static GtkWidget *g_profile_replies_list = NULL;
 
@@ -47,6 +50,7 @@ struct Tweet {
   gchar *content;
   gchar *author_name;
   gchar *author_username;
+  gchar *author_avatar;
   gchar *id;
 };
 
@@ -55,6 +59,7 @@ struct Profile {
     gchar *name;
     gchar *username;
     gchar *bio;
+    gchar *avatar;
     int follower_count;
     int following_count;
     int post_count;
@@ -79,6 +84,75 @@ struct AsyncData {
 
 static void start_loading_tweets(GtkListBox *list_box);
 static void show_profile(const gchar *username);
+static gboolean fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data);
+
+struct AvatarData {
+    GtkWidget *image;
+    gchar *url;
+    int size;
+};
+
+static gboolean
+set_image_pixbuf(gpointer data)
+{
+    GdkPixbuf *pixbuf = (GdkPixbuf *)((gpointer *)data)[0];
+    GtkWidget *image = (GtkWidget *)((gpointer *)data)[1];
+
+    if (GTK_IS_IMAGE(image)) {
+        gtk_image_set_from_pixbuf(GTK_IMAGE(image), pixbuf);
+    }
+
+    g_object_unref(pixbuf);
+    g_object_unref(image);
+    g_free(data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_avatar_thread(gpointer data)
+{
+    struct AvatarData *avatar_data = (struct AvatarData *)data;
+    struct MemoryStruct chunk;
+    
+    gchar *full_url;
+    if (g_str_has_prefix(avatar_data->url, "http")) {
+        full_url = g_strdup(avatar_data->url);
+    } else {
+        full_url = g_strdup_printf("%s%s", BASE_DOMAIN, avatar_data->url);
+    }
+
+    if (fetch_url(full_url, &chunk, NULL)) {
+        GInputStream *stream = g_memory_input_stream_new_from_data(chunk.memory, chunk.size, NULL);
+        GdkPixbuf *pixbuf = gdk_pixbuf_new_from_stream_at_scale(stream, avatar_data->size, avatar_data->size, TRUE, NULL, NULL);
+        
+        if (pixbuf) {
+            gpointer *params = g_new(gpointer, 2);
+            params[0] = pixbuf; // Already has ref from creation
+            params[1] = g_object_ref(avatar_data->image);
+            g_idle_add(set_image_pixbuf, params);
+        }
+        g_object_unref(stream);
+        free(chunk.memory);
+    }
+
+    g_free(full_url);
+    g_free(avatar_data->url);
+    g_free(avatar_data);
+    return NULL;
+}
+
+static void
+load_avatar(GtkWidget *image, const gchar *url, int size)
+{
+    if (!url || strlen(url) == 0) return;
+
+    struct AvatarData *data = g_new(struct AvatarData, 1);
+    data->image = image;
+    data->url = g_strdup(url);
+    data->size = size;
+
+    g_thread_new("avatar-loader", fetch_avatar_thread, data);
+}
 
 static void
 on_author_clicked(GtkButton *button, gpointer user_data)
@@ -622,6 +696,12 @@ parse_tweets(const gchar *json_data)
             tweet->content = g_strdup(json_object_get_string_member(post_object, "content"));
             tweet->author_name = g_strdup(json_object_get_string_member(author_object, "name"));
             tweet->author_username = g_strdup(json_object_get_string_member(author_object, "username"));
+            if (json_object_has_member(author_object, "avatar") && !json_node_is_null(json_object_get_member(author_object, "avatar"))) {
+                tweet->author_avatar = g_strdup(json_object_get_string_member(author_object, "avatar"));
+            } else {
+                tweet->author_avatar = NULL;
+            }
+
             if (json_object_has_member(post_object, "id")) {
                 tweet->id = g_strdup(json_object_get_string_member(post_object, "id"));
             } else {
@@ -643,6 +723,7 @@ free_tweet(gpointer data)
     g_free(tweet->content);
     g_free(tweet->author_name);
     g_free(tweet->author_username);
+    g_free(tweet->author_avatar);
     g_free(tweet->id);
     g_free(tweet);
 }
@@ -660,6 +741,7 @@ free_user(gpointer data)
     g_free(user->name);
     g_free(user->username);
     g_free(user->bio);
+    g_free(user->avatar);
     g_free(user);
 }
 
@@ -672,7 +754,16 @@ free_users(GList *users)
 static GtkWidget*
 create_tweet_widget(struct Tweet *tweet)
 {
+    GtkWidget *outer_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(hbox), 5);
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+
+    GtkWidget *avatar_image = gtk_image_new_from_icon_name("avatar-default", GTK_ICON_SIZE_DIALOG);
+    gtk_widget_set_size_request(avatar_image, AVATAR_SIZE, AVATAR_SIZE);
+    gtk_widget_set_valign(avatar_image, GTK_ALIGN_START);
+    load_avatar(avatar_image, tweet->author_avatar, AVATAR_SIZE);
+
     gchar *author_str = g_strdup_printf("%s (@%s)", tweet->author_name, tweet->author_username);
 
     GtkWidget *author_btn = gtk_button_new_with_label(author_str);
@@ -706,12 +797,15 @@ create_tweet_widget(struct Tweet *tweet)
     g_signal_connect(reply_btn, "clicked", G_CALLBACK(on_reply_clicked), NULL);
     gtk_box_pack_start(GTK_BOX(box), reply_btn, FALSE, FALSE, 0);
 
-    // Add separator
-    gtk_box_pack_start(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 5);
+    gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), box, TRUE, TRUE, 0);
+
+    gtk_box_pack_start(GTK_BOX(outer_box), hbox, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(outer_box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 5);
 
     g_free(author_str);
 
-    return box;
+    return outer_box;
 }
 
 static void
@@ -811,6 +905,9 @@ parse_profile(const gchar *json_data)
             profile->name = g_strdup(json_object_get_string_member(p_obj, "name"));
             profile->username = g_strdup(json_object_get_string_member(p_obj, "username"));
             profile->bio = g_strdup(json_object_get_string_member(p_obj, "bio"));
+            if (json_object_has_member(p_obj, "avatar") && !json_node_is_null(json_object_get_member(p_obj, "avatar"))) {
+                profile->avatar = g_strdup(json_object_get_string_member(p_obj, "avatar"));
+            }
             profile->follower_count = json_object_get_int_member(p_obj, "follower_count");
             profile->following_count = json_object_get_int_member(p_obj, "following_count");
             profile->post_count = json_object_get_int_member(p_obj, "post_count");
@@ -844,6 +941,9 @@ parse_profile_replies(const gchar *json_data)
                 tweet->content = g_strdup(json_object_get_string_member(reply_obj, "content"));
                 tweet->author_name = g_strdup(json_object_get_string_member(author_obj, "name"));
                 tweet->author_username = g_strdup(json_object_get_string_member(author_obj, "username"));
+                if (json_object_has_member(author_obj, "avatar") && !json_node_is_null(json_object_get_member(author_obj, "avatar"))) {
+                    tweet->author_avatar = g_strdup(json_object_get_string_member(author_obj, "avatar"));
+                }
                 tweet->id = g_strdup(json_object_get_string_member(reply_obj, "id"));
                 tweets = g_list_append(tweets, tweet);
             }
@@ -880,6 +980,11 @@ on_profile_loaded(gpointer data)
         gtk_label_set_text(GTK_LABEL(g_profile_stats_label), stats_str);
         g_free(stats_str);
 
+        gtk_image_set_from_icon_name(GTK_IMAGE(g_profile_avatar_image), "avatar-default", GTK_ICON_SIZE_DND);
+        if (async_data->profile->avatar) {
+            load_avatar(g_profile_avatar_image, async_data->profile->avatar, 80);
+        }
+
         // Populate lists if tweets were fetched (profile endpoint returns first 10 posts)
         if (async_data->tweets) {
             populate_tweet_list(GTK_LIST_BOX(g_profile_tweets_list), async_data->tweets);
@@ -893,6 +998,7 @@ on_profile_loaded(gpointer data)
         g_free(async_data->profile->name);
         g_free(async_data->profile->username);
         g_free(async_data->profile->bio);
+        g_free(async_data->profile->avatar);
         g_free(async_data->profile);
     }
     g_free(async_data->username);
@@ -1011,6 +1117,9 @@ parse_users(const gchar *json_data)
                 } else {
                     user->bio = NULL;
                 }
+                if (json_object_has_member(user_obj, "avatar") && !json_node_is_null(json_object_get_member(user_obj, "avatar"))) {
+                    user->avatar = g_strdup(json_object_get_string_member(user_obj, "avatar"));
+                }
                 user->follower_count = json_object_has_member(user_obj, "follower_count") ? json_object_get_int_member(user_obj, "follower_count") : 0;
                 users = g_list_append(users, user);
             }
@@ -1025,7 +1134,16 @@ parse_users(const gchar *json_data)
 static GtkWidget*
 create_user_widget(struct Profile *user)
 {
+    GtkWidget *outer_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(hbox), 5);
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+
+    GtkWidget *avatar_image = gtk_image_new_from_icon_name("avatar-default", GTK_ICON_SIZE_DIALOG);
+    gtk_widget_set_size_request(avatar_image, AVATAR_SIZE, AVATAR_SIZE);
+    gtk_widget_set_valign(avatar_image, GTK_ALIGN_START);
+    load_avatar(avatar_image, user->avatar, AVATAR_SIZE);
+
     gchar *user_str = g_strdup_printf("%s (@%s)", user->name, user->username);
 
     GtkWidget *user_btn = gtk_button_new_with_label(user_str);
@@ -1050,10 +1168,14 @@ create_user_widget(struct Profile *user)
         gtk_box_pack_start(GTK_BOX(box), bio_label, FALSE, FALSE, 0);
     }
 
-    gtk_box_pack_start(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 5);
+    gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), box, TRUE, TRUE, 0);
+
+    gtk_box_pack_start(GTK_BOX(outer_box), hbox, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(outer_box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 5);
 
     g_free(user_str);
-    return box;
+    return outer_box;
 }
 
 static void
@@ -1208,6 +1330,13 @@ create_profile_view()
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_set_border_width(GTK_CONTAINER(box), 10);
 
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 15);
+    
+    g_profile_avatar_image = gtk_image_new_from_icon_name("avatar-default", GTK_ICON_SIZE_DND);
+    gtk_widget_set_size_request(g_profile_avatar_image, 80, 80);
+    gtk_box_pack_start(GTK_BOX(hbox), g_profile_avatar_image, FALSE, FALSE, 0);
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     g_profile_name_label = gtk_label_new("");
     gtk_widget_set_halign(g_profile_name_label, GTK_ALIGN_START);
     PangoAttrList *attrs = pango_attr_list_new();
@@ -1223,9 +1352,12 @@ create_profile_view()
     g_profile_stats_label = gtk_label_new("");
     gtk_widget_set_halign(g_profile_stats_label, GTK_ALIGN_START);
 
-    gtk_box_pack_start(GTK_BOX(box), g_profile_name_label, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(box), g_profile_bio_label, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(box), g_profile_stats_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), g_profile_name_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), g_profile_bio_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), g_profile_stats_label, FALSE, FALSE, 0);
+
+    gtk_box_pack_start(GTK_BOX(hbox), vbox, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(box), hbox, FALSE, FALSE, 0);
 
     GtkWidget *notebook = gtk_notebook_new();
     

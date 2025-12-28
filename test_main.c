@@ -34,7 +34,7 @@ static void test_writememorycallback() {
 }
 
 static void test_parse_tweets() {
-    const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"Hello world\", \"author\": {\"name\": \"Test User\", \"username\": \"testuser\"}}]}";
+    const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"Hello world\", \"author\": {\"name\": \"Test User\", \"username\": \"testuser\", \"avatar\": \"/api/uploads/avatar.png\"}}]}";
     GList *tweets = parse_tweets(json_input);
 
     g_assert_nonnull(tweets);
@@ -44,6 +44,7 @@ static void test_parse_tweets() {
     g_assert_cmpstr(t->content, ==, "Hello world");
     g_assert_cmpstr(t->author_name, ==, "Test User");
     g_assert_cmpstr(t->author_username, ==, "testuser");
+    g_assert_cmpstr(t->author_avatar, ==, "/api/uploads/avatar.png");
     g_assert_cmpstr(t->id, ==, "123");
 
     free_tweets(tweets);
@@ -170,13 +171,14 @@ static void test_session_persistence() {
 }
 
 static void test_parse_profile() {
-    const char *json_input = "{\"profile\": {\"name\": \"Test User\", \"username\": \"testuser\", \"bio\": \"This is a test bio\", \"follower_count\": 100, \"following_count\": 50, \"post_count\": 10}}";
+    const char *json_input = "{\"profile\": {\"name\": \"Test User\", \"username\": \"testuser\", \"bio\": \"This is a test bio\", \"avatar\": \"/api/uploads/profile.png\", \"follower_count\": 100, \"following_count\": 50, \"post_count\": 10}}";
     struct Profile *p = parse_profile(json_input);
 
     g_assert_nonnull(p);
     g_assert_cmpstr(p->name, ==, "Test User");
     g_assert_cmpstr(p->username, ==, "testuser");
     g_assert_cmpstr(p->bio, ==, "This is a test bio");
+    g_assert_cmpstr(p->avatar, ==, "/api/uploads/profile.png");
     g_assert_cmpint(p->follower_count, ==, 100);
     g_assert_cmpint(p->following_count, ==, 50);
     g_assert_cmpint(p->post_count, ==, 10);
@@ -184,11 +186,12 @@ static void test_parse_profile() {
     g_free(p->name);
     g_free(p->username);
     g_free(p->bio);
+    g_free(p->avatar);
     g_free(p);
 }
 
 static void test_parse_profile_replies() {
-    const char *json_input = "{\"replies\": [{\"id\": \"456\", \"content\": \"Test reply\", \"author\": {\"name\": \"Replier\", \"username\": \"replier\"}}]}";
+    const char *json_input = "{\"replies\": [{\"id\": \"456\", \"content\": \"Test reply\", \"author\": {\"name\": \"Replier\", \"username\": \"replier\", \"avatar\": \"/api/uploads/reply.png\"}}]}";
     GList *tweets = parse_profile_replies(json_input);
 
     g_assert_nonnull(tweets);
@@ -198,13 +201,14 @@ static void test_parse_profile_replies() {
     g_assert_cmpstr(t->content, ==, "Test reply");
     g_assert_cmpstr(t->author_name, ==, "Replier");
     g_assert_cmpstr(t->author_username, ==, "replier");
+    g_assert_cmpstr(t->author_avatar, ==, "/api/uploads/reply.png");
     g_assert_cmpstr(t->id, ==, "456");
 
     free_tweets(tweets);
 }
 
 static void test_parse_users() {
-    const char *json_input = "{\"users\": [{\"username\": \"testuser\", \"name\": \"Test User\", \"bio\": \"Test Bio\", \"follower_count\": 123}]}";
+    const char *json_input = "{\"users\": [{\"username\": \"testuser\", \"name\": \"Test User\", \"bio\": \"Test Bio\", \"avatar\": \"/api/uploads/user.png\", \"follower_count\": 123}]}";
     GList *users = parse_users(json_input);
 
     g_assert_nonnull(users);
@@ -214,6 +218,7 @@ static void test_parse_users() {
     g_assert_cmpstr(u->username, ==, "testuser");
     g_assert_cmpstr(u->name, ==, "Test User");
     g_assert_cmpstr(u->bio, ==, "Test Bio");
+    g_assert_cmpstr(u->avatar, ==, "/api/uploads/user.png");
     g_assert_cmpint(u->follower_count, ==, 123);
 
     free_users(users);
