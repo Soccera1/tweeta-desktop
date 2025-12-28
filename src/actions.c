@@ -248,6 +248,17 @@ static gboolean on_tweets_loaded(gpointer data)
         } else {
             populate_tweet_list(async_data->list_box, async_data->tweets);
         }
+
+        // Update last_id for infinite scrolling
+        GList *last = g_list_last(async_data->tweets);
+        if (last) {
+            struct Tweet *last_tweet = (struct Tweet *)last->data;
+            g_object_set_data_full(G_OBJECT(async_data->list_box), "last_id", g_strdup(last_tweet->id), g_free);
+        } else {
+            // No more tweets, clear last_id to stop infinite scroll attempts
+            g_object_set_data(G_OBJECT(async_data->list_box), "last_id", NULL);
+        }
+
         free_tweets(async_data->tweets);
     } else {
         if (!async_data->is_append) {
@@ -337,6 +348,9 @@ void start_loading_tweets(GtkListBox *list_box)
         gtk_widget_destroy(GTK_WIDGET(iter->data));
     g_list_free(children);
     
+    // Clear last_id for fresh load
+    g_object_set_data(G_OBJECT(list_box), "last_id", NULL);
+
     GtkWidget *loading_label = gtk_label_new("Loading tweets...");
     gtk_widget_show(loading_label);
     gtk_list_box_insert(list_box, loading_label, -1);
@@ -436,6 +450,15 @@ static gboolean on_profile_loaded(gpointer data)
 
         if (async_data->tweets) {
             populate_tweet_list(GTK_LIST_BOX(g_profile_tweets_list), async_data->tweets);
+
+            GList *last = g_list_last(async_data->tweets);
+            if (last) {
+                struct Tweet *last_tweet = (struct Tweet *)last->data;
+                g_object_set_data_full(G_OBJECT(g_profile_tweets_list), "last_id", g_strdup(last_tweet->id), g_free);
+            } else {
+                g_object_set_data(G_OBJECT(g_profile_tweets_list), "last_id", NULL);
+            }
+
             free_tweets(async_data->tweets);
         }
     } else {
@@ -459,6 +482,15 @@ static gboolean on_profile_replies_loaded(gpointer data)
     struct AsyncData *async_data = (struct AsyncData *)data;
     if (async_data->success && async_data->tweets) {
         populate_tweet_list(GTK_LIST_BOX(g_profile_replies_list), async_data->tweets);
+
+        GList *last = g_list_last(async_data->tweets);
+        if (last) {
+            struct Tweet *last_tweet = (struct Tweet *)last->data;
+            g_object_set_data_full(G_OBJECT(g_profile_replies_list), "last_id", g_strdup(last_tweet->id), g_free);
+        } else {
+            g_object_set_data(G_OBJECT(g_profile_replies_list), "last_id", NULL);
+        }
+
         free_tweets(async_data->tweets);
     }
     g_free(async_data);
@@ -519,6 +551,9 @@ void show_profile(const gchar *username)
 
     populate_tweet_list(GTK_LIST_BOX(g_profile_tweets_list), NULL);
     populate_tweet_list(GTK_LIST_BOX(g_profile_replies_list), NULL);
+
+    g_object_set_data(G_OBJECT(g_profile_tweets_list), "last_id", NULL);
+    g_object_set_data(G_OBJECT(g_profile_replies_list), "last_id", NULL);
 
     struct AsyncData *data = g_new0(struct AsyncData, 1);
     data->username = g_strdup(username);
