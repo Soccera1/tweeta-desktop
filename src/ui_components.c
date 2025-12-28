@@ -597,3 +597,13 @@ populate_user_list(GtkListBox *list_box, GList *users)
         gtk_list_box_insert(list_box, user_widget, -1);
     }
 }
+
+void
+append_tweets_to_list(GtkListBox *list_box, GList *tweets)
+{
+    for (GList *l = tweets; l != NULL; l = l->next) {
+        GtkWidget *tweet_widget = create_tweet_widget(l->data);
+        gtk_widget_show_all(tweet_widget);
+        gtk_list_box_insert(list_box, tweet_widget, -1);
+    }
+}
