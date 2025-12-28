@@ -2,3 +2,4 @@ tweetapus-gtk-c
 test_runner
 *.o
 .tweetapus/
+tweetapus/

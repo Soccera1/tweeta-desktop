@@ -33,8 +33,24 @@ static void test_writememorycallback() {
     free(mem.memory);
 }
 
+static void test_parse_tweets() {
+    const char *json_input = "{\"posts\": [{\"content\": \"Hello world\", \"author\": {\"name\": \"Test User\", \"username\": \"testuser\"}}]}";
+    GList *tweets = parse_tweets(json_input);
+
+    g_assert_nonnull(tweets);
+    g_assert_cmpint(g_list_length(tweets), ==, 1);
+
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    g_assert_cmpstr(t->content, ==, "Hello world");
+    g_assert_cmpstr(t->author_name, ==, "Test User");
+    g_assert_cmpstr(t->author_username, ==, "testuser");
+
+    free_tweets(tweets);
+}
+
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     g_test_add_func("/writememorycallback/basic", test_writememorycallback);
+    g_test_add_func("/parsetweets/basic", test_parse_tweets);
     return g_test_run();
 }

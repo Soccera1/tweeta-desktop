@@ -26,6 +26,13 @@ struct MemoryStruct {
   size_t size;
 };
 
+// Data to pass between threads
+struct AsyncData {
+    GtkListBox *list_box;
+    GList *tweets;
+    gboolean success;
+};
+
 static size_t
 WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
 {
@@ -160,7 +167,7 @@ create_tweet_widget(struct Tweet *tweet)
 static void
 populate_tweet_list(GtkListBox *list_box, GList *tweets)
 {
-    // Clear existing items
+    // Clear existing items (e.g. Loading...)
     GList *children, *iter;
     children = gtk_container_get_children(GTK_CONTAINER(list_box));
     for(iter = children; iter != NULL; iter = g_list_next(iter))
@@ -170,27 +177,71 @@ populate_tweet_list(GtkListBox *list_box, GList *tweets)
     // Add new items
     for (GList *l = tweets; l != NULL; l = l->next) {
         GtkWidget *tweet_widget = create_tweet_widget(l->data);
+        gtk_widget_show_all(tweet_widget);
         gtk_list_box_insert(list_box, tweet_widget, -1);
     }
 }
 
-static void
-load_tweets(GtkListBox *list_box)
+// Callback executed on the main thread
+static gboolean
+on_tweets_loaded(gpointer data)
 {
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    
+    if (async_data->success && async_data->tweets) {
+        populate_tweet_list(async_data->list_box, async_data->tweets);
+        free_tweets(async_data->tweets);
+    } else {
+        // Clear "Loading..." and show error
+        GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+
+        GtkWidget *error_label = gtk_label_new("Failed to load tweets.");
+        gtk_widget_show(error_label);
+        gtk_list_box_insert(async_data->list_box, error_label, -1);
+    }
+
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+// Thread function
+static gpointer
+fetch_tweets_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
     struct MemoryStruct chunk;
 
     if (fetch_url(API_URL, &chunk)) {
-        GList *tweets = parse_tweets(chunk.memory);
-        if (tweets) {
-            populate_tweet_list(list_box, tweets);
-            free_tweets(tweets);
-        }
+        async_data->tweets = parse_tweets(chunk.memory);
+        async_data->success = (async_data->tweets != NULL);
         free(chunk.memory);
     } else {
-        // Optionally, show an error message in the UI
-        GtkWidget *error_label = gtk_label_new("Failed to load tweets.");
-        gtk_list_box_insert(list_box, error_label, -1);
+        async_data->success = FALSE;
     }
+
+    // Schedule UI update on main thread
+    g_idle_add(on_tweets_loaded, async_data);
+    
+    return NULL;
+}
+
+static void
+start_loading_tweets(GtkListBox *list_box)
+{
+    // Add "Loading..." label
+    GtkWidget *loading_label = gtk_label_new("Loading tweets...");
+    gtk_widget_show(loading_label);
+    gtk_list_box_insert(list_box, loading_label, -1);
+
+    // Prepare async data
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->list_box = list_box;
+    
+    // Spawn thread
+    g_thread_new("tweet-loader", fetch_tweets_thread, data);
 }
 
 static GtkWidget*
@@ -219,9 +270,11 @@ int main(int argc, char *argv[]) {
     list_box = gtk_list_box_new();
     gtk_container_add(GTK_CONTAINER(scrolled_window), list_box);
 
-    load_tweets(GTK_LIST_BOX(list_box));
-
+    // Initial Show
     gtk_widget_show_all(window);
+
+    // Start loading
+    start_loading_tweets(GTK_LIST_BOX(list_box));
 
     gtk_main();
 
