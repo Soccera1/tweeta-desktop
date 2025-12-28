@@ -18,9 +18,20 @@ struct Tweet {
   gchar *author_avatar;
   gchar *id;
   GList *attachments;
+  gboolean liked;
+  gboolean retweeted;
+  gboolean bookmarked;
+  int like_count;
+  int retweet_count;
+  int reply_count;
 };
 
-// Represents profile data
+struct Emoji {
+    gchar *id;
+    gchar *name;
+    gchar *file_url;
+};
+
 struct Profile {
     gchar *name;
     gchar *username;
@@ -46,6 +57,7 @@ struct AsyncData {
     struct Profile *profile;
     gchar *username;
     gchar *query;
+    guint request_id;  // Track which request instance this is
 };
 
 struct AvatarData {
@@ -57,6 +69,23 @@ struct AvatarData {
 struct ReplyContext {
     GtkWidget *text_view;
     gchar *reply_to_id;
+};
+
+struct QuoteContext {
+    GtkWidget *text_view;
+    gchar *quote_id;
+};
+
+struct InteractionData {
+    gchar *tweet_id;
+    GtkWidget *button;
+    gboolean *state_ptr;
+    int *count_ptr;
+};
+
+struct ReactionContext {
+    gchar *tweet_id;
+    GtkWidget *parent_window;
 };
 
 #endif // TYPES_H

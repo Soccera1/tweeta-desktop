@@ -65,6 +65,36 @@ parse_tweets(const gchar *json_data)
 
             tweet->attachments = parse_attachments(post_object);
 
+            if (json_object_has_member(post_object, "liked")) {
+                tweet->liked = json_object_get_boolean_member(post_object, "liked");
+            } else {
+                tweet->liked = FALSE;
+            }
+
+            if (json_object_has_member(post_object, "retweeted")) {
+                tweet->retweeted = json_object_get_boolean_member(post_object, "retweeted");
+            } else {
+                tweet->retweeted = FALSE;
+            }
+
+            if (json_object_has_member(post_object, "bookmarked")) {
+                tweet->bookmarked = json_object_get_boolean_member(post_object, "bookmarked");
+            } else {
+                tweet->bookmarked = FALSE;
+            }
+
+            if (json_object_has_member(post_object, "likes")) {
+                tweet->like_count = json_object_get_int_member(post_object, "likes");
+            }
+
+            if (json_object_has_member(post_object, "retweets")) {
+                tweet->retweet_count = json_object_get_int_member(post_object, "retweets");
+            }
+
+            if (json_object_has_member(post_object, "replies")) {
+                tweet->reply_count = json_object_get_int_member(post_object, "replies");
+            }
+
             tweets = g_list_append(tweets, tweet);
         }
     }
@@ -131,6 +161,26 @@ parse_profile_replies(const gchar *json_data)
                 }
                 tweet->id = g_strdup(json_object_get_string_member(reply_obj, "id"));
                 tweet->attachments = parse_attachments(reply_obj);
+
+                if (json_object_has_member(reply_obj, "liked")) {
+                    tweet->liked = json_object_get_boolean_member(reply_obj, "liked");
+                }
+                if (json_object_has_member(reply_obj, "retweeted")) {
+                    tweet->retweeted = json_object_get_boolean_member(reply_obj, "retweeted");
+                }
+                if (json_object_has_member(reply_obj, "bookmarked")) {
+                    tweet->bookmarked = json_object_get_boolean_member(reply_obj, "bookmarked");
+                }
+                if (json_object_has_member(reply_obj, "likes")) {
+                    tweet->like_count = json_object_get_int_member(reply_obj, "likes");
+                }
+                if (json_object_has_member(reply_obj, "retweets")) {
+                    tweet->retweet_count = json_object_get_int_member(reply_obj, "retweets");
+                }
+                if (json_object_has_member(reply_obj, "replies")) {
+                    tweet->reply_count = json_object_get_int_member(reply_obj, "replies");
+                }
+
                 tweets = g_list_append(tweets, tweet);
             }
         }

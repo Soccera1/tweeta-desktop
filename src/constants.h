@@ -10,5 +10,11 @@
 #define POST_TWEET_URL API_BASE_URL "/tweets/"
 #define SEARCH_USERS_URL API_BASE_URL "/search/users"
 #define SEARCH_POSTS_URL API_BASE_URL "/search/posts"
+#define LIKE_TWEET_URL API_BASE_URL "/tweets/%s/like"
+#define RETWEET_URL API_BASE_URL "/tweets/%s/retweet"
+#define REACTION_URL API_BASE_URL "/tweets/%s/reaction"
+#define BOOKMARK_ADD_URL API_BASE_URL "/bookmarks/add"
+#define BOOKMARK_REMOVE_URL API_BASE_URL "/bookmarks/remove"
+#define EMOJIS_URL API_BASE_URL "/emojis"
 
 #endif // CONSTANTS_H

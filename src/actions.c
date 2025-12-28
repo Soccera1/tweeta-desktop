@@ -13,6 +13,10 @@
 #include "ui_components.h"
 #include "views.h"
 
+// Request tracking to prevent double-unref and race conditions
+static GMutex load_tweets_mutex;
+static guint active_tweets_request_id = 0;
+
 void update_login_ui()
 {
     if (g_current_username) {
@@ -209,6 +213,20 @@ static gboolean on_tweets_loaded(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
     
+    // Check if this is still the active request
+    g_mutex_lock(&load_tweets_mutex);
+    gboolean is_active = (async_data->request_id == active_tweets_request_id);
+    g_mutex_unlock(&load_tweets_mutex);
+    
+    if (!is_active) {
+        // This request was superseded, discard it
+        if (async_data->tweets) {
+            free_tweets(async_data->tweets);
+        }
+        g_free(async_data);
+        return G_SOURCE_REMOVE;
+    }
+    
     if (async_data->success && async_data->tweets) {
         populate_tweet_list(async_data->list_box, async_data->tweets);
         free_tweets(async_data->tweets);
@@ -246,12 +264,25 @@ static gpointer fetch_tweets_thread(gpointer data)
 
 void start_loading_tweets(GtkListBox *list_box)
 {
+    g_mutex_lock(&load_tweets_mutex);
+    // Increment request ID to invalidate any pending requests
+    active_tweets_request_id++;
+    guint current_request_id = active_tweets_request_id;
+    g_mutex_unlock(&load_tweets_mutex);
+    
+    // Clear the list and show loading indicator
+    GList *children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+    
     GtkWidget *loading_label = gtk_label_new("Loading tweets...");
     gtk_widget_show(loading_label);
     gtk_list_box_insert(list_box, loading_label, -1);
 
     struct AsyncData *data = g_new0(struct AsyncData, 1);
     data->list_box = list_box;
+    data->request_id = current_request_id;
     
     g_thread_new("tweet-loader", fetch_tweets_thread, data);
 }
@@ -505,4 +536,138 @@ void on_search_activated(GtkEntry *entry, gpointer user_data)
     if (query && strlen(query) > 0) {
         perform_search(query);
     }
+}
+
+gboolean perform_like(const gchar *tweet_id)
+{
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+    gchar *url = g_strdup_printf(LIKE_TWEET_URL, tweet_id);
+
+    if (fetch_url(url, &chunk, "{}")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(url);
+    return success;
+}
+
+gboolean perform_retweet(const gchar *tweet_id)
+{
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+    gchar *url = g_strdup_printf(RETWEET_URL, tweet_id);
+
+    if (fetch_url(url, &chunk, "{}")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(url);
+    return success;
+}
+
+gboolean perform_bookmark(const gchar *tweet_id, gboolean add)
+{
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+    const gchar *url = add ? BOOKMARK_ADD_URL : BOOKMARK_REMOVE_URL;
+
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "postId");
+    json_builder_add_string_value(builder, tweet_id);
+    json_builder_end_object(builder);
+
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, json_builder_get_root(builder));
+    gchar *post_data = json_generator_to_data(gen, NULL);
+
+    if (fetch_url(url, &chunk, post_data)) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(post_data);
+    g_object_unref(gen);
+    g_object_unref(builder);
+    return success;
+}
+
+gboolean perform_reaction(const gchar *tweet_id, const gchar *emoji)
+{
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+    gchar *url = g_strdup_printf(REACTION_URL, tweet_id);
+
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "emoji");
+    json_builder_add_string_value(builder, emoji);
+    json_builder_end_object(builder);
+
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, json_builder_get_root(builder));
+    gchar *post_data = json_generator_to_data(gen, NULL);
+
+    if (fetch_url(url, &chunk, post_data)) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(post_data);
+    g_object_unref(gen);
+    g_object_unref(builder);
+    g_free(url);
+    return success;
+}
+
+static void free_emoji(gpointer data)
+{
+    struct Emoji *emoji = data;
+    if (emoji) {
+        g_free(emoji->id);
+        g_free(emoji->name);
+        g_free(emoji->file_url);
+        g_free(emoji);
+    }
+}
+
+void free_emojis(GList *emojis)
+{
+    g_list_free_full(emojis, free_emoji);
+}
+
+GList* fetch_emojis(void)
+{
+    struct MemoryStruct chunk;
+    GList *emojis = NULL;
+
+    if (fetch_url(EMOJIS_URL, &chunk, NULL)) {
+        JsonParser *parser = json_parser_new();
+        GError *error = NULL;
+        json_parser_load_from_data(parser, chunk.memory, -1, &error);
+        if (!error) {
+            JsonNode *root = json_parser_get_root(parser);
+            JsonObject *obj = json_node_get_object(root);
+            if (json_object_has_member(obj, "emojis")) {
+                JsonArray *arr = json_object_get_array_member(obj, "emojis");
+                for (guint i = 0; i < json_array_get_length(arr); i++) {
+                    JsonObject *e_obj = json_array_get_object_element(arr, i);
+                    struct Emoji *emoji = g_new0(struct Emoji, 1);
+                    emoji->id = g_strdup(json_object_get_string_member(e_obj, "id"));
+                    emoji->name = g_strdup(json_object_get_string_member(e_obj, "name"));
+                    emoji->file_url = g_strdup(json_object_get_string_member(e_obj, "file_url"));
+                    emojis = g_list_append(emojis, emoji);
+                }
+            }
+        } else {
+            g_error_free(error);
+        }
+        g_object_unref(parser);
+        free(chunk.memory);
+    }
+
+    return emojis;
 }
