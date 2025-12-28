@@ -36,5 +36,5 @@ uninstall:
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 
-$(TEST_TARGET): test_main.c
+$(TEST_TARGET): test_main.c main.c
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $(TEST_TARGET) test_main.c $(LDLIBS) $(TEST_LDLIBS)
