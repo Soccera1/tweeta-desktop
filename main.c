@@ -17,6 +17,8 @@
 #define PUBLIC_TWEETS_URL API_BASE_URL "/public-tweets"
 #define LOGIN_URL API_BASE_URL "/auth/basic-login"
 #define POST_TWEET_URL API_BASE_URL "/tweets/"
+#define SEARCH_USERS_URL API_BASE_URL "/search/users"
+#define SEARCH_POSTS_URL API_BASE_URL "/search/posts"
 
 // Global Auth State
 static gchar *g_auth_token = NULL;
@@ -27,6 +29,11 @@ static GtkWidget *g_user_label = NULL;
 static GtkWidget *g_main_list_box = NULL;
 static GtkWidget *g_stack = NULL;
 static GtkWidget *g_back_button = NULL;
+
+// Search widgets
+static GtkWidget *g_search_entry = NULL;
+static GtkWidget *g_search_users_list = NULL;
+static GtkWidget *g_search_tweets_list = NULL;
 
 // Profile widgets
 static GtkWidget *g_profile_name_label = NULL;
@@ -63,9 +70,11 @@ struct MemoryStruct {
 struct AsyncData {
     GtkListBox *list_box;
     GList *tweets;
+    GList *users;
     gboolean success;
     struct Profile *profile;
     gchar *username;
+    gchar *query;
 };
 
 static void start_loading_tweets(GtkListBox *list_box);
@@ -644,6 +653,22 @@ free_tweets(GList *tweets)
     g_list_free_full(tweets, free_tweet);
 }
 
+static void
+free_user(gpointer data)
+{
+    struct Profile *user = data;
+    g_free(user->name);
+    g_free(user->username);
+    g_free(user->bio);
+    g_free(user);
+}
+
+static void
+free_users(GList *users)
+{
+    g_list_free_full(users, free_user);
+}
+
 static GtkWidget*
 create_tweet_widget(struct Tweet *tweet)
 {
@@ -961,6 +986,222 @@ on_refresh_clicked(GtkWidget *widget, gpointer user_data)
     start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
 }
 
+static GList*
+parse_users(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    GList *users = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "users")) {
+            JsonArray *users_array = json_object_get_array_member(obj, "users");
+            for (guint i = 0; i < json_array_get_length(users_array); i++) {
+                JsonNode *user_node = json_array_get_element(users_array, i);
+                JsonObject *user_obj = json_node_get_object(user_node);
+                struct Profile *user = g_new0(struct Profile, 1);
+                user->name = g_strdup(json_object_get_string_member(user_obj, "name"));
+                user->username = g_strdup(json_object_get_string_member(user_obj, "username"));
+                
+                if (json_object_has_member(user_obj, "bio") && !json_node_is_null(json_object_get_member(user_obj, "bio"))) {
+                    user->bio = g_strdup(json_object_get_string_member(user_obj, "bio"));
+                } else {
+                    user->bio = NULL;
+                }
+                user->follower_count = json_object_has_member(user_obj, "follower_count") ? json_object_get_int_member(user_obj, "follower_count") : 0;
+                users = g_list_append(users, user);
+            }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return users;
+}
+
+static GtkWidget*
+create_user_widget(struct Profile *user)
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    gchar *user_str = g_strdup_printf("%s (@%s)", user->name, user->username);
+
+    GtkWidget *user_btn = gtk_button_new_with_label(user_str);
+    gtk_button_set_relief(GTK_BUTTON(user_btn), GTK_RELIEF_NONE);
+    gtk_widget_set_halign(user_btn, GTK_ALIGN_START);
+    
+    GtkWidget *label = gtk_bin_get_child(GTK_BIN(user_btn));
+    PangoAttrList *attrs = pango_attr_list_new();
+    pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+    gtk_label_set_attributes(GTK_LABEL(label), attrs);
+    pango_attr_list_unref(attrs);
+
+    g_object_set_data_full(G_OBJECT(user_btn), "username", g_strdup(user->username), g_free);
+    g_signal_connect(user_btn, "clicked", G_CALLBACK(on_author_clicked), NULL);
+
+    gtk_box_pack_start(GTK_BOX(box), user_btn, FALSE, FALSE, 0);
+
+    if (user->bio && strlen(user->bio) > 0) {
+        GtkWidget *bio_label = gtk_label_new(user->bio);
+        gtk_label_set_xalign(GTK_LABEL(bio_label), 0.0);
+        gtk_label_set_line_wrap(GTK_LABEL(bio_label), TRUE);
+        gtk_box_pack_start(GTK_BOX(box), bio_label, FALSE, FALSE, 0);
+    }
+
+    gtk_box_pack_start(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 5);
+
+    g_free(user_str);
+    return box;
+}
+
+static void
+populate_user_list(GtkListBox *list_box, GList *users)
+{
+    GList *children, *iter;
+    children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    for (GList *l = users; l != NULL; l = l->next) {
+        GtkWidget *user_widget = create_user_widget(l->data);
+        gtk_widget_show_all(user_widget);
+        gtk_list_box_insert(list_box, user_widget, -1);
+    }
+}
+
+static gboolean
+on_users_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    
+    if (async_data->success && async_data->users) {
+        populate_user_list(async_data->list_box, async_data->users);
+        free_users(async_data->users);
+    } else {
+        GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+
+        GtkWidget *error_label = gtk_label_new("No users found.");
+        gtk_widget_show(error_label);
+        gtk_list_box_insert(async_data->list_box, error_label, -1);
+    }
+
+    g_free(async_data->query);
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean
+on_search_tweets_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    
+    if (async_data->success && async_data->tweets) {
+        populate_tweet_list(async_data->list_box, async_data->tweets);
+        free_tweets(async_data->tweets);
+    } else {
+        GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+
+        GtkWidget *error_label = gtk_label_new("No tweets found.");
+        gtk_widget_show(error_label);
+        gtk_list_box_insert(async_data->list_box, error_label, -1);
+    }
+
+    g_free(async_data->query);
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_search_users_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+    gchar *escaped_query = g_uri_escape_string(async_data->query, NULL, FALSE);
+    gchar *url = g_strdup_printf("%s?q=%s", SEARCH_USERS_URL, escaped_query);
+    g_free(escaped_query);
+
+    if (fetch_url(url, &chunk, NULL)) {
+        async_data->users = parse_users(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+    g_free(url);
+
+    g_idle_add(on_users_loaded, async_data);
+    return NULL;
+}
+
+static gpointer
+fetch_search_tweets_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+    gchar *escaped_query = g_uri_escape_string(async_data->query, NULL, FALSE);
+    gchar *url = g_strdup_printf("%s?q=%s", SEARCH_POSTS_URL, escaped_query);
+    g_free(escaped_query);
+
+    if (fetch_url(url, &chunk, NULL)) {
+        async_data->tweets = parse_tweets(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+    g_free(url);
+
+    g_idle_add(on_search_tweets_loaded, async_data);
+    return NULL;
+}
+
+static void
+perform_search(const gchar *query)
+{
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "search");
+    gtk_widget_show(g_back_button);
+
+    populate_user_list(GTK_LIST_BOX(g_search_users_list), NULL);
+    populate_tweet_list(GTK_LIST_BOX(g_search_tweets_list), NULL);
+
+    GtkWidget *loading1 = gtk_label_new("Searching users...");
+    gtk_widget_show(loading1);
+    gtk_list_box_insert(GTK_LIST_BOX(g_search_users_list), loading1, -1);
+
+    GtkWidget *loading2 = gtk_label_new("Searching tweets...");
+    gtk_widget_show(loading2);
+    gtk_list_box_insert(GTK_LIST_BOX(g_search_tweets_list), loading2, -1);
+
+    struct AsyncData *data_users = g_new0(struct AsyncData, 1);
+    data_users->list_box = GTK_LIST_BOX(g_search_users_list);
+    data_users->query = g_strdup(query);
+    g_thread_new("search-users-loader", fetch_search_users_thread, data_users);
+
+    struct AsyncData *data_tweets = g_new0(struct AsyncData, 1);
+    data_tweets->list_box = GTK_LIST_BOX(g_search_tweets_list);
+    data_tweets->query = g_strdup(query);
+    g_thread_new("search-tweets-loader", fetch_search_tweets_thread, data_tweets);
+}
+
+static void
+on_search_activated(GtkEntry *entry, gpointer user_data)
+{
+    (void)user_data;
+    const gchar *query = gtk_entry_get_text(entry);
+    if (query && strlen(query) > 0) {
+        perform_search(query);
+    }
+}
+
 static GtkWidget*
 create_profile_view()
 {
@@ -1008,6 +1249,31 @@ create_profile_view()
 }
 
 static GtkWidget*
+create_search_view()
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    GtkWidget *notebook = gtk_notebook_new();
+
+    // Users tab
+    GtkWidget *users_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_search_users_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_search_users_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(users_scroll), g_search_users_list);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), users_scroll, gtk_label_new("Users"));
+
+    // Tweets tab
+    GtkWidget *tweets_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_search_tweets_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_search_tweets_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(tweets_scroll), g_search_tweets_list);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), tweets_scroll, gtk_label_new("Tweets"));
+
+    gtk_box_pack_start(GTK_BOX(box), notebook, TRUE, TRUE, 0);
+
+    return box;
+}
+
+static GtkWidget*
 create_window()
 {
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -1020,6 +1286,11 @@ create_window()
     gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(header), TRUE);
     gtk_header_bar_set_title(GTK_HEADER_BAR(header), "Tweetapus");
     gtk_window_set_titlebar(GTK_WINDOW(window), header);
+
+    // Search Entry
+    g_search_entry = gtk_search_entry_new();
+    gtk_header_bar_set_custom_title(GTK_HEADER_BAR(header), g_search_entry);
+    g_signal_connect(g_search_entry, "activate", G_CALLBACK(on_search_activated), NULL);
 
     // Back Button (Left)
     g_back_button = gtk_button_new_from_icon_name("go-previous-symbolic", GTK_ICON_SIZE_BUTTON);
@@ -1061,6 +1332,10 @@ create_window()
     // Profile View
     GtkWidget *profile_view = create_profile_view();
     gtk_stack_add_named(GTK_STACK(g_stack), profile_view, "profile");
+
+    // Search View
+    GtkWidget *search_view = create_search_view();
+    gtk_stack_add_named(GTK_STACK(g_stack), search_view, "search");
 
     return window;
 }

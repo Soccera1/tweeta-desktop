@@ -203,6 +203,22 @@ static void test_parse_profile_replies() {
     free_tweets(tweets);
 }
 
+static void test_parse_users() {
+    const char *json_input = "{\"users\": [{\"username\": \"testuser\", \"name\": \"Test User\", \"bio\": \"Test Bio\", \"follower_count\": 123}]}";
+    GList *users = parse_users(json_input);
+
+    g_assert_nonnull(users);
+    g_assert_cmpint(g_list_length(users), ==, 1);
+
+    struct Profile *u = (struct Profile *)users->data;
+    g_assert_cmpstr(u->username, ==, "testuser");
+    g_assert_cmpstr(u->name, ==, "Test User");
+    g_assert_cmpstr(u->bio, ==, "Test Bio");
+    g_assert_cmpint(u->follower_count, ==, 123);
+
+    free_users(users);
+}
+
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     g_test_add_func("/writememorycallback/basic", test_writememorycallback);
@@ -212,5 +228,6 @@ int main(int argc, char** argv) {
     g_test_add_func("/session/persistence", test_session_persistence);
     g_test_add_func("/parseprofile/basic", test_parse_profile);
     g_test_add_func("/parseprofile/replies", test_parse_profile_replies);
+    g_test_add_func("/parseusers/basic", test_parse_users);
     return g_test_run();
 }
