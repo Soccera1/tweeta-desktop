@@ -89,6 +89,39 @@ create_search_view()
 }
 
 GtkWidget*
+create_notifications_view()
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    
+    GtkWidget *action_bar = gtk_action_bar_new();
+    GtkWidget *mark_read_btn = gtk_button_new_with_label("Mark all as read");
+    g_signal_connect(mark_read_btn, "clicked", G_CALLBACK(on_mark_all_read_clicked), NULL);
+    gtk_action_bar_pack_end(GTK_ACTION_BAR(action_bar), mark_read_btn);
+    gtk_box_pack_start(GTK_BOX(box), action_bar, FALSE, FALSE, 0);
+
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_notifications_list = gtk_list_box_new();
+    g_object_set_data(G_OBJECT(g_notifications_list), "feed_type", "notifications");
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_notifications_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(scroll), g_notifications_list);
+    g_signal_connect(scroll, "edge-reached", G_CALLBACK(on_scroll_edge_reached), NULL);
+    
+    gtk_box_pack_start(GTK_BOX(box), scroll, TRUE, TRUE, 0);
+    
+    return box;
+}
+
+GtkWidget*
+create_conversation_view()
+{
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_conversation_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_conversation_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(scroll), g_conversation_list);
+    return scroll;
+}
+
+GtkWidget*
 create_window()
 {
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -118,6 +151,11 @@ create_window()
     gtk_widget_set_sensitive(g_compose_button, FALSE); // Disabled initially
     g_signal_connect(g_compose_button, "clicked", G_CALLBACK(on_compose_clicked), window);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), g_compose_button);
+
+    // Notifications Button (Left)
+    GtkWidget *notif_button = gtk_button_new_from_icon_name("preferences-desktop-notification-symbolic", GTK_ICON_SIZE_BUTTON);
+    g_signal_connect(notif_button, "clicked", G_CALLBACK(on_notifications_clicked), NULL);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), notif_button);
 
     // Refresh Button (Left)
     GtkWidget *refresh_button = gtk_button_new_from_icon_name("view-refresh-symbolic", GTK_ICON_SIZE_BUTTON);
@@ -153,6 +191,14 @@ create_window()
     // Search View
     GtkWidget *search_view = create_search_view();
     gtk_stack_add_named(GTK_STACK(g_stack), search_view, "search");
+
+    // Notifications View
+    GtkWidget *notifications_view = create_notifications_view();
+    gtk_stack_add_named(GTK_STACK(g_stack), notifications_view, "notifications");
+
+    // Conversation View
+    GtkWidget *conversation_view = create_conversation_view();
+    gtk_stack_add_named(GTK_STACK(g_stack), conversation_view, "conversation");
 
     return window;
 }

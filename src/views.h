@@ -6,5 +6,7 @@
 GtkWidget* create_window();
 GtkWidget* create_profile_view();
 GtkWidget* create_search_view();
+GtkWidget* create_notifications_view();
+GtkWidget* create_conversation_view();
 
 #endif // VIEWS_H

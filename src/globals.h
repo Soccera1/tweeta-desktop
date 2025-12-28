@@ -9,6 +9,8 @@ extern GtkWidget *g_login_button;
 extern GtkWidget *g_compose_button;
 extern GtkWidget *g_user_label;
 extern GtkWidget *g_main_list_box;
+extern GtkWidget *g_notifications_list;
+extern GtkWidget *g_conversation_list;
 extern GtkWidget *g_stack;
 extern GtkWidget *g_back_button;
 

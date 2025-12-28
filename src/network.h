@@ -4,6 +4,6 @@
 #include <glib.h>
 #include "types.h"
 
-gboolean fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data);
+gboolean fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, const gchar *method);
 
 #endif // NETWORK_H

@@ -21,6 +21,7 @@ The header bar contains the following controls:
 - **Search Bar**: Enter a query and press Enter to search for users and posts.
 - **Back Button**: Appears when you are in Profile or Search views to return to the previous view.
 - **Compose Button**: Opens a dialog to post a new tweet (requires login).
+- **Notifications Button**: Opens your notification inbox (requires login).
 - **Refresh Button**: Refreshes the current timeline or view.
 - **Login/Logout Button**: Click to log in or log out of your Tweetapus account.
 - **User Label**: Displays your login status and username.
@@ -31,6 +32,14 @@ The default view shows a list of recent public tweets.
 - **Infinite Scroll**: As you reach the bottom of the feed, more tweets will automatically load.
 - Click on a **Username** to view that user's profile.
 - Click the **Reply** button on a tweet to post a reply (requires login).
+
+### Notifications View
+
+Displays your recent interactions:
+- **Likes, Retweets, Replies, Follows, Mentions, Quotes, and Reactions** are all shown here.
+- **Unread Notifications** are highlighted with a light blue background.
+- **Mark all as read**: Click this button in the action bar to clear all unread notification markers.
+- Click the **Refresh** button in the header while in this view to check for new notifications.
 
 ### Profile View
 

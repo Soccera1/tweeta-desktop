@@ -66,7 +66,9 @@ parse_tweets(const gchar *json_data)
             tweet->attachments = parse_attachments(post_object);
 
             tweet->liked = FALSE;
-            if (json_object_has_member(post_object, "liked")) {
+            if (json_object_has_member(post_object, "liked_by_user")) {
+                tweet->liked = json_object_get_boolean_member(post_object, "liked_by_user");
+            } else if (json_object_has_member(post_object, "liked")) {
                 tweet->liked = json_object_get_boolean_member(post_object, "liked");
             } else if (json_object_has_member(post_object, "is_liked")) {
                 tweet->liked = json_object_get_boolean_member(post_object, "is_liked");
@@ -172,7 +174,9 @@ parse_profile_replies(const gchar *json_data)
                 tweet->attachments = parse_attachments(reply_obj);
 
                 tweet->liked = FALSE;
-                if (json_object_has_member(reply_obj, "liked")) {
+                if (json_object_has_member(reply_obj, "liked_by_user")) {
+                    tweet->liked = json_object_get_boolean_member(reply_obj, "liked_by_user");
+                } else if (json_object_has_member(reply_obj, "liked")) {
                     tweet->liked = json_object_get_boolean_member(reply_obj, "liked");
                 } else if (json_object_has_member(reply_obj, "is_liked")) {
                     tweet->liked = json_object_get_boolean_member(reply_obj, "is_liked");
@@ -257,6 +261,61 @@ parse_users(const gchar *json_data)
     return users;
 }
 
+GList*
+parse_notifications(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    GList *notifications = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "notifications")) {
+            JsonArray *notif_array = json_object_get_array_member(obj, "notifications");
+            for (guint i = 0; i < json_array_get_length(notif_array); i++) {
+                JsonNode *notif_node = json_array_get_element(notif_array, i);
+                JsonObject *notif_obj = json_node_get_object(notif_node);
+                struct Notification *notif = g_new0(struct Notification, 1);
+                
+                notif->id = g_strdup(json_object_get_string_member(notif_obj, "id"));
+                notif->type = g_strdup(json_object_get_string_member(notif_obj, "type"));
+                notif->content = g_strdup(json_object_get_string_member(notif_obj, "content"));
+                
+                if (json_object_has_member(notif_obj, "related_id") && !json_node_is_null(json_object_get_member(notif_obj, "related_id"))) {
+                    notif->related_id = g_strdup(json_object_get_string_member(notif_obj, "related_id"));
+                }
+                
+                if (json_object_has_member(notif_obj, "actor_id") && !json_node_is_null(json_object_get_member(notif_obj, "actor_id"))) {
+                    notif->actor_id = g_strdup(json_object_get_string_member(notif_obj, "actor_id"));
+                }
+                
+                if (json_object_has_member(notif_obj, "actor_username") && !json_node_is_null(json_object_get_member(notif_obj, "actor_username"))) {
+                    notif->actor_username = g_strdup(json_object_get_string_member(notif_obj, "actor_username"));
+                }
+                
+                if (json_object_has_member(notif_obj, "actor_name") && !json_node_is_null(json_object_get_member(notif_obj, "actor_name"))) {
+                    notif->actor_name = g_strdup(json_object_get_string_member(notif_obj, "actor_name"));
+                }
+                
+                if (json_object_has_member(notif_obj, "actor_avatar") && !json_node_is_null(json_object_get_member(notif_obj, "actor_avatar"))) {
+                    notif->actor_avatar = g_strdup(json_object_get_string_member(notif_obj, "actor_avatar"));
+                }
+                
+                notif->read = json_object_get_boolean_member(notif_obj, "read");
+                notif->created_at = g_strdup(json_object_get_string_member(notif_obj, "created_at"));
+                
+                notifications = g_list_append(notifications, notif);
+            }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return notifications;
+}
+
 gboolean
 parse_login_response(const gchar *json_data, gchar **token_out, gchar **username_out)
 {
@@ -297,6 +356,9 @@ construct_tweet_payload(const gchar *content, const gchar *reply_to_id)
     json_builder_begin_object(builder);
     json_builder_set_member_name(builder, "content");
     json_builder_add_string_value(builder, content);
+
+    json_builder_set_member_name(builder, "source");
+    json_builder_add_string_value(builder, "Tweetapus Desktop");
 
     if (reply_to_id) {
         json_builder_set_member_name(builder, "reply_to");
@@ -362,4 +424,28 @@ void
 free_users(GList *users)
 {
     g_list_free_full(users, free_user);
+}
+
+void
+free_notification(gpointer data)
+{
+    struct Notification *notif = data;
+    if (notif) {
+        g_free(notif->id);
+        g_free(notif->type);
+        g_free(notif->content);
+        g_free(notif->related_id);
+        g_free(notif->actor_id);
+        g_free(notif->actor_username);
+        g_free(notif->actor_name);
+        g_free(notif->actor_avatar);
+        g_free(notif->created_at);
+        g_free(notif);
+    }
+}
+
+void
+free_notifications(GList *notifications)
+{
+    g_list_free_full(notifications, free_notification);
 }

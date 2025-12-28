@@ -4,15 +4,19 @@
 #include <gtk/gtk.h>
 
 void start_loading_tweets(GtkListBox *list_box);
+void start_loading_notifications(GtkListBox *list_box);
 void load_more_tweets(GtkListBox *list_box, const gchar *before_id);
 void perform_search(const gchar *query);
 void update_login_ui();
 void perform_logout();
 gboolean perform_login(const gchar *username, const gchar *password);
 void show_profile(const gchar *username);
+void show_tweet(const gchar *tweet_id);
 
 void on_search_activated(GtkEntry *entry, gpointer user_data);
 void on_back_clicked(GtkWidget *widget, gpointer user_data);
+void on_notifications_clicked(GtkWidget *widget, gpointer user_data);
+void on_mark_all_read_clicked(GtkWidget *widget, gpointer user_data);
 void on_compose_clicked(GtkWidget *widget, gpointer window);
 void on_refresh_clicked(GtkWidget *widget, gpointer user_data);
 void on_login_clicked(GtkWidget *widget, gpointer window);

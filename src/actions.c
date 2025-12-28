@@ -17,6 +17,9 @@
 static GMutex load_tweets_mutex;
 static guint active_tweets_request_id = 0;
 
+static GMutex load_notifications_mutex;
+static guint active_notifications_request_id = 0;
+
 void update_login_ui()
 {
     if (g_current_username) {
@@ -59,7 +62,7 @@ gboolean perform_login(const gchar *username, const gchar *password)
     json_generator_set_root(gen, json_builder_get_root(builder));
     gchar *post_data = json_generator_to_data(gen, NULL);
 
-    if (fetch_url(LOGIN_URL, &chunk, post_data)) {
+    if (fetch_url(LOGIN_URL, &chunk, post_data, "POST")) {
         gchar *token = NULL;
         gchar *uname = NULL;
         if (parse_login_response(chunk.memory, &token, &uname)) {
@@ -151,7 +154,7 @@ static gboolean perform_post_tweet(const gchar *content, const gchar *reply_to_i
     gboolean success = FALSE;
     gchar *post_data = construct_tweet_payload(content, reply_to_id);
 
-    if (fetch_url(POST_TWEET_URL, &chunk, post_data)) {
+    if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
         success = TRUE;
         free(chunk.memory);
     }
@@ -317,7 +320,7 @@ static gpointer fetch_tweets_thread(gpointer data)
         }
     }
 
-    if (fetch_url(url, &chunk, NULL)) {
+    if (fetch_url(url, &chunk, NULL, "GET")) {
         if (g_strcmp0(feed_type, "profile_replies") == 0) {
             async_data->tweets = parse_profile_replies(chunk.memory);
         } else {
@@ -503,7 +506,7 @@ static gpointer fetch_profile_thread(gpointer data)
     struct MemoryStruct chunk;
     gchar *url = g_strdup_printf("%s/profile/%s", API_BASE_URL, async_data->username);
 
-    if (fetch_url(url, &chunk, NULL)) {
+    if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->profile = parse_profile(chunk.memory);
         async_data->tweets = parse_tweets(chunk.memory);
         async_data->success = (async_data->profile != NULL);
@@ -523,7 +526,7 @@ static gpointer fetch_profile_replies_thread(gpointer data)
     struct MemoryStruct chunk;
     gchar *url = g_strdup_printf("%s/profile/%s/replies", API_BASE_URL, async_data->username);
 
-    if (fetch_url(url, &chunk, NULL)) {
+    if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->tweets = parse_profile_replies(chunk.memory);
         async_data->success = (async_data->tweets != NULL);
         free(chunk.memory);
@@ -535,6 +538,101 @@ static gpointer fetch_profile_replies_thread(gpointer data)
 
     g_idle_add(on_profile_replies_loaded, async_data);
     return NULL;
+}
+
+static gboolean on_tweet_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    
+    if (async_data->success && async_data->tweets) {
+        populate_tweet_list(GTK_LIST_BOX(g_conversation_list), async_data->tweets);
+        free_tweets(async_data->tweets);
+    } else {
+        GList *children = gtk_container_get_children(GTK_CONTAINER(g_conversation_list));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+
+        GtkWidget *error_label = gtk_label_new("Tweet not found or error loading.");
+        gtk_widget_show(error_label);
+        gtk_list_box_insert(GTK_LIST_BOX(g_conversation_list), error_label, -1);
+    }
+
+    g_free(async_data->query); // used as tweet_id here
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer fetch_tweet_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+    gchar *url = g_strdup_printf(TWEET_DETAILS_URL, async_data->query);
+
+    if (fetch_url(url, &chunk, NULL, "GET")) {
+        // The API returns { tweet: {...}, threadPosts: [...], replies: [...] }
+        // For now let's just parse the main tweet.
+        // We need a way to parse the single tweet from this response.
+        
+        JsonParser *parser = json_parser_new();
+        GError *error = NULL;
+        json_parser_load_from_data(parser, chunk.memory, -1, &error);
+        if (!error) {
+            JsonNode *root = json_parser_get_root(parser);
+            JsonObject *obj = json_node_get_object(root);
+            if (json_object_has_member(obj, "tweet")) {
+                // We can reuse parse_tweets if we wrap it in a "posts" array, 
+                // or just manually parse it.
+                // Let's manually parse it for simplicity or adjust parse_tweets.
+                
+                // Actually, let's just use the tweet object.
+                // Since parse_tweets expects a list, let's create a dummy json
+                JsonObject *post_obj = json_object_get_object_member(obj, "tweet");
+                JsonArray *posts_arr = json_array_new();
+                json_array_add_object_element(posts_arr, json_object_ref(post_obj));
+                
+                JsonObject *dummy_root = json_object_new();
+                json_object_set_array_member(dummy_root, "posts", posts_arr);
+                
+                JsonGenerator *gen = json_generator_new();
+                json_generator_set_root(gen, json_node_init_object(json_node_alloc(), dummy_root));
+                gchar *dummy_json = json_generator_to_data(gen, NULL);
+                
+                async_data->tweets = parse_tweets(dummy_json);
+                async_data->success = (async_data->tweets != NULL);
+                
+                g_free(dummy_json);
+                g_object_unref(gen);
+            }
+        }
+        g_object_unref(parser);
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+    g_free(url);
+
+    g_idle_add(on_tweet_loaded, async_data);
+    return NULL;
+}
+
+void show_tweet(const gchar *tweet_id)
+{
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "conversation");
+    gtk_widget_show(g_back_button);
+
+    GList *children = gtk_container_get_children(GTK_CONTAINER(g_conversation_list));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    GtkWidget *loading = gtk_label_new("Loading tweet...");
+    gtk_widget_show(loading);
+    gtk_list_box_insert(GTK_LIST_BOX(g_conversation_list), loading, -1);
+
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->query = g_strdup(tweet_id); // Reusing query field
+    g_thread_new("tweet-detail-loader", fetch_tweet_thread, data);
 }
 
 void show_profile(const gchar *username)
@@ -576,7 +674,125 @@ void on_refresh_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)widget;
     (void)user_data;
-    start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+    const gchar *current_view = gtk_stack_get_visible_child_name(GTK_STACK(g_stack));
+    if (g_strcmp0(current_view, "notifications") == 0) {
+        start_loading_notifications(GTK_LIST_BOX(g_notifications_list));
+    } else {
+        start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+    }
+}
+
+static gboolean on_notifications_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    
+    g_mutex_lock(&load_notifications_mutex);
+    gboolean is_active = (async_data->request_id == active_notifications_request_id);
+    g_mutex_unlock(&load_notifications_mutex);
+    
+    if (!is_active) {
+        if (async_data->notifications) {
+            free_notifications(async_data->notifications);
+        }
+        g_free(async_data);
+        return G_SOURCE_REMOVE;
+    }
+
+    if (async_data->success && async_data->notifications) {
+        populate_notification_list(async_data->list_box, async_data->notifications);
+        free_notifications(async_data->notifications);
+    } else {
+        GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+
+        GtkWidget *error_label = gtk_label_new(async_data->success ? "No notifications." : "Failed to load notifications.");
+        gtk_widget_show(error_label);
+        gtk_list_box_insert(async_data->list_box, error_label, -1);
+    }
+
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer fetch_notifications_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+
+    if (fetch_url(NOTIFICATIONS_URL, &chunk, NULL, "GET")) {
+        async_data->notifications = parse_notifications(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+
+    g_idle_add(on_notifications_loaded, async_data);
+    return NULL;
+}
+
+void start_loading_notifications(GtkListBox *list_box)
+{
+    if (!g_auth_token) return;
+
+    g_mutex_lock(&load_notifications_mutex);
+    active_notifications_request_id++;
+    guint current_request_id = active_notifications_request_id;
+    g_mutex_unlock(&load_notifications_mutex);
+    
+    GList *children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+    
+    GtkWidget *loading_label = gtk_label_new("Loading notifications...");
+    gtk_widget_show(loading_label);
+    gtk_list_box_insert(list_box, loading_label, -1);
+
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->list_box = list_box;
+    data->request_id = current_request_id;
+    
+    g_thread_new("notification-loader", fetch_notifications_thread, data);
+}
+
+void on_notifications_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+    
+    if (!g_auth_token) {
+        GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+        GtkWindow *window = GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL;
+        GtkWidget *error_dialog = gtk_message_dialog_new(window,
+                                 GTK_DIALOG_DESTROY_WITH_PARENT,
+                                 GTK_MESSAGE_ERROR,
+                                 GTK_BUTTONS_CLOSE,
+                                 "You must be logged in to view notifications.");
+        gtk_dialog_run(GTK_DIALOG(error_dialog));
+        gtk_widget_destroy(error_dialog);
+        return;
+    }
+
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "notifications");
+    gtk_widget_show(g_back_button);
+    start_loading_notifications(GTK_LIST_BOX(g_notifications_list));
+}
+
+void on_mark_all_read_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+    
+    if (!g_auth_token) return;
+
+    struct MemoryStruct chunk;
+    if (fetch_url(NOTIFICATIONS_MARK_ALL_READ_URL, &chunk, "", "PATCH")) {
+        free(chunk.memory);
+        start_loading_notifications(GTK_LIST_BOX(g_notifications_list));
+    }
 }
 
 static gboolean on_users_loaded(gpointer data)
@@ -633,7 +849,7 @@ static gpointer fetch_search_users_thread(gpointer data)
     gchar *url = g_strdup_printf("%s?q=%s", SEARCH_USERS_URL, escaped_query);
     g_free(escaped_query);
 
-    if (fetch_url(url, &chunk, NULL)) {
+    if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->users = parse_users(chunk.memory);
         async_data->success = TRUE;
         free(chunk.memory);
@@ -654,7 +870,7 @@ static gpointer fetch_search_tweets_thread(gpointer data)
     gchar *url = g_strdup_printf("%s?q=%s", SEARCH_POSTS_URL, escaped_query);
     g_free(escaped_query);
 
-    if (fetch_url(url, &chunk, NULL)) {
+    if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->tweets = parse_tweets(chunk.memory);
         async_data->success = TRUE;
         free(chunk.memory);
@@ -709,7 +925,7 @@ gboolean perform_like(const gchar *tweet_id)
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(LIKE_TWEET_URL, tweet_id);
 
-    if (fetch_url(url, &chunk, "{}")) {
+    if (fetch_url(url, &chunk, "{}", "POST")) {
         success = TRUE;
         free(chunk.memory);
     }
@@ -724,7 +940,7 @@ gboolean perform_retweet(const gchar *tweet_id)
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(RETWEET_URL, tweet_id);
 
-    if (fetch_url(url, &chunk, "{}")) {
+    if (fetch_url(url, &chunk, "{}", "POST")) {
         success = TRUE;
         free(chunk.memory);
     }
@@ -749,7 +965,7 @@ gboolean perform_bookmark(const gchar *tweet_id, gboolean add)
     json_generator_set_root(gen, json_builder_get_root(builder));
     gchar *post_data = json_generator_to_data(gen, NULL);
 
-    if (fetch_url(url, &chunk, post_data)) {
+    if (fetch_url(url, &chunk, post_data, "POST")) {
         success = TRUE;
         free(chunk.memory);
     }
@@ -776,7 +992,7 @@ gboolean perform_reaction(const gchar *tweet_id, const gchar *emoji)
     json_generator_set_root(gen, json_builder_get_root(builder));
     gchar *post_data = json_generator_to_data(gen, NULL);
 
-    if (fetch_url(url, &chunk, post_data)) {
+    if (fetch_url(url, &chunk, post_data, "POST")) {
         success = TRUE;
         free(chunk.memory);
     }
@@ -809,7 +1025,7 @@ GList* fetch_emojis(void)
     struct MemoryStruct chunk;
     GList *emojis = NULL;
 
-    if (fetch_url(EMOJIS_URL, &chunk, NULL)) {
+    if (fetch_url(EMOJIS_URL, &chunk, NULL, "GET")) {
         JsonParser *parser = json_parser_new();
         GError *error = NULL;
         json_parser_load_from_data(parser, chunk.memory, -1, &error);

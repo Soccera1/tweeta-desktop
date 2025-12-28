@@ -42,6 +42,19 @@ struct Profile {
     int post_count;
 };
 
+struct Notification {
+    gchar *id;
+    gchar *type;
+    gchar *content;
+    gchar *related_id;
+    gchar *actor_id;
+    gchar *actor_username;
+    gchar *actor_name;
+    gchar *actor_avatar;
+    gboolean read;
+    gchar *created_at;
+};
+
 // Memory buffer for curl
 struct MemoryStruct {
   char *memory;
@@ -53,6 +66,7 @@ struct AsyncData {
     GtkListBox *list_box;
     GList *tweets;
     GList *users;
+    GList *notifications;
     gboolean success;
     struct Profile *profile;
     gchar *username;

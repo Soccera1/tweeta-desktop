@@ -208,6 +208,28 @@ static void test_parse_users() {
     free_users(users);
 }
 
+static void test_parse_notifications() {
+    const char *json_input = "{\"notifications\": [{\"id\": \"n1\", \"type\": \"like\", \"content\": \"liked your tweet\", \"related_id\": \"t1\", \"actor_id\": \"u1\", \"actor_username\": \"actor\", \"actor_name\": \"Actor Name\", \"actor_avatar\": \"/api/uploads/avatar.png\", \"read\": false, \"created_at\": \"2023-10-27T10:00:00Z\"}]}";
+    GList *notifications = parse_notifications(json_input);
+
+    g_assert_nonnull(notifications);
+    g_assert_cmpint(g_list_length(notifications), ==, 1);
+
+    struct Notification *n = (struct Notification *)notifications->data;
+    g_assert_cmpstr(n->id, ==, "n1");
+    g_assert_cmpstr(n->type, ==, "like");
+    g_assert_cmpstr(n->content, ==, "liked your tweet");
+    g_assert_cmpstr(n->related_id, ==, "t1");
+    g_assert_cmpstr(n->actor_id, ==, "u1");
+    g_assert_cmpstr(n->actor_username, ==, "actor");
+    g_assert_cmpstr(n->actor_name, ==, "Actor Name");
+    g_assert_cmpstr(n->actor_avatar, ==, "/api/uploads/avatar.png");
+    g_assert_false(n->read);
+    g_assert_cmpstr(n->created_at, ==, "2023-10-27T10:00:00Z");
+
+    free_notifications(notifications);
+}
+
 static void test_parse_tweets_with_attachments() {
     const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"Hello with media\", \"author\": {\"name\": \"Test User\", \"username\": \"testuser\", \"avatar\": \"/api/uploads/avatar.png\"}, \"attachments\": [{\"id\": \"a1\", \"file_url\": \"/api/uploads/image.jpg\", \"file_type\": \"image/jpeg\"}, {\"id\": \"v1\", \"file_url\": \"/api/uploads/video.mp4\", \"file_type\": \"video/mp4\"}]}]}";
     GList *tweets = parse_tweets(json_input);
@@ -244,5 +266,6 @@ int main(int argc, char** argv) {
     g_test_add_func("/parseprofile/basic", test_parse_profile);
     g_test_add_func("/parseprofile/replies", test_parse_profile_replies);
     g_test_add_func("/parseusers/basic", test_parse_users);
+    g_test_add_func("/parsenotifications/basic", test_parse_notifications);
     return g_test_run();
 }

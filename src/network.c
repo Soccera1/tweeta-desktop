@@ -25,7 +25,7 @@ WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
 }
 
 gboolean
-fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data)
+fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, const gchar *method)
 {
     CURL *curl_handle;
     CURLcode res;
@@ -54,6 +54,10 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data)
         g_free(auth_header);
     }
     curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
+
+    if (method) {
+        curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, method);
+    }
 
     if (post_data) {
         curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, post_data);

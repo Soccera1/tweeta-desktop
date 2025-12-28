@@ -65,6 +65,8 @@ on_quote_response(GtkDialog *dialog, gint response_id, gpointer user_data)
             json_builder_begin_object(builder);
             json_builder_set_member_name(builder, "content");
             json_builder_add_string_value(builder, content);
+            json_builder_set_member_name(builder, "source");
+            json_builder_add_string_value(builder, "Tweetapus Desktop");
             json_builder_set_member_name(builder, "quote_tweet_id");
             json_builder_add_string_value(builder, ctx->quote_id);
             json_builder_end_object(builder);
@@ -74,7 +76,7 @@ on_quote_response(GtkDialog *dialog, gint response_id, gpointer user_data)
             gchar *post_data = json_generator_to_data(gen, NULL);
 
             struct MemoryStruct chunk;
-            if (fetch_url(POST_TWEET_URL, &chunk, post_data)) {
+            if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
                 start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
                 free(chunk.memory);
             }
@@ -247,6 +249,37 @@ on_reaction_clicked(GtkWidget *widget, gpointer user_data)
 
     g_object_set_data_full(G_OBJECT(dialog), "reaction_context", ctx, free_reaction_context);
 
+    const gchar *system_emojis[] = {
+        "👍", "👎", "❤️", "💔", "😀", "😃", "😄", "😁", "😆", "😅",
+        "🤣", "😂", "🙂", "🙃", "😉", "😊", "😇", "🥰", "😍", "🤩",
+        "😘", "😗", "😚", "😙", "🥲", "😋", "😛", "😜", "🤪", "😝",
+        "🤑", "🤗", "🤭", "🤫", "🤔", "🤐", "🤨", "😐", "😑", "😶",
+        "😏", "😒", "🙄", "😬", "🤥", "😌", "😔", "😪", "🤤", "😴",
+        "😷", "🤒", "🤕", "🤢", "🤮", "🤧", "🥵", "🥶", "🥴", "😵",
+        "🤯", "🤠", "🥳", "🥸", "😎", "🤓", "🧐", "😕", "😟", "🙁",
+        "☹️", "😮", "😯", "😲", "😳", "🥺", "😦", "😧", "😨", "😰",
+        "😥", "😢", "😭", "😱", "😖", "😣", "😞", "😓", "😩", "😫",
+        "🥱", "😤", "😡", "😠", "🤬", "😈", "👿", "💀", "☠️", "💩",
+        "🤡", "👹", "👺", "👻", "👽", "👾", "🤖", "😺", "😸", "😹",
+        "😻", "😼", "😽", "🙀", "😿", "😾", "🙈", "🙉", "🙊", "💋",
+        "💯", "💢", "💥", "💫", "💦", "💨", "🕳️", "💣", "💬", "🔥",
+        "✨", "⭐", "🌟", "💫", "🎉", "🎊", "🎁", "🏆", "🥇", "🥈",
+        "🥉", "⚽", "🏀", "🎵", "🎶", "🎤", "🎧", "👏", "🙌", "👐",
+        "🤲", "🤝", "🙏", "✍️", "💪", "🦾", "🦿", "🦵", "🦶", "👂",
+        "🦻", "👃", "🧠", "🦷", "🦴", "👀", "👁️", "👅", "👄", "💘",
+        "💝", "💖", "💗", "💓", "💞", "💕", "❣️", "💔", "🧡", "💛",
+        "💚", "💙", "💜", "🤎", "🖤", "🤍", "✅", "❌", "❓", "❗",
+        NULL
+    };
+
+    for (int i = 0; system_emojis[i] != NULL; i++) {
+        GtkWidget *label = gtk_label_new(system_emojis[i]);
+        GtkWidget *child_widget = gtk_flow_box_child_new();
+        gtk_container_add(GTK_CONTAINER(child_widget), label);
+        g_object_set_data_full(G_OBJECT(child_widget), "emoji_name", g_strdup(system_emojis[i]), g_free);
+        gtk_container_add(GTK_CONTAINER(flowbox), child_widget);
+    }
+
     GList *emojis = fetch_emojis();
     for (GList *l = emojis; l != NULL; l = l->next) {
         struct Emoji *emoji = l->data;
@@ -258,17 +291,6 @@ on_reaction_clicked(GtkWidget *widget, gpointer user_data)
         g_object_set_data_full(G_OBJECT(child_widget), "emoji_name", g_strdup(emoji->name), g_free);
         gtk_widget_set_tooltip_text(child_widget, emoji->name);
         gtk_container_add(GTK_CONTAINER(flowbox), child_widget);
-    }
-
-    if (emojis == NULL) {
-        const gchar *default_emojis[] = {"👍", "❤️", "😂", "😮", "😢", "😡", "🔥", "👏", NULL};
-        for (int i = 0; default_emojis[i] != NULL; i++) {
-            GtkWidget *label = gtk_label_new(default_emojis[i]);
-            GtkWidget *child_widget = gtk_flow_box_child_new();
-            gtk_container_add(GTK_CONTAINER(child_widget), label);
-            g_object_set_data_full(G_OBJECT(child_widget), "emoji_name", g_strdup(default_emojis[i]), g_free);
-            gtk_container_add(GTK_CONTAINER(flowbox), child_widget);
-        }
     }
 
     free_emojis(emojis);
@@ -289,7 +311,7 @@ perform_post_tweet(const gchar *content, const gchar *reply_to_id)
     gboolean success = FALSE;
     gchar *post_data = construct_tweet_payload(content, reply_to_id);
 
-    if (fetch_url(POST_TWEET_URL, &chunk, post_data)) {
+    if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
         success = TRUE;
         free(chunk.memory);
     }
@@ -605,5 +627,123 @@ append_tweets_to_list(GtkListBox *list_box, GList *tweets)
         GtkWidget *tweet_widget = create_tweet_widget(l->data);
         gtk_widget_show_all(tweet_widget);
         gtk_list_box_insert(list_box, tweet_widget, -1);
+    }
+}
+
+static void
+on_notification_avatar_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)user_data;
+    const gchar *username = g_object_get_data(G_OBJECT(widget), "username");
+    if (username) {
+        show_profile(username);
+    }
+}
+
+static gboolean
+on_notification_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
+{
+    (void)event;
+    (void)user_data;
+    const gchar *tweet_id = g_object_get_data(G_OBJECT(widget), "related_id");
+    if (tweet_id) {
+        show_tweet(tweet_id);
+    }
+    return TRUE;
+}
+
+GtkWidget*
+create_notification_widget(struct Notification *notif)
+{
+    GtkWidget *outer_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(hbox), 10);
+    
+    if (!notif->read) {
+        GtkStyleContext *context = gtk_widget_get_style_context(outer_box);
+        gtk_style_context_add_class(context, "unread-notification");
+    }
+
+    GtkWidget *avatar_image = gtk_image_new_from_icon_name("avatar-default", GTK_ICON_SIZE_DIALOG);
+    gtk_widget_set_size_request(avatar_image, 32, 32);
+    gtk_widget_set_valign(avatar_image, GTK_ALIGN_START);
+    if (notif->actor_avatar) {
+        load_avatar(avatar_image, notif->actor_avatar, 32);
+    }
+
+    GtkWidget *avatar_btn = gtk_button_new();
+    gtk_button_set_relief(GTK_BUTTON(avatar_btn), GTK_RELIEF_NONE);
+    gtk_container_add(GTK_CONTAINER(avatar_btn), avatar_image);
+    g_object_set_data_full(G_OBJECT(avatar_btn), "username", g_strdup(notif->actor_username), g_free);
+    g_signal_connect(avatar_btn, "clicked", G_CALLBACK(on_notification_avatar_clicked), NULL);
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    
+    gchar *notif_text;
+    if (g_strcmp0(notif->type, "like") == 0) {
+        notif_text = g_strdup_printf("<b>%s</b> liked your tweet", notif->actor_name ? notif->actor_name : notif->actor_username);
+    } else if (g_strcmp0(notif->type, "retweet") == 0) {
+        notif_text = g_strdup_printf("<b>%s</b> retweeted your tweet", notif->actor_name ? notif->actor_name : notif->actor_username);
+    } else if (g_strcmp0(notif->type, "reply") == 0) {
+        notif_text = g_strdup_printf("<b>%s</b> replied to your tweet", notif->actor_name ? notif->actor_name : notif->actor_username);
+    } else if (g_strcmp0(notif->type, "follow") == 0) {
+        notif_text = g_strdup_printf("<b>%s</b> followed you", notif->actor_name ? notif->actor_name : notif->actor_username);
+    } else if (g_strcmp0(notif->type, "mention") == 0) {
+        notif_text = g_strdup_printf("<b>%s</b> mentioned you", notif->actor_name ? notif->actor_name : notif->actor_username);
+    } else if (g_strcmp0(notif->type, "quote") == 0) {
+        notif_text = g_strdup_printf("<b>%s</b> quoted your tweet", notif->actor_name ? notif->actor_name : notif->actor_username);
+    } else if (g_strcmp0(notif->type, "reaction") == 0) {
+        notif_text = g_strdup_printf("<b>%s</b> reacted to your tweet", notif->actor_name ? notif->actor_name : notif->actor_username);
+    } else {
+        notif_text = g_strdup_printf("<b>%s</b>: %s", notif->actor_name ? notif->actor_name : notif->actor_username, notif->content);
+    }
+
+    GtkWidget *label = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(label), notif_text);
+    gtk_label_set_xalign(GTK_LABEL(label), 0.0);
+    gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
+    g_free(notif_text);
+
+    gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 0);
+
+    if (notif->content && strlen(notif->content) > 0 && g_strcmp0(notif->type, "dm_message") != 0) {
+        GtkWidget *content_label = gtk_label_new(notif->content);
+        gtk_label_set_xalign(GTK_LABEL(content_label), 0.0);
+        gtk_label_set_line_wrap(GTK_LABEL(content_label), TRUE);
+        GtkStyleContext *context = gtk_widget_get_style_context(content_label);
+        gtk_style_context_add_class(context, "dim-label");
+        gtk_box_pack_start(GTK_BOX(vbox), content_label, FALSE, FALSE, 0);
+    }
+
+    gtk_box_pack_start(GTK_BOX(hbox), avatar_btn, FALSE, FALSE, 0);
+    
+    GtkWidget *content_event_box = gtk_event_box_new();
+    gtk_container_add(GTK_CONTAINER(content_event_box), vbox);
+    if (notif->related_id) {
+        g_object_set_data_full(G_OBJECT(content_event_box), "related_id", g_strdup(notif->related_id), g_free);
+        g_signal_connect(content_event_box, "button-press-event", G_CALLBACK(on_notification_clicked), NULL);
+    }
+    
+    gtk_box_pack_start(GTK_BOX(hbox), content_event_box, TRUE, TRUE, 0);
+
+    gtk_box_pack_start(GTK_BOX(outer_box), hbox, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(outer_box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
+
+    return outer_box;
+}
+
+void
+populate_notification_list(GtkListBox *list_box, GList *notifications)
+{
+    GList *children, *iter;
+    children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    for (GList *l = notifications; l != NULL; l = l->next) {
+        GtkWidget *notif_widget = create_notification_widget(l->data);
+        gtk_widget_show_all(notif_widget);
+        gtk_list_box_insert(list_box, notif_widget, -1);
     }
 }

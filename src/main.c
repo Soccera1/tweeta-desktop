@@ -12,6 +12,17 @@ int main(int argc, char *argv[]) {
     gtk_init(&argc, &argv);
     curl_global_init(CURL_GLOBAL_ALL);
 
+    // CSS Provider
+    GtkCssProvider *provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(provider,
+        ".unread-notification { background-color: rgba(0, 100, 255, 0.1); }"
+        ".dim-label { opacity: 0.7; font-size: 0.9em; }",
+        -1, NULL);
+    gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
+        GTK_STYLE_PROVIDER(provider),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(provider);
+
     window = create_window();
 
     load_session();

@@ -6,6 +6,8 @@ GtkWidget *g_login_button = NULL;
 GtkWidget *g_compose_button = NULL;
 GtkWidget *g_user_label = NULL;
 GtkWidget *g_main_list_box = NULL;
+GtkWidget *g_notifications_list = NULL;
+GtkWidget *g_conversation_list = NULL;
 GtkWidget *g_stack = NULL;
 GtkWidget *g_back_button = NULL;
 
