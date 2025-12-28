@@ -1,0 +1,10 @@
+#ifndef VIEWS_H
+#define VIEWS_H
+
+#include <gtk/gtk.h>
+
+GtkWidget* create_window();
+GtkWidget* create_profile_view();
+GtkWidget* create_search_view();
+
+#endif // VIEWS_H

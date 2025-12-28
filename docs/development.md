@@ -4,7 +4,7 @@ This document provides information for developers who wish to contribute to Twee
 
 ## Running Tests
 
-Tweetapus Desktop uses GLib's testing framework. Tests are located in `test_main.c`.
+Tweetapus Desktop uses GLib's testing framework. Tests are located in `test_main.c` and are linked against the modular components in the `src/` directory.
 
 To run the tests, use the following command:
 

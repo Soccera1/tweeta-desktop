@@ -6,27 +6,28 @@
 #
 
 CC=gcc
-CFLAGS:=-Wall -Wextra -std=c99 $(shell pkg-config --cflags gtk+-3.0 json-glib-1.0)
-TEST_CFLAGS:=$(shell pkg-config --cflags glib-2.0)
+CFLAGS:=-Wall -Wextra -std=c99 -Isrc $(shell pkg-config --cflags gtk+-3.0 json-glib-1.0)
 LDFLAGS:=-L/usr/lib
 LDLIBS:=$(shell pkg-config --libs gtk+-3.0 json-glib-1.0 libcurl)
-TEST_LDLIBS:=$(shell pkg-config --libs glib-2.0)
 TARGET=tweetapus-gtk-c
 TEST_TARGET=test_runner
 
+SRCS = src/main.c src/globals.c src/network.c src/json_utils.c src/session.c src/ui_utils.c src/ui_components.c src/views.c src/actions.c
+OBJS = $(SRCS:.c=.o)
+
+TEST_SRCS = test_main.c src/globals.c src/network.c src/json_utils.c src/session.c src/ui_utils.c src/ui_components.c src/views.c src/actions.c
+TEST_OBJS = $(TEST_SRCS:.c=.o)
+
 all: $(TARGET)
 
-static: main.o
-	$(CC) $(LDFLAGS) -static -o $(TARGET)-static main.o $(shell pkg-config --static --libs gtk+-3.0 json-glib-1.0 libcurl)
+$(TARGET): $(OBJS)
+	$(CC) $(LDFLAGS) -o $(TARGET) $(OBJS) $(LDLIBS)
 
-$(TARGET): main.o
-	$(CC) $(LDFLAGS) -o $(TARGET) main.o $(LDLIBS)
-
-main.o: main.c
-	$(CC) $(CFLAGS) -c main.c
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f *.o $(TARGET) $(TARGET)-static $(TEST_TARGET)
+	rm -f src/*.o *.o $(TARGET) $(TARGET)-static $(TEST_TARGET)
 
 install:
 	install -Dm755 $(TARGET) /usr/local/bin/$(TARGET)
@@ -41,5 +42,5 @@ uninstall:
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
 
-$(TEST_TARGET): test_main.c main.c
-	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $(TEST_TARGET) test_main.c $(LDLIBS) $(TEST_LDLIBS)
+$(TEST_TARGET): $(TEST_OBJS)
+	$(CC) $(LDFLAGS) -o $(TEST_TARGET) $(TEST_OBJS) $(LDLIBS)

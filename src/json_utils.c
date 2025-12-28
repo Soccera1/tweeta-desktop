@@ -1,0 +1,251 @@
+#include <json-glib/json-glib.h>
+#include "json_utils.h"
+
+GList*
+parse_tweets(const gchar *json_data)
+{
+    JsonParser *parser;
+    GError *error = NULL;
+    GList *tweets = NULL;
+
+    parser = json_parser_new();
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (error) {
+        g_warning("Unable to parse json: %s", error->message);
+        g_error_free(error);
+        g_object_unref(parser);
+        return NULL;
+    }
+
+    JsonNode *root_node = json_parser_get_root(parser);
+    JsonObject *root_object = json_node_get_object(root_node);
+    
+    if (json_object_has_member(root_object, "posts")) {
+        JsonArray *posts = json_object_get_array_member(root_object, "posts");
+
+        for (guint i = 0; i < json_array_get_length(posts); i++) {
+            JsonNode *post_node = json_array_get_element(posts, i);
+            JsonObject *post_object = json_node_get_object(post_node);
+            JsonObject *author_object = json_object_get_object_member(post_object, "author");
+
+            struct Tweet *tweet = g_new(struct Tweet, 1);
+            tweet->content = g_strdup(json_object_get_string_member(post_object, "content"));
+            tweet->author_name = g_strdup(json_object_get_string_member(author_object, "name"));
+            tweet->author_username = g_strdup(json_object_get_string_member(author_object, "username"));
+            if (json_object_has_member(author_object, "avatar") && !json_node_is_null(json_object_get_member(author_object, "avatar"))) {
+                tweet->author_avatar = g_strdup(json_object_get_string_member(author_object, "avatar"));
+            } else {
+                tweet->author_avatar = NULL;
+            }
+
+            if (json_object_has_member(post_object, "id")) {
+                tweet->id = g_strdup(json_object_get_string_member(post_object, "id"));
+            } else {
+                tweet->id = NULL;
+            }
+
+            tweets = g_list_append(tweets, tweet);
+        }
+    }
+
+    g_object_unref(parser);
+    return tweets;
+}
+
+struct Profile*
+parse_profile(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    struct Profile *profile = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "profile")) {
+            JsonObject *p_obj = json_object_get_object_member(obj, "profile");
+            profile = g_new0(struct Profile, 1);
+            profile->name = g_strdup(json_object_get_string_member(p_obj, "name"));
+            profile->username = g_strdup(json_object_get_string_member(p_obj, "username"));
+            profile->bio = g_strdup(json_object_get_string_member(p_obj, "bio"));
+            if (json_object_has_member(p_obj, "avatar") && !json_node_is_null(json_object_get_member(p_obj, "avatar"))) {
+                profile->avatar = g_strdup(json_object_get_string_member(p_obj, "avatar"));
+            }
+            profile->follower_count = json_object_get_int_member(p_obj, "follower_count");
+            profile->following_count = json_object_get_int_member(p_obj, "following_count");
+            profile->post_count = json_object_get_int_member(p_obj, "post_count");
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return profile;
+}
+
+GList*
+parse_profile_replies(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    GList *tweets = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "replies")) {
+            JsonArray *replies = json_object_get_array_member(obj, "replies");
+            for (guint i = 0; i < json_array_get_length(replies); i++) {
+                JsonNode *reply_node = json_array_get_element(replies, i);
+                JsonObject *reply_obj = json_node_get_object(reply_node);
+                JsonObject *author_obj = json_object_get_object_member(reply_obj, "author");
+
+                struct Tweet *tweet = g_new0(struct Tweet, 1);
+                tweet->content = g_strdup(json_object_get_string_member(reply_obj, "content"));
+                tweet->author_name = g_strdup(json_object_get_string_member(author_obj, "name"));
+                tweet->author_username = g_strdup(json_object_get_string_member(author_obj, "username"));
+                if (json_object_has_member(author_obj, "avatar") && !json_node_is_null(json_object_get_member(author_obj, "avatar"))) {
+                    tweet->author_avatar = g_strdup(json_object_get_string_member(author_obj, "avatar"));
+                }
+                tweet->id = g_strdup(json_object_get_string_member(reply_obj, "id"));
+                tweets = g_list_append(tweets, tweet);
+            }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return tweets;
+}
+
+GList*
+parse_users(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    GList *users = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "users")) {
+            JsonArray *users_array = json_object_get_array_member(obj, "users");
+            for (guint i = 0; i < json_array_get_length(users_array); i++) {
+                JsonNode *user_node = json_array_get_element(users_array, i);
+                JsonObject *user_obj = json_node_get_object(user_node);
+                struct Profile *user = g_new0(struct Profile, 1);
+                user->name = g_strdup(json_object_get_string_member(user_obj, "name"));
+                user->username = g_strdup(json_object_get_string_member(user_obj, "username"));
+                
+                if (json_object_has_member(user_obj, "bio") && !json_node_is_null(json_object_get_member(user_obj, "bio"))) {
+                    user->bio = g_strdup(json_object_get_string_member(user_obj, "bio"));
+                } else {
+                    user->bio = NULL;
+                }
+                if (json_object_has_member(user_obj, "avatar") && !json_node_is_null(json_object_get_member(user_obj, "avatar"))) {
+                    user->avatar = g_strdup(json_object_get_string_member(user_obj, "avatar"));
+                }
+                user->follower_count = json_object_has_member(user_obj, "follower_count") ? json_object_get_int_member(user_obj, "follower_count") : 0;
+                users = g_list_append(users, user);
+            }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return users;
+}
+
+gboolean
+parse_login_response(const gchar *json_data, gchar **token_out, gchar **username_out)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    gboolean success = FALSE;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        
+        if (json_object_has_member(obj, "token") && json_object_has_member(obj, "user")) {
+            const gchar *token = json_object_get_string_member(obj, "token");
+            JsonObject *user_obj = json_object_get_object_member(obj, "user");
+            
+            if (user_obj && json_object_has_member(user_obj, "username")) {
+                const gchar *uname = json_object_get_string_member(user_obj, "username");
+                if (token && uname) {
+                    *token_out = g_strdup(token);
+                    *username_out = g_strdup(uname);
+                    success = TRUE;
+                }
+            }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return success;
+}
+
+gchar*
+construct_tweet_payload(const gchar *content, const gchar *reply_to_id)
+{
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "content");
+    json_builder_add_string_value(builder, content);
+
+    if (reply_to_id) {
+        json_builder_set_member_name(builder, "reply_to");
+        json_builder_add_string_value(builder, reply_to_id);
+    }
+
+    json_builder_end_object(builder);
+
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, json_builder_get_root(builder));
+    gchar *post_data = json_generator_to_data(gen, NULL);
+
+    g_object_unref(gen);
+    g_object_unref(builder);
+    return post_data;
+}
+
+void
+free_tweet(gpointer data)
+{
+    struct Tweet *tweet = data;
+    g_free(tweet->content);
+    g_free(tweet->author_name);
+    g_free(tweet->author_username);
+    g_free(tweet->author_avatar);
+    g_free(tweet->id);
+    g_free(tweet);
+}
+
+void
+free_tweets(GList *tweets)
+{
+    g_list_free_full(tweets, free_tweet);
+}
+
+void
+free_user(gpointer data)
+{
+    struct Profile *user = data;
+    g_free(user->name);
+    g_free(user->username);
+    g_free(user->bio);
+    g_free(user->avatar);
+    g_free(user);
+}
+
+void
+free_users(GList *users)
+{
+    g_list_free_full(users, free_user);
+}

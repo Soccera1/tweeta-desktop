@@ -1,6 +1,22 @@
 # Architecture Documentation
 
-Tweetapus Desktop is a single-file C application (`main.c`) using GTK3, libcurl, and json-glib. It follows a procedural style with a focus on asynchronous operations to keep the UI responsive.
+Tweetapus Desktop is a modular C application using GTK3, libcurl, and json-glib. It follows a procedural style with a focus on asynchronous operations to keep the UI responsive.
+
+## Project Structure
+
+The codebase is organized into a `src/` directory with the following modules:
+
+- **`main.c`**: The application entry point and main loop.
+- **`actions.c` / `actions.h`**: Core application logic and event handlers (login, search, posting).
+- **`views.c` / `views.h`**: Definitions for the main window and primary views (Timeline, Profile, Search).
+- **`ui_components.c` / `ui_components.h`**: Specialized widget creation (e.g., tweet and user list items).
+- **`json_utils.c` / `json_utils.h`**: JSON parsing for API responses and payload construction.
+- **`network.c` / `network.h`**: libcurl wrappers and networking utilities.
+- **`session.c` / `session.h`**: User session persistence and configuration management.
+- **`globals.c` / `globals.h`**: Global shared state and widget references.
+- **`ui_utils.c` / `ui_utils.h`**: General UI utilities like asynchronous avatar loading.
+- **`types.h`**: Shared data structures.
+- **`constants.h`**: API endpoints and configuration constants.
 
 ## Core Components
 
@@ -52,8 +68,8 @@ Key endpoints used:
 
 ## File Structure
 
-- `main.c`: The entire application logic.
-- `test_main.c`: Unit tests that include `main.c` (redefining `main`) to test internal functions.
-- `Makefile`: Defines the build process and dependencies.
+- `src/`: Directory containing all application source code and headers.
+- `test_main.c`: Unit tests that link against the modular application components.
+- `Makefile`: Defines the modular build process and dependencies.
 - `tweetapus-gtk-c.desktop`: Desktop integration file.
 - `tweetapus-gtk.1`: Man page source.
