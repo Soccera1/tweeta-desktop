@@ -8,6 +8,7 @@
 #
 
 CC      = gcc
+PREFIX ?= /usr/local
 CFLAGS  = -Wall -Wextra -std=c99 -Isrc `pkg-config --cflags gtk+-3.0 json-glib-1.0`
 LDFLAGS = -L/usr/lib
 LDLIBS  = `pkg-config --libs gtk+-3.0 json-glib-1.0 libcurl`
@@ -38,20 +39,20 @@ clean:
 	rm -f src/*.o *.o $(TARGET) $(TARGET)-static $(TEST_TARGET)
 
 install: all
-	mkdir -p /usr/local/bin
-	cp $(TARGET) /usr/local/bin/$(TARGET)
-	chmod 755 /usr/local/bin/$(TARGET)
-	mkdir -p /usr/local/share/applications
-	cp tweeta-desktop.desktop /usr/local/share/applications/tweeta-desktop.desktop
-	chmod 644 /usr/local/share/applications/tweeta-desktop.desktop
-	mkdir -p /usr/local/share/man/man1
-	cp tweeta-desktop.1 /usr/local/share/man/man1/tweeta-desktop.1
-	chmod 644 /usr/local/share/man/man1/tweeta-desktop.1
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	cp $(TARGET) $(DESTDIR)$(PREFIX)/bin/$(TARGET)
+	chmod 755 $(DESTDIR)$(PREFIX)/bin/$(TARGET)
+	mkdir -p $(DESTDIR)$(PREFIX)/share/applications
+	cp tweeta-desktop.desktop $(DESTDIR)$(PREFIX)/share/applications/tweeta-desktop.desktop
+	chmod 644 $(DESTDIR)$(PREFIX)/share/applications/tweeta-desktop.desktop
+	mkdir -p $(DESTDIR)$(PREFIX)/share/man/man1
+	cp tweeta-desktop.1 $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
+	chmod 644 $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
 
 uninstall:
-	rm -f /usr/local/bin/$(TARGET)
-	rm -f /usr/local/share/applications/tweeta-desktop.desktop
-	rm -f /usr/local/share/man/man1/tweeta-desktop.1
+	rm -f $(DESTDIR)$(PREFIX)/bin/$(TARGET)
+	rm -f $(DESTDIR)$(PREFIX)/share/applications/tweeta-desktop.desktop
+	rm -f $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
 
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
