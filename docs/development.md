@@ -1,10 +1,10 @@
 # Development and Testing
 
-This document provides information for developers who wish to contribute to Tweetapus Desktop or run the test suite.
+This document provides information for developers who wish to contribute to Tweeta Desktop or run the test suite.
 
 ## Running Tests
 
-Tweetapus Desktop uses GLib's testing framework. Tests are located in `test_main.c` and are linked against the modular components in the `src/` directory.
+Tweeta Desktop uses GLib's testing framework. Tests are located in `test_main.c` and are linked against the modular components in the `src/` directory.
 
 To run the tests, use the following command:
 

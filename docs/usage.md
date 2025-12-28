@@ -1,6 +1,6 @@
 # Usage Guide
 
-This guide explains how to use Tweetapus Desktop and its various features.
+This guide explains how to use Tweeta Desktop and its various features.
 
 ## Starting the Application
 
@@ -8,7 +8,7 @@ You can start the application from your terminal or your desktop environment's a
 
 From the terminal:
 ```bash
-./tweetapus-gtk-c
+./tweeta-desktop
 ```
 
 ## Main Interface
@@ -80,4 +80,4 @@ View and participate in private conversations:
 
 ## Session Persistence
 
-Tweetapus Desktop automatically saves your session when you log in. Your credentials (auth token and username) are stored in `~/.config/tweetapus-gtk/session.json`. When you start the application again, it will attempt to log you in automatically. Logging out will delete this file.
+Tweeta Desktop automatically saves your session when you log in. Your credentials (auth token and username) are stored in `~/.config/tweeta-desktop/session.json`. When you start the application again, it will attempt to log you in automatically. Logging out will delete this file.

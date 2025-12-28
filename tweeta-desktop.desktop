@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Tweeta Desktop
+Exec=tweeta-desktop
+Icon=tweeta-desktop
+Type=Application
+Terminal=false
+Comment=A GTK3 client for Tweetapus, written in C.
+Categories=Network;Social;

@@ -104,7 +104,7 @@ static void test_construct_tweet_payload() {
 
 static void test_session_persistence() {
     // Create a temporary directory for config
-    gchar *tmp_dir = g_dir_make_tmp("tweetapus_test_XXXXXX", NULL);
+    gchar *tmp_dir = g_dir_make_tmp("tweeta_test_XXXXXX", NULL);
     g_assert_nonnull(tmp_dir);
 
     // Override XDG_CONFIG_HOME to use the temp dir
@@ -122,7 +122,7 @@ static void test_session_persistence() {
     save_session(test_token, test_user);
 
     // Verify file content manually
-    gchar *app_dir = g_build_filename(tmp_dir, "tweetapus-gtk", NULL);
+    gchar *app_dir = g_build_filename(tmp_dir, "tweeta-desktop", NULL);
     gchar *expected_path = g_build_filename(app_dir, "session.json", NULL);
     g_assert_true(g_file_test(expected_path, G_FILE_TEST_EXISTS));
     

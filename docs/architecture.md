@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-Tweetapus Desktop is a modular C application using GTK3, libcurl, and json-glib. It follows a procedural style with a focus on asynchronous operations to keep the UI responsive.
+Tweeta Desktop is a modular C application using GTK3, libcurl, and json-glib. It follows a procedural style with a focus on asynchronous operations to keep the UI responsive.
 
 ## Project Structure
 
@@ -49,14 +49,14 @@ The application handles profile pictures (avatars) and media attachments asynchr
 
 ### 5. Media Support
 
-Tweetapus Desktop supports tweets with media attachments (photos and videos):
+Tweeta Desktop supports tweets with media attachments (photos and videos):
 - **Photos**: Displayed inline within the tweet widget, scaled to a standard width while preserving aspect ratio.
 - **Videos**: A "Play Video" button is shown, which opens the video URL in the system's default media player or browser via `gtk_show_uri_on_window`.
 - **Other Attachments**: Shown as links with their detected file type.
 
 ### 6. Asynchronicity (GLib Threads)
 
-To prevent the UI from freezing during network requests, Tweetapus Desktop uses GLib threads:
+To prevent the UI from freezing during network requests, Tweeta Desktop uses GLib threads:
 - `g_thread_new()`: Spawns a background thread for fetching data.
 - `g_idle_add()`: Schedules a callback to update the UI on the main thread once the data is ready.
 
@@ -87,5 +87,5 @@ Key endpoints used:
 - `src/`: Directory containing all application source code and headers.
 - `test_main.c`: Unit tests that link against the modular application components.
 - `Makefile`: Defines the modular build process and dependencies.
-- `tweetapus-gtk-c.desktop`: Desktop integration file.
-- `tweetapus-gtk.1`: Man page source.
+- `tweeta-desktop.desktop`: Desktop integration file.
+- `tweeta-desktop.1`: Man page source.

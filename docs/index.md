@@ -1,14 +1,14 @@
-# Tweetapus Desktop Documentation
+# Tweeta Desktop Documentation
 
-Welcome to the documentation for **Tweetapus Desktop**, a minimal GTK3 X11 client written in C for the Tweetapus social media platform.
+Welcome to the documentation for **Tweeta Desktop**, a minimal GTK3 X11 client written in C for the Tweetapus social media platform.
 
 ## Overview
 
-Tweetapus Desktop provides a lightweight, native experience for interacting with Tweetapus. It is designed to be fast, simple, and resource-efficient.
+Tweeta Desktop provides a lightweight, native experience for interacting with Tweetapus. It is designed to be fast, simple, and resource-efficient.
 
 ## Documentation Sections
 
-- [**Installation**](installation.md): How to build and install Tweetapus Desktop on your system.
+- [**Installation**](installation.md): How to build and install Tweeta Desktop on your system.
 - [**Usage**](usage.md): A guide on how to use the application and its features.
 - [**Architecture**](architecture.md): Information about the internal structure and technical implementation.
 - [**Development**](development.md): Information for developers, including testing and contributing.
@@ -25,4 +25,4 @@ Tweetapus Desktop provides a lightweight, native experience for interacting with
 
 ## License
 
-Tweetapus Desktop is licensed under the AGPLv3 license.
+Tweeta Desktop is licensed under the AGPLv3 license.

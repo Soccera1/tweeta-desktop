@@ -471,7 +471,7 @@ construct_tweet_payload(const gchar *content, const gchar *reply_to_id)
     json_builder_add_string_value(builder, content);
 
     json_builder_set_member_name(builder, "source");
-    json_builder_add_string_value(builder, "Tweetapus Desktop");
+    json_builder_add_string_value(builder, "Tweeta Desktop");
 
     if (reply_to_id) {
         json_builder_set_member_name(builder, "reply_to");

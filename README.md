@@ -1,6 +1,6 @@
-# tweetapus-gtk-c
+# tweeta-desktop
 
-A minimal GTK3 X11 client in C for tweetapus.
+A minimal GTK3 X11 client in C for Tweetapus.
 
 (c) 2025 Lily
 Licensed under the AGPLv3 license
@@ -16,4 +16,4 @@ To build the client, you will need to have GTK3, libcurl, and json-glib installe
 
 ## Running
 
-To run the client, simply run `./tweetapus-gtk-c`.
+To run the client, simply run `./tweeta-desktop`.

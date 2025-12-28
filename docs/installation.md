@@ -1,6 +1,6 @@
 # Installation Guide
 
-This guide covers how to build and install Tweetapus Desktop from source.
+This guide covers how to build and install Tweeta Desktop from source.
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ Once the dependencies are installed, you can build the application using the pro
    make
    ```
 
-This will produce an executable named `tweetapus-gtk-c` in the root directory.
+This will produce an executable named `tweeta-desktop` in the root directory.
 
 ### Static Building
 
@@ -45,7 +45,7 @@ If you wish to build a static binary (if your system supports it and you have th
 make static
 ```
 
-This will produce `tweetapus-gtk-c-static`.
+This will produce `tweeta-desktop-static`.
 
 ## Installation
 
@@ -56,9 +56,9 @@ sudo make install
 ```
 
 This will perform the following actions:
-- Install the binary to `/usr/local/bin/tweetapus-gtk-c`.
-- Install the desktop entry to `/usr/local/share/applications/tweetapus-gtk-c.desktop`.
-- Install the man page to `/usr/local/share/man/man1/tweetapus-gtk.1`.
+- Install the binary to `/usr/local/bin/tweeta-desktop`.
+- Install the desktop entry to `/usr/local/share/applications/tweeta-desktop.desktop`.
+- Install the man page to `/usr/local/share/man/man1/tweeta-desktop.1`.
 
 ## Uninstallation
 

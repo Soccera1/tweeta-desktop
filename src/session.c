@@ -7,7 +7,7 @@ gchar*
 get_config_path()
 {
     const gchar *config_dir = g_get_user_config_dir();
-    gchar *app_dir = g_build_filename(config_dir, "tweetapus-gtk", NULL);
+    gchar *app_dir = g_build_filename(config_dir, "tweeta-desktop", NULL);
     
     if (g_mkdir_with_parents(app_dir, 0700) == -1) {
         g_warning("Failed to create config directory: %s", app_dir);
