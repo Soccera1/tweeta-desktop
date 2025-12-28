@@ -4,6 +4,7 @@
 #define API_BASE_URL "https://tweeta.tiago.zip/api"
 #define BASE_DOMAIN "https://tweeta.tiago.zip"
 #define AVATAR_SIZE 48
+#define MEDIA_SIZE 400
 #define PUBLIC_TWEETS_URL API_BASE_URL "/public-tweets"
 #define LOGIN_URL API_BASE_URL "/auth/basic-login"
 #define POST_TWEET_URL API_BASE_URL "/tweets/"

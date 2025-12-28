@@ -208,9 +208,36 @@ static void test_parse_users() {
     free_users(users);
 }
 
+static void test_parse_tweets_with_attachments() {
+    const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"Hello with media\", \"author\": {\"name\": \"Test User\", \"username\": \"testuser\", \"avatar\": \"/api/uploads/avatar.png\"}, \"attachments\": [{\"id\": \"a1\", \"file_url\": \"/api/uploads/image.jpg\", \"file_type\": \"image/jpeg\"}, {\"id\": \"v1\", \"file_url\": \"/api/uploads/video.mp4\", \"file_type\": \"video/mp4\"}]}]}";
+    GList *tweets = parse_tweets(json_input);
+
+    g_assert_nonnull(tweets);
+    g_assert_cmpint(g_list_length(tweets), ==, 1);
+
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    g_assert_cmpstr(t->content, ==, "Hello with media");
+    
+    g_assert_nonnull(t->attachments);
+    g_assert_cmpint(g_list_length(t->attachments), ==, 2);
+
+    struct Attachment *a1 = (struct Attachment *)t->attachments->data;
+    g_assert_cmpstr(a1->id, ==, "a1");
+    g_assert_cmpstr(a1->file_url, ==, "/api/uploads/image.jpg");
+    g_assert_cmpstr(a1->file_type, ==, "image/jpeg");
+
+    struct Attachment *v1 = (struct Attachment *)t->attachments->next->data;
+    g_assert_cmpstr(v1->id, ==, "v1");
+    g_assert_cmpstr(v1->file_url, ==, "/api/uploads/video.mp4");
+    g_assert_cmpstr(v1->file_type, ==, "video/mp4");
+
+    free_tweets(tweets);
+}
+
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     g_test_add_func("/parsetweets/basic", test_parse_tweets);
+    g_test_add_func("/parsetweets/attachments", test_parse_tweets_with_attachments);
     g_test_add_func("/parselogin/basic", test_parse_login_response);
     g_test_add_func("/constructpayload/basic", test_construct_tweet_payload);
     g_test_add_func("/session/persistence", test_session_persistence);

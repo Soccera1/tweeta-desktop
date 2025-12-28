@@ -1,6 +1,25 @@
 #include <json-glib/json-glib.h>
 #include "json_utils.h"
 
+static GList*
+parse_attachments(JsonObject *post_object)
+{
+    GList *attachments = NULL;
+    if (json_object_has_member(post_object, "attachments")) {
+        JsonArray *attach_array = json_object_get_array_member(post_object, "attachments");
+        for (guint i = 0; i < json_array_get_length(attach_array); i++) {
+            JsonNode *attach_node = json_array_get_element(attach_array, i);
+            JsonObject *attach_obj = json_node_get_object(attach_node);
+            struct Attachment *attach = g_new0(struct Attachment, 1);
+            attach->id = g_strdup(json_object_get_string_member(attach_obj, "id"));
+            attach->file_url = g_strdup(json_object_get_string_member(attach_obj, "file_url"));
+            attach->file_type = g_strdup(json_object_get_string_member(attach_obj, "file_type"));
+            attachments = g_list_append(attachments, attach);
+        }
+    }
+    return attachments;
+}
+
 GList*
 parse_tweets(const gchar *json_data)
 {
@@ -28,7 +47,7 @@ parse_tweets(const gchar *json_data)
             JsonObject *post_object = json_node_get_object(post_node);
             JsonObject *author_object = json_object_get_object_member(post_object, "author");
 
-            struct Tweet *tweet = g_new(struct Tweet, 1);
+            struct Tweet *tweet = g_new0(struct Tweet, 1);
             tweet->content = g_strdup(json_object_get_string_member(post_object, "content"));
             tweet->author_name = g_strdup(json_object_get_string_member(author_object, "name"));
             tweet->author_username = g_strdup(json_object_get_string_member(author_object, "username"));
@@ -43,6 +62,8 @@ parse_tweets(const gchar *json_data)
             } else {
                 tweet->id = NULL;
             }
+
+            tweet->attachments = parse_attachments(post_object);
 
             tweets = g_list_append(tweets, tweet);
         }
@@ -109,6 +130,7 @@ parse_profile_replies(const gchar *json_data)
                     tweet->author_avatar = g_strdup(json_object_get_string_member(author_obj, "avatar"));
                 }
                 tweet->id = g_strdup(json_object_get_string_member(reply_obj, "id"));
+                tweet->attachments = parse_attachments(reply_obj);
                 tweets = g_list_append(tweets, tweet);
             }
         }
@@ -216,6 +238,18 @@ construct_tweet_payload(const gchar *content, const gchar *reply_to_id)
 }
 
 void
+free_attachment(gpointer data)
+{
+    struct Attachment *attach = data;
+    if (attach) {
+        g_free(attach->id);
+        g_free(attach->file_url);
+        g_free(attach->file_type);
+        g_free(attach);
+    }
+}
+
+void
 free_tweet(gpointer data)
 {
     struct Tweet *tweet = data;
@@ -224,6 +258,9 @@ free_tweet(gpointer data)
     g_free(tweet->author_username);
     g_free(tweet->author_avatar);
     g_free(tweet->id);
+    if (tweet->attachments) {
+        g_list_free_full(tweet->attachments, free_attachment);
+    }
     g_free(tweet);
 }
 

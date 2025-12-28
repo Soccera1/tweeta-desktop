@@ -3,6 +3,13 @@
 
 #include <gtk/gtk.h>
 
+// Represents a media attachment
+struct Attachment {
+    gchar *id;
+    gchar *file_url;
+    gchar *file_type;
+};
+
 // Represents a single tweet
 struct Tweet {
   gchar *content;
@@ -10,6 +17,7 @@ struct Tweet {
   gchar *author_username;
   gchar *author_avatar;
   gchar *id;
+  GList *attachments;
 };
 
 // Represents profile data

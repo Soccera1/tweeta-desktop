@@ -42,12 +42,19 @@ The application uses `json-glib` to handle API responses and local session stora
 
 ### 4. Image Handling (GdkPixbuf)
 
-The application handles profile pictures (avatars) asynchronously:
-- `load_avatar()`: Initiates an asynchronous download and scaling of an image.
+The application handles profile pictures (avatars) and media attachments asynchronously:
+- `load_avatar()`: Initiates an asynchronous download and scaling of an image (used for both avatars and media).
 - `fetch_avatar_thread()`: Downloads the image in the background and loads it into a `GdkPixbuf`.
 - Placeholders are shown while images are loading or if they fail to load.
 
-### 5. Asynchronicity (GLib Threads)
+### 5. Media Support
+
+Tweetapus Desktop supports tweets with media attachments (photos and videos):
+- **Photos**: Displayed inline within the tweet widget, scaled to a standard width while preserving aspect ratio.
+- **Videos**: A "Play Video" button is shown, which opens the video URL in the system's default media player or browser via `gtk_show_uri_on_window`.
+- **Other Attachments**: Shown as links with their detected file type.
+
+### 6. Asynchronicity (GLib Threads)
 
 To prevent the UI from freezing during network requests, Tweetapus Desktop uses GLib threads:
 - `g_thread_new()`: Spawns a background thread for fetching data.

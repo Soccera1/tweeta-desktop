@@ -108,6 +108,47 @@ on_reply_clicked(GtkWidget *widget, gpointer user_data)
     g_signal_connect(dialog, "response", G_CALLBACK(on_reply_response), ctx);
 }
 
+static void
+on_video_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)user_data;
+    const gchar *url = g_object_get_data(G_OBJECT(widget), "url");
+    if (url) {
+        GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+        GtkWindow *window = GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL;
+        gtk_show_uri_on_window(window, url, GDK_CURRENT_TIME, NULL);
+    }
+}
+
+static void
+add_attachments_to_box(GtkBox *box, GList *attachments)
+{
+    if (!attachments) return;
+
+    for (GList *l = attachments; l != NULL; l = l->next) {
+        struct Attachment *attach = l->data;
+        if (attach->file_type && g_str_has_prefix(attach->file_type, "image/")) {
+            GtkWidget *image = gtk_image_new();
+            load_avatar(image, attach->file_url, MEDIA_SIZE);
+            gtk_box_pack_start(box, image, FALSE, FALSE, 5);
+        } else if (attach->file_type && g_str_has_prefix(attach->file_type, "video/")) {
+            GtkWidget *video_btn = gtk_button_new_with_label("Play Video ▶");
+            g_object_set_data_full(G_OBJECT(video_btn), "url", g_strdup(attach->file_url), g_free);
+            g_signal_connect(video_btn, "clicked", G_CALLBACK(on_video_clicked), NULL);
+            gtk_box_pack_start(box, video_btn, FALSE, FALSE, 5);
+        } else {
+            gchar *link_text = g_strdup_printf("Attachment (%s): %s", 
+                                              attach->file_type ? attach->file_type : "unknown", 
+                                              attach->file_url);
+            GtkWidget *label = gtk_label_new(link_text);
+            gtk_label_set_xalign(GTK_LABEL(label), 0.0);
+            gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
+            gtk_box_pack_start(box, label, FALSE, FALSE, 5);
+            g_free(link_text);
+        }
+    }
+}
+
 GtkWidget*
 create_tweet_widget(struct Tweet *tweet)
 {
@@ -143,6 +184,9 @@ create_tweet_widget(struct Tweet *tweet)
 
     gtk_box_pack_start(GTK_BOX(box), author_btn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(box), content_label, FALSE, FALSE, 0);
+
+    // Add media attachments
+    add_attachments_to_box(GTK_BOX(box), tweet->attachments);
 
     GtkWidget *reply_btn = gtk_button_new_with_label("Reply");
     g_object_set_data_full(G_OBJECT(reply_btn), "tweet_id", g_strdup(tweet->id), g_free);
