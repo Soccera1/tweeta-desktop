@@ -28,6 +28,7 @@ The header bar contains the following controls:
 ### Timeline View
 
 The default view shows a list of recent public tweets. 
+- **Infinite Scroll**: As you reach the bottom of the feed, more tweets will automatically load.
 - Click on a **Username** to view that user's profile.
 - Click the **Reply** button on a tweet to post a reply (requires login).
 

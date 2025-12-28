@@ -62,6 +62,15 @@ To prevent the UI from freezing during network requests, Tweetapus Desktop uses 
 
 `AsyncData` struct is used to pass context and results between the background threads and the main UI thread.
 
+### 7. Infinite Scrolling
+
+Infinite scrolling is implemented for the main timeline and profile feeds:
+- `GtkScrolledWindow`'s `edge-reached` signal is used to detect when the user scrolls to the bottom of a list.
+- `on_scroll_edge_reached()`: Signal handler that triggers a "load more" request using the ID of the last tweet currently in the list.
+- `load_more_tweets()`: Initiates a background thread to fetch older tweets using the `before` API parameter.
+- `append_tweets_to_list()`: Appends newly fetched tweets to the bottom of the list without clearing existing content.
+- Visual feedback is provided by a "Loading more..." label appended to the list during the background request.
+
 ## API Integration
 
 The application communicates with the Tweetapus API at `https://tweeta.tiago.zip/api`.

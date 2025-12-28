@@ -65,22 +65,31 @@ parse_tweets(const gchar *json_data)
 
             tweet->attachments = parse_attachments(post_object);
 
+            tweet->liked = FALSE;
             if (json_object_has_member(post_object, "liked")) {
                 tweet->liked = json_object_get_boolean_member(post_object, "liked");
-            } else {
-                tweet->liked = FALSE;
+            } else if (json_object_has_member(post_object, "is_liked")) {
+                tweet->liked = json_object_get_boolean_member(post_object, "is_liked");
+            } else if (json_object_has_member(post_object, "user_liked")) {
+                tweet->liked = json_object_get_boolean_member(post_object, "user_liked");
             }
 
+            tweet->retweeted = FALSE;
             if (json_object_has_member(post_object, "retweeted")) {
                 tweet->retweeted = json_object_get_boolean_member(post_object, "retweeted");
-            } else {
-                tweet->retweeted = FALSE;
+            } else if (json_object_has_member(post_object, "is_retweeted")) {
+                tweet->retweeted = json_object_get_boolean_member(post_object, "is_retweeted");
+            } else if (json_object_has_member(post_object, "user_retweeted")) {
+                tweet->retweeted = json_object_get_boolean_member(post_object, "user_retweeted");
             }
 
+            tweet->bookmarked = FALSE;
             if (json_object_has_member(post_object, "bookmarked")) {
                 tweet->bookmarked = json_object_get_boolean_member(post_object, "bookmarked");
-            } else {
-                tweet->bookmarked = FALSE;
+            } else if (json_object_has_member(post_object, "is_bookmarked")) {
+                tweet->bookmarked = json_object_get_boolean_member(post_object, "is_bookmarked");
+            } else if (json_object_has_member(post_object, "user_bookmarked")) {
+                tweet->bookmarked = json_object_get_boolean_member(post_object, "user_bookmarked");
             }
 
             if (json_object_has_member(post_object, "likes")) {
@@ -162,15 +171,33 @@ parse_profile_replies(const gchar *json_data)
                 tweet->id = g_strdup(json_object_get_string_member(reply_obj, "id"));
                 tweet->attachments = parse_attachments(reply_obj);
 
+                tweet->liked = FALSE;
                 if (json_object_has_member(reply_obj, "liked")) {
                     tweet->liked = json_object_get_boolean_member(reply_obj, "liked");
+                } else if (json_object_has_member(reply_obj, "is_liked")) {
+                    tweet->liked = json_object_get_boolean_member(reply_obj, "is_liked");
+                } else if (json_object_has_member(reply_obj, "user_liked")) {
+                    tweet->liked = json_object_get_boolean_member(reply_obj, "user_liked");
                 }
+
+                tweet->retweeted = FALSE;
                 if (json_object_has_member(reply_obj, "retweeted")) {
                     tweet->retweeted = json_object_get_boolean_member(reply_obj, "retweeted");
+                } else if (json_object_has_member(reply_obj, "is_retweeted")) {
+                    tweet->retweeted = json_object_get_boolean_member(reply_obj, "is_retweeted");
+                } else if (json_object_has_member(reply_obj, "user_retweeted")) {
+                    tweet->retweeted = json_object_get_boolean_member(reply_obj, "user_retweeted");
                 }
+
+                tweet->bookmarked = FALSE;
                 if (json_object_has_member(reply_obj, "bookmarked")) {
                     tweet->bookmarked = json_object_get_boolean_member(reply_obj, "bookmarked");
+                } else if (json_object_has_member(reply_obj, "is_bookmarked")) {
+                    tweet->bookmarked = json_object_get_boolean_member(reply_obj, "is_bookmarked");
+                } else if (json_object_has_member(reply_obj, "user_bookmarked")) {
+                    tweet->bookmarked = json_object_get_boolean_member(reply_obj, "user_bookmarked");
                 }
+
                 if (json_object_has_member(reply_obj, "likes")) {
                     tweet->like_count = json_object_get_int_member(reply_obj, "likes");
                 }

@@ -223,24 +223,57 @@ static gboolean on_tweets_loaded(gpointer data)
         if (async_data->tweets) {
             free_tweets(async_data->tweets);
         }
+        g_free(async_data->before_id);
         g_free(async_data);
         return G_SOURCE_REMOVE;
     }
     
+    // Clear loading state on the list box
+    g_object_set_data(G_OBJECT(async_data->list_box), "loading_more", GINT_TO_POINTER(FALSE));
+
     if (async_data->success && async_data->tweets) {
-        populate_tweet_list(async_data->list_box, async_data->tweets);
+        if (async_data->is_append) {
+            // Remove the "loading more" indicator if it exists
+            GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+            GtkWidget *last_child = g_list_last(children)->data;
+            if (GTK_IS_LABEL(last_child)) {
+                const gchar *text = gtk_label_get_text(GTK_LABEL(last_child));
+                if (g_strcmp0(text, "Loading more...") == 0) {
+                    gtk_widget_destroy(last_child);
+                }
+            }
+            g_list_free(children);
+
+            append_tweets_to_list(async_data->list_box, async_data->tweets);
+        } else {
+            populate_tweet_list(async_data->list_box, async_data->tweets);
+        }
         free_tweets(async_data->tweets);
     } else {
-        GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
-        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
-            gtk_widget_destroy(GTK_WIDGET(iter->data));
-        g_list_free(children);
+        if (!async_data->is_append) {
+            GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+            for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+                gtk_widget_destroy(GTK_WIDGET(iter->data));
+            g_list_free(children);
 
-        GtkWidget *error_label = gtk_label_new("Failed to load tweets.");
-        gtk_widget_show(error_label);
-        gtk_list_box_insert(async_data->list_box, error_label, -1);
+            GtkWidget *error_label = gtk_label_new("Failed to load tweets.");
+            gtk_widget_show(error_label);
+            gtk_list_box_insert(async_data->list_box, error_label, -1);
+        } else {
+            // Just remove loading indicator on failure for append
+            GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+            GtkWidget *last_child = g_list_last(children)->data;
+            if (GTK_IS_LABEL(last_child)) {
+                const gchar *text = gtk_label_get_text(GTK_LABEL(last_child));
+                if (g_strcmp0(text, "Loading more...") == 0) {
+                    gtk_widget_destroy(last_child);
+                }
+            }
+            g_list_free(children);
+        }
     }
 
+    g_free(async_data->before_id);
     g_free(async_data);
     return G_SOURCE_REMOVE;
 }
@@ -249,15 +282,43 @@ static gpointer fetch_tweets_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
     struct MemoryStruct chunk;
+    gchar *url = NULL;
 
-    if (fetch_url(PUBLIC_TWEETS_URL, &chunk, NULL)) {
-        async_data->tweets = parse_tweets(chunk.memory);
+    const gchar *feed_type = g_object_get_data(G_OBJECT(async_data->list_box), "feed_type");
+
+    if (g_strcmp0(feed_type, "profile_posts") == 0) {
+        if (async_data->before_id) {
+            url = g_strdup_printf("%s/profile/%s/posts?before=%s", API_BASE_URL, async_data->username, async_data->before_id);
+        } else {
+            url = g_strdup_printf("%s/profile/%s/posts", API_BASE_URL, async_data->username);
+        }
+    } else if (g_strcmp0(feed_type, "profile_replies") == 0) {
+        if (async_data->before_id) {
+            url = g_strdup_printf("%s/profile/%s/replies?before=%s", API_BASE_URL, async_data->username, async_data->before_id);
+        } else {
+            url = g_strdup_printf("%s/profile/%s/replies", API_BASE_URL, async_data->username);
+        }
+    } else {
+        if (async_data->before_id) {
+            url = g_strdup_printf("%s?before=%s", PUBLIC_TWEETS_URL, async_data->before_id);
+        } else {
+            url = g_strdup(PUBLIC_TWEETS_URL);
+        }
+    }
+
+    if (fetch_url(url, &chunk, NULL)) {
+        if (g_strcmp0(feed_type, "profile_replies") == 0) {
+            async_data->tweets = parse_profile_replies(chunk.memory);
+        } else {
+            async_data->tweets = parse_tweets(chunk.memory);
+        }
         async_data->success = (async_data->tweets != NULL);
         free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
 
+    g_free(url);
     g_idle_add(on_tweets_loaded, async_data);
     return NULL;
 }
@@ -283,8 +344,74 @@ void start_loading_tweets(GtkListBox *list_box)
     struct AsyncData *data = g_new0(struct AsyncData, 1);
     data->list_box = list_box;
     data->request_id = current_request_id;
+    data->is_append = FALSE;
+    
+    if (list_box == GTK_LIST_BOX(g_profile_tweets_list) || list_box == GTK_LIST_BOX(g_profile_replies_list)) {
+        data->username = g_strdup(g_object_get_data(G_OBJECT(list_box), "current_profile_user"));
+    }
+
+    g_thread_new("tweet-loader", fetch_tweets_thread, data);
+}
+
+void load_more_tweets(GtkListBox *list_box, const gchar *before_id)
+{
+    g_mutex_lock(&load_tweets_mutex);
+    guint current_request_id = active_tweets_request_id;
+    g_mutex_unlock(&load_tweets_mutex);
+
+    // Show loading more indicator
+    GtkWidget *loading_label = gtk_label_new("Loading more...");
+    gtk_widget_show(loading_label);
+    gtk_list_box_insert(list_box, loading_label, -1);
+
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->list_box = list_box;
+    data->request_id = current_request_id;
+    data->is_append = TRUE;
+    data->before_id = g_strdup(before_id);
+
+    if (list_box == GTK_LIST_BOX(g_profile_tweets_list) || list_box == GTK_LIST_BOX(g_profile_replies_list)) {
+        data->username = g_strdup(g_object_get_data(G_OBJECT(list_box), "current_profile_user"));
+    }
     
     g_thread_new("tweet-loader", fetch_tweets_thread, data);
+}
+
+void on_scroll_edge_reached(GtkScrolledWindow *scrolled_window, GtkPositionType pos, gpointer user_data)
+{
+    (void)user_data;
+    if (pos != GTK_POS_BOTTOM) return;
+
+    GtkWidget *child = gtk_bin_get_child(GTK_BIN(scrolled_window));
+    if (child && GTK_IS_VIEWPORT(child)) {
+        child = gtk_bin_get_child(GTK_BIN(child));
+    }
+
+    if (!child || !GTK_IS_LIST_BOX(child)) {
+        return;
+    }
+
+    GtkWidget *list_box = child;
+
+    // Allow infinite scroll for main, profile posts and profile replies
+    if (list_box != g_main_list_box && 
+        list_box != g_profile_tweets_list && 
+        list_box != g_profile_replies_list) {
+        return;
+    }
+
+    gboolean loading = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(list_box), "loading_more"));
+    if (loading) {
+        return;
+    }
+
+    const gchar *last_id = g_object_get_data(G_OBJECT(list_box), "last_id");
+    if (!last_id) {
+        return;
+    }
+
+    g_object_set_data(G_OBJECT(list_box), "loading_more", GINT_TO_POINTER(TRUE));
+    load_more_tweets(GTK_LIST_BOX(list_box), last_id);
 }
 
 static gboolean on_profile_loaded(gpointer data)
@@ -387,6 +514,9 @@ void show_profile(const gchar *username)
     gtk_label_set_text(GTK_LABEL(g_profile_bio_label), "");
     gtk_label_set_text(GTK_LABEL(g_profile_stats_label), "");
     
+    g_object_set_data_full(G_OBJECT(g_profile_tweets_list), "current_profile_user", g_strdup(username), g_free);
+    g_object_set_data_full(G_OBJECT(g_profile_replies_list), "current_profile_user", g_strdup(username), g_free);
+
     populate_tweet_list(GTK_LIST_BOX(g_profile_tweets_list), NULL);
     populate_tweet_list(GTK_LIST_BOX(g_profile_replies_list), NULL);
 

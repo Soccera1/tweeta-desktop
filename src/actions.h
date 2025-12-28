@@ -4,6 +4,7 @@
 #include <gtk/gtk.h>
 
 void start_loading_tweets(GtkListBox *list_box);
+void load_more_tweets(GtkListBox *list_box, const gchar *before_id);
 void perform_search(const gchar *query);
 void update_login_ui();
 void perform_logout();
@@ -15,6 +16,7 @@ void on_back_clicked(GtkWidget *widget, gpointer user_data);
 void on_compose_clicked(GtkWidget *widget, gpointer window);
 void on_refresh_clicked(GtkWidget *widget, gpointer user_data);
 void on_login_clicked(GtkWidget *widget, gpointer window);
+void on_scroll_edge_reached(GtkScrolledWindow *scrolled_window, GtkPositionType pos, gpointer user_data);
 
 gboolean perform_like(const gchar *tweet_id);
 gboolean perform_retweet(const gchar *tweet_id);

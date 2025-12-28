@@ -65,7 +65,7 @@ on_quote_response(GtkDialog *dialog, gint response_id, gpointer user_data)
             json_builder_begin_object(builder);
             json_builder_set_member_name(builder, "content");
             json_builder_add_string_value(builder, content);
-            json_builder_set_member_name(builder, "quote");
+            json_builder_set_member_name(builder, "quoteOf");
             json_builder_add_string_value(builder, ctx->quote_id);
             json_builder_end_object(builder);
 
@@ -187,22 +187,27 @@ on_bookmark_clicked(GtkWidget *widget, gpointer user_data)
 }
 
 static void
+free_reaction_context(gpointer data)
+{
+    struct ReactionContext *ctx = (struct ReactionContext *)data;
+    if (ctx) {
+        g_free(ctx->tweet_id);
+        g_free(ctx);
+    }
+}
+
+static void
 on_emoji_selected(GtkFlowBoxChild *child, gpointer user_data)
 {
-    struct ReactionContext *ctx = (struct ReactionContext *)user_data;
+    GtkWidget *dialog = (GtkWidget *)user_data;
+    struct ReactionContext *ctx = g_object_get_data(G_OBJECT(dialog), "reaction_context");
     const gchar *emoji_name = g_object_get_data(G_OBJECT(child), "emoji_name");
 
-    if (emoji_name && ctx->tweet_id) {
+    if (emoji_name && ctx && ctx->tweet_id) {
         perform_reaction(ctx->tweet_id, emoji_name);
     }
 
-    GtkWidget *dialog = gtk_widget_get_ancestor(GTK_WIDGET(child), GTK_TYPE_DIALOG);
-    if (dialog) {
-        gtk_widget_destroy(dialog);
-    }
-
-    g_free(ctx->tweet_id);
-    g_free(ctx);
+    gtk_widget_destroy(dialog);
 }
 
 static void
@@ -240,6 +245,8 @@ on_reaction_clicked(GtkWidget *widget, gpointer user_data)
     ctx->tweet_id = g_strdup(tweet_id);
     ctx->parent_window = GTK_WIDGET(window);
 
+    g_object_set_data_full(G_OBJECT(dialog), "reaction_context", ctx, free_reaction_context);
+
     GList *emojis = fetch_emojis();
     for (GList *l = emojis; l != NULL; l = l->next) {
         struct Emoji *emoji = l->data;
@@ -266,7 +273,7 @@ on_reaction_clicked(GtkWidget *widget, gpointer user_data)
 
     free_emojis(emojis);
 
-    g_signal_connect(flowbox, "child-activated", G_CALLBACK(on_emoji_selected), ctx);
+    g_signal_connect(flowbox, "child-activated", G_CALLBACK(on_emoji_selected), dialog);
 
     gtk_container_add(GTK_CONTAINER(scrolled), flowbox);
     gtk_box_pack_start(GTK_BOX(content_area), scrolled, TRUE, TRUE, 0);

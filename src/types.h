@@ -58,6 +58,8 @@ struct AsyncData {
     gchar *username;
     gchar *query;
     guint request_id;  // Track which request instance this is
+    gboolean is_append;
+    gchar *before_id;
 };
 
 struct AvatarData {

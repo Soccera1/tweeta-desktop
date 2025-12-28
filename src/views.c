@@ -43,15 +43,19 @@ create_profile_view()
     // Tweets tab
     GtkWidget *tweets_scroll = gtk_scrolled_window_new(NULL, NULL);
     g_profile_tweets_list = gtk_list_box_new();
+    g_object_set_data(G_OBJECT(g_profile_tweets_list), "feed_type", "profile_posts");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_profile_tweets_list), GTK_SELECTION_NONE);
     gtk_container_add(GTK_CONTAINER(tweets_scroll), g_profile_tweets_list);
+    g_signal_connect(tweets_scroll, "edge-reached", G_CALLBACK(on_scroll_edge_reached), NULL);
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), tweets_scroll, gtk_label_new("Tweets"));
 
     // Replies tab
     GtkWidget *replies_scroll = gtk_scrolled_window_new(NULL, NULL);
     g_profile_replies_list = gtk_list_box_new();
+    g_object_set_data(G_OBJECT(g_profile_replies_list), "feed_type", "profile_replies");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_profile_replies_list), GTK_SELECTION_NONE);
     gtk_container_add(GTK_CONTAINER(replies_scroll), g_profile_replies_list);
+    g_signal_connect(replies_scroll, "edge-reached", G_CALLBACK(on_scroll_edge_reached), NULL);
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), replies_scroll, gtk_label_new("Replies"));
 
     gtk_box_pack_start(GTK_BOX(box), notebook, TRUE, TRUE, 0);
@@ -136,8 +140,10 @@ create_window()
     // Timeline View
     GtkWidget *timeline_scroll = gtk_scrolled_window_new(NULL, NULL);
     g_main_list_box = gtk_list_box_new();
+    g_object_set_data(G_OBJECT(g_main_list_box), "feed_type", "public");
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_main_list_box), GTK_SELECTION_NONE);
     gtk_container_add(GTK_CONTAINER(timeline_scroll), g_main_list_box);
+    g_signal_connect(timeline_scroll, "edge-reached", G_CALLBACK(on_scroll_edge_reached), NULL);
     gtk_stack_add_named(GTK_STACK(g_stack), timeline_scroll, "timeline");
 
     // Profile View
