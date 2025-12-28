@@ -65,7 +65,7 @@ on_quote_response(GtkDialog *dialog, gint response_id, gpointer user_data)
             json_builder_begin_object(builder);
             json_builder_set_member_name(builder, "content");
             json_builder_add_string_value(builder, content);
-            json_builder_set_member_name(builder, "quoteOf");
+            json_builder_set_member_name(builder, "quote_tweet_id");
             json_builder_add_string_value(builder, ctx->quote_id);
             json_builder_end_object(builder);
 
