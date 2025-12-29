@@ -12,6 +12,12 @@ To run the tests, use the following command:
 make test
 ```
 
+If you are using a dedicated build directory, run:
+
+```bash
+make -f ../Makefile SRCDIR=.. test
+```
+
 This will:
 1. Compile the test runner.
 2. Execute all defined test cases.

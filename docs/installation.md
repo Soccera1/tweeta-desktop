@@ -28,12 +28,22 @@ You can build the application using either `make` or `meson`.
 
 ### Using Make
 
-1. Run `make` to compile the application:
+It is recommended to build in a dedicated build directory to keep the source tree clean, although building in the root directory is still supported.
+
+1. Create and enter a build directory:
    ```bash
-   make
+   mkdir -p build
+   cd build
    ```
 
-This will produce an executable named `tweeta-desktop` in the root directory.
+2. Run `make` specifying the source directory:
+   ```bash
+   make -f ../Makefile SRCDIR=..
+   ```
+
+This will produce an executable named `tweeta-desktop` in the `build/` directory.
+
+Alternatively, you can still build directly in the root directory by simply running `make`.
 
 ### Using Meson
 
