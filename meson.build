@@ -40,4 +40,9 @@ install_data('tweeta-desktop.desktop',
   install_dir : get_option('datadir') / 'applications'
 )
 
+install_data('logo.png',
+  rename : 'tweeta-desktop.png',
+  install_dir : get_option('datadir') / 'pixmaps'
+)
+
 install_man('tweeta-desktop.1')

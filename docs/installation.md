@@ -80,6 +80,7 @@ sudo ninja -C build install
 Both methods will perform the following actions:
 - Install the binary to `/usr/local/bin/tweeta-desktop`.
 - Install the desktop entry to `/usr/local/share/applications/tweeta-desktop.desktop`.
+- Install the application icon to `/usr/local/share/pixmaps/tweeta-desktop.png`.
 - Install the man page to `/usr/local/share/man/man1/tweeta-desktop.1`.
 
 ## Uninstallation

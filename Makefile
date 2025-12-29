@@ -45,6 +45,9 @@ install: all
 	mkdir -p $(DESTDIR)$(PREFIX)/share/applications
 	cp tweeta-desktop.desktop $(DESTDIR)$(PREFIX)/share/applications/tweeta-desktop.desktop
 	chmod 644 $(DESTDIR)$(PREFIX)/share/applications/tweeta-desktop.desktop
+	mkdir -p $(DESTDIR)$(PREFIX)/share/pixmaps
+	cp logo.png $(DESTDIR)$(PREFIX)/share/pixmaps/tweeta-desktop.png
+	chmod 644 $(DESTDIR)$(PREFIX)/share/pixmaps/tweeta-desktop.png
 	mkdir -p $(DESTDIR)$(PREFIX)/share/man/man1
 	cp tweeta-desktop.1 $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
 	chmod 644 $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
@@ -52,6 +55,7 @@ install: all
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/$(TARGET)
 	rm -f $(DESTDIR)$(PREFIX)/share/applications/tweeta-desktop.desktop
+	rm -f $(DESTDIR)$(PREFIX)/share/pixmaps/tweeta-desktop.png
 	rm -f $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
 
 test: $(TEST_TARGET)
