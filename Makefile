@@ -31,6 +31,9 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -o $(TARGET) $(OBJS) $(LDLIBS)
 
+static: $(OBJS)
+	$(CC) $(LDFLAGS) -static -o $(TARGET)-static $(OBJS) $(LDLIBS)
+
 .SUFFIXES: .c .o
 .c.o:
 	$(CC) $(CFLAGS) -c $< -o $@

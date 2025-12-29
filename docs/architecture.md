@@ -24,8 +24,8 @@ The codebase is organized into a `src/` directory with the following modules:
 
 The UI is built using standard GTK3 widgets:
 - `GtkWindow` and `GtkHeaderBar` for the main window structure.
-- `GtkStack` for navigating between different views (Timeline, Profile, Search).
-- `GtkListBox` for displaying lists of tweets and users.
+- `GtkStack` for navigating between different views (Timeline, Profile, Search, Notifications, Messages).
+- `GtkListBox` for displaying lists of tweets, users, notifications, and conversations.
 - `GtkNotebook` for tabs within the Profile and Search views.
 
 ### 2. Networking Layer (libcurl)
@@ -37,50 +37,53 @@ All API communication is handled via `libcurl`.
 ### 3. Data Parsing (json-glib)
 
 The application uses `json-glib` to handle API responses and local session storage.
-- Parsers exist for tweets, profiles, users, and login responses.
-- `JsonBuilder` and `JsonGenerator` are used for constructing JSON payloads for POST requests.
+- Parsers exist for tweets, profiles, users, notifications, conversations, and login responses.
+- `JsonBuilder` and `JsonGenerator` are used for constructing JSON payloads for POST and PATCH requests.
 
 ### 4. Image Handling (GdkPixbuf)
 
 The application handles profile pictures (avatars) and media attachments asynchronously:
-- `load_avatar()`: Initiates an asynchronous download and scaling of an image (used for both avatars and media).
+- `load_avatar()`: Initiates an asynchronous download and scaling of an image (used for both avatars, media, and custom emojis).
 - `fetch_avatar_thread()`: Downloads the image in the background and loads it into a `GdkPixbuf`.
 - Placeholders are shown while images are loading or if they fail to load.
 
-### 5. Media Support
+### 5. Media and Emoji Support
 
-Tweeta Desktop supports tweets with media attachments (photos and videos):
-- **Photos**: Displayed inline within the tweet widget, scaled to a standard width while preserving aspect ratio.
-- **Videos**: A "Play Video" button is shown, which opens the video URL in the system's default media player or browser via `gtk_show_uri_on_window`.
-- **Other Attachments**: Shown as links with their detected file type.
+Tweeta Desktop supports tweets with media attachments and custom reactions:
+- **Photos**: Displayed inline within the tweet widget, scaled to a standard width.
+- **Videos**: A "Play Video" button opens the video URL in the system's default player.
+- **Custom Emojis**: Fetched from the server and displayed in a reaction picker.
 
 ### 6. Asynchronicity (GLib Threads)
 
-To prevent the UI from freezing during network requests, Tweeta Desktop uses GLib threads:
-- `g_thread_new()`: Spawns a background thread for fetching data.
-- `g_idle_add()`: Schedules a callback to update the UI on the main thread once the data is ready.
-
-`AsyncData` struct is used to pass context and results between the background threads and the main UI thread.
+To prevent the UI from freezing, background tasks use GLib threads:
+- `g_thread_new()`: Spawns a background thread for network requests.
+- `g_idle_add()`: Schedules a callback to update the UI on the main thread.
+- `AsyncData` struct is used to pass context and results between threads.
+- Mutexes are used to track and invalidate superseded asynchronous requests (e.g., during rapid refresh).
 
 ### 7. Infinite Scrolling
 
-Infinite scrolling is implemented for the main timeline and profile feeds:
-- `GtkScrolledWindow`'s `edge-reached` signal is used to detect when the user scrolls to the bottom of a list.
-- `on_scroll_edge_reached()`: Signal handler that triggers a "load more" request using the ID of the last tweet currently in the list.
-- `load_more_tweets()`: Initiates a background thread to fetch older tweets using the `before` API parameter.
-- `append_tweets_to_list()`: Appends newly fetched tweets to the bottom of the list without clearing existing content.
-- Visual feedback is provided by a "Loading more..." label appended to the list during the background request.
+Infinite scrolling is implemented for the main timeline, profile feeds, and notifications:
+- `GtkScrolledWindow`'s `edge-reached` signal detects when the user reaches the bottom.
+- `on_scroll_edge_reached()`: Signal handler that triggers a "load more" request using the ID of the last item.
+- `load_more_tweets()`: Initiates a background thread to fetch older content using the `before` API parameter.
 
 ## API Integration
 
 The application communicates with the Tweetapus API at `https://tweeta.tiago.zip/api`.
 
 Key endpoints used:
-- `/public-tweets`: Fetches the global timeline.
-- `/auth/basic-login`: Authenticates a user.
-- `/tweets/`: Posts new tweets or replies.
-- `/profile/{username}`: Fetches user profile data.
-- `/search/users` and `/search/posts`: Performs search queries.
+- `/public-tweets`: Global timeline.
+- `/auth/basic-login` and `/auth/me`: Authentication and user info.
+- `/tweets/`: Posting tweets, replies, and quoting.
+- `/tweets/{id}/like`, `/tweets/{id}/retweet`, `/tweets/{id}/reaction`: Interactions.
+- `/bookmarks/add`, `/bookmarks/remove`: Bookmarking.
+- `/profile/{username}`: User profiles.
+- `/search/users` and `/search/posts`: Search.
+- `/notifications`: User notifications.
+- `/dm/conversations`: Direct message conversations and messaging.
+- `/emojis`: Custom emoji list.
 
 ## File Structure
 

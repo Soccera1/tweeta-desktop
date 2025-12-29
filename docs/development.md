@@ -20,13 +20,15 @@ This will:
 ### Test Categories
 
 The current test suite covers:
-- `writememorycallback`: Memory buffering for curl responses.
-- `parsetweets`: JSON parsing for tweet lists, including attachments and notes.
+- `parsetweets`: JSON parsing for tweet lists, including attachments, media, and notes.
 - `parselogin`: JSON parsing for authentication responses, including admin status.
-- `constructpayload`: JSON construction for new posts.
-- `session`: Saving, loading, and clearing user sessions.
-- `parseprofile`: JSON parsing for user profile data.
-- `parseusers`: JSON parsing for user lists.
+- `constructpayload`: JSON construction for new posts and DMs.
+- `session`: Saving, loading, and clearing user sessions with XDG path overrides.
+- `parseprofile`: JSON parsing for user profile data and replies.
+- `parseusers`: JSON parsing for user lists in search.
+- `parsenotifications`: JSON parsing for various notification types.
+- `parseconversations` / `parsemessages`: JSON parsing for DM data.
+- `integration`: Basic login flow integration test (requires environment variables).
 
 ## Code Style
 

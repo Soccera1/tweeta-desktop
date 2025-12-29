@@ -34,6 +34,17 @@ The default view shows a list of recent public tweets.
 - Click on a **Username** to view that user's profile.
 - Click the **Reply** button on a tweet to post a reply (requires login).
 
+### Interacting with Tweets
+
+Each tweet has several interaction buttons at the bottom:
+- **Like (♡)**: Click to like a tweet. The icon will change to a filled heart (♥) when liked.
+- **Retweet (↻)**: Click to open a menu with two options:
+    - **Retweet**: Share the tweet directly to your followers.
+    - **Quote**: Open a dialog to add your own comments before sharing.
+- **Reply (↩)**: Open a dialog to reply to the tweet.
+- **Bookmark (☆)**: Save the tweet to your bookmarks for later.
+- **React (😀)**: Open an emoji picker to add a reaction to the tweet. You can choose from standard emojis or custom Tweetapus emojis.
+
 ### Notifications View
 
 Displays your recent interactions:
