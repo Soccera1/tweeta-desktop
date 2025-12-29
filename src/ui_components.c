@@ -484,6 +484,20 @@ create_tweet_widget(struct Tweet *tweet)
 
     if (tweet->note) {
         GtkWidget *note_frame = gtk_frame_new(NULL);
+        GtkStyleContext *frame_context = gtk_widget_get_style_context(note_frame);
+        gtk_style_context_add_class(frame_context, "note-frame");
+        
+        if (tweet->note_severity) {
+            if (g_strcmp0(tweet->note_severity, "danger") == 0) {
+                gtk_style_context_add_class(frame_context, "note-danger");
+            } else if (g_strcmp0(tweet->note_severity, "info") == 0) {
+                gtk_style_context_add_class(frame_context, "note-info");
+            } else {
+                gtk_style_context_add_class(frame_context, "note-warning");
+            }
+        } else {
+            gtk_style_context_add_class(frame_context, "note-warning");
+        }
         
         GtkWidget *note_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
         gtk_container_set_border_width(GTK_CONTAINER(note_box), 10);
@@ -556,8 +570,10 @@ create_tweet_widget(struct Tweet *tweet)
         GtkWidget *note_btn = gtk_button_new_with_label("✎ Note");
         gtk_button_set_relief(GTK_BUTTON(note_btn), GTK_RELIEF_NONE);
         g_object_set_data_full(G_OBJECT(note_btn), "tweet_id", g_strdup(tweet->id), g_free);
-        g_signal_connect(note_btn, "clicked", G_CALLBACK(on_add_note_clicked), NULL);
+        g_signal_connect(note_btn, "clicked", G_CALLBACK(on_note_button_clicked), NULL);
         gtk_box_pack_start(GTK_BOX(button_box), note_btn, FALSE, FALSE, 0);
+    } else {
+        // fprintf(stderr, "[DEBUG] Not an admin, hiding Note button\n");
     }
 
     gtk_box_pack_start(GTK_BOX(box), button_box, FALSE, FALSE, 0);

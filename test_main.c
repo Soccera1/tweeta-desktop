@@ -7,6 +7,8 @@
 #include "json_utils.h"
 #include "session.h"
 #include "network.h"
+#include "actions.h"
+#include "constants.h"
 
 // We need to declare internal functions if they are not in headers but needed for tests.
 // Actually most of them ARE in headers now.
@@ -44,6 +46,28 @@ static void test_parse_tweets_with_note() {
     g_assert_nonnull(t->note);
     g_assert_cmpstr(t->note, ==, "This is false.");
     g_assert_cmpstr(t->note_severity, ==, "warning");
+
+    free_tweets(tweets);
+}
+
+static void test_parse_tweets_with_danger_note() {
+    const char *json_input = "{\"posts\": [{\"id\": \"124\", \"content\": \"Very fake news\", \"author\": {\"name\": \"User\", \"username\": \"u\"}, \"fact_check\": {\"note\": \"Danger!\", \"severity\": \"danger\"}}]}";
+    GList *tweets = parse_tweets(json_input);
+
+    g_assert_nonnull(tweets);
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    g_assert_cmpstr(t->note_severity, ==, "danger");
+
+    free_tweets(tweets);
+}
+
+static void test_parse_tweets_with_info_note() {
+    const char *json_input = "{\"posts\": [{\"id\": \"125\", \"content\": \"Context needed\", \"author\": {\"name\": \"User\", \"username\": \"u\"}, \"fact_check\": {\"note\": \"Some info.\", \"severity\": \"info\"}}]}";
+    GList *tweets = parse_tweets(json_input);
+
+    g_assert_nonnull(tweets);
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    g_assert_cmpstr(t->note_severity, ==, "info");
 
     free_tweets(tweets);
 }
@@ -151,11 +175,12 @@ static void test_session_persistence() {
     g_free(g_current_username);
     g_auth_token = NULL;
     g_current_username = NULL;
+    g_is_admin = FALSE;
 
     // Test Save
     const char *test_token = "test_token_123";
     const char *test_user = "test_user_abc";
-    save_session(test_token, test_user);
+    save_session(test_token, test_user, TRUE);
 
     // Verify file content manually
     gchar *app_dir = g_build_filename(tmp_dir, "tweeta-desktop", NULL);
@@ -167,6 +192,7 @@ static void test_session_persistence() {
     
     g_assert_cmpstr(g_auth_token, ==, test_token);
     g_assert_cmpstr(g_current_username, ==, test_user);
+    g_assert_true(g_is_admin);
 
     // Test Clear
     clear_session();
@@ -177,6 +203,7 @@ static void test_session_persistence() {
     g_free(g_current_username);
     g_auth_token = NULL;
     g_current_username = NULL;
+    g_is_admin = FALSE;
     
     // Clean up temp dir
     gchar *rm_cmd = g_strdup_printf("rm -rf \"%s\"", tmp_dir);
@@ -325,10 +352,42 @@ static void test_parse_messages() {
     free_messages(msgs);
 }
 
+static void test_integration_login() {
+    const gchar *username = g_getenv("USERNAME");
+    const gchar *password = g_getenv("PASSWORD");
+
+    if (!username || !password) {
+        g_test_skip("Skipping integration test: USERNAME and PASSWORD not set");
+        return;
+    }
+
+    // Reset session state
+    g_free(g_auth_token);
+    g_free(g_current_username);
+    g_auth_token = NULL;
+    g_current_username = NULL;
+    g_is_admin = FALSE;
+
+    gboolean success = perform_login(username, password);
+    g_assert_true(success);
+    g_assert_nonnull(g_auth_token);
+    g_assert_cmpstr(g_current_username, ==, username);
+    
+    // Check if admin status was correctly fetched
+    g_print("\n[Integration] Logged in as %s. Admin status: %s\n", g_current_username, g_is_admin ? "TRUE" : "FALSE");
+}
+
 int main(int argc, char** argv) {
+    // Set XDG_CONFIG_HOME early so GLib picks it up for tests that use config dirs
+    gchar *tmp_root = g_dir_make_tmp("tweeta_xdg_XXXXXX", NULL);
+    g_setenv("XDG_CONFIG_HOME", tmp_root, TRUE);
+
     g_test_init(&argc, &argv, NULL);
+    g_test_add_func("/integration/login", test_integration_login);
     g_test_add_func("/parsetweets/basic", test_parse_tweets);
     g_test_add_func("/parsetweets/note", test_parse_tweets_with_note);
+    g_test_add_func("/parsetweets/note_danger", test_parse_tweets_with_danger_note);
+    g_test_add_func("/parsetweets/note_info", test_parse_tweets_with_info_note);
     g_test_add_func("/parsetweets/attachments", test_parse_tweets_with_attachments);
     g_test_add_func("/parselogin/basic", test_parse_login_response);
     g_test_add_func("/constructpayload/basic", test_construct_tweet_payload);
@@ -339,6 +398,15 @@ int main(int argc, char** argv) {
     g_test_add_func("/parsenotifications/basic", test_parse_notifications);
     g_test_add_func("/parseconversations/basic", test_parse_conversations);
     g_test_add_func("/parsemessages/basic", test_parse_messages);
-    return g_test_run();
+    
+    int result = g_test_run();
+    
+    // Cleanup temp root
+    gchar *rm_cmd = g_strdup_printf("rm -rf \"%s\"", tmp_root);
+    system(rm_cmd);
+    g_free(rm_cmd);
+    g_free(tmp_root);
+    
+    return result;
 }
     

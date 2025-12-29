@@ -16,7 +16,11 @@ int main(int argc, char *argv[]) {
     GtkCssProvider *provider = gtk_css_provider_new();
     gtk_css_provider_load_from_data(provider,
         ".unread-notification { background-color: rgba(0, 100, 255, 0.1); }"
-        ".dim-label { opacity: 0.7; font-size: 0.9em; }",
+        ".dim-label { opacity: 0.7; font-size: 0.9em; }"
+        ".note-frame { border-radius: 5px; border: 1px solid #ccc; }"
+        ".note-warning { background-color: rgba(255, 165, 0, 0.1); border-color: orange; }"
+        ".note-danger { background-color: rgba(255, 0, 0, 0.1); border-color: red; }"
+        ".note-info { background-color: rgba(0, 191, 255, 0.1); border-color: deepskyblue; }",
         -1, NULL);
     gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
         GTK_STYLE_PROVIDER(provider),

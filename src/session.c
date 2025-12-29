@@ -19,7 +19,7 @@ get_config_path()
 }
 
 void
-save_session(const gchar *token, const gchar *username)
+save_session(const gchar *token, const gchar *username, gboolean is_admin)
 {
     JsonBuilder *builder = json_builder_new();
     json_builder_begin_object(builder);
@@ -27,6 +27,8 @@ save_session(const gchar *token, const gchar *username)
     json_builder_add_string_value(builder, token);
     json_builder_set_member_name(builder, "username");
     json_builder_add_string_value(builder, username);
+    json_builder_set_member_name(builder, "is_admin");
+    json_builder_add_boolean_value(builder, is_admin);
     json_builder_end_object(builder);
 
     JsonGenerator *gen = json_generator_new();
@@ -72,6 +74,12 @@ load_session()
                 g_free(g_current_username);
                 g_auth_token = g_strdup(json_object_get_string_member(obj, "token"));
                 g_current_username = g_strdup(json_object_get_string_member(obj, "username"));
+                
+                if (json_object_has_member(obj, "is_admin")) {
+                    g_is_admin = json_object_get_boolean_member(obj, "is_admin");
+                } else {
+                    g_is_admin = FALSE;
+                }
             }
         }
         g_object_unref(parser);

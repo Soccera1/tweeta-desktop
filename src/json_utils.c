@@ -64,12 +64,15 @@ parse_tweets(const gchar *json_data)
             }
 
             if (json_object_has_member(post_object, "fact_check") && !json_node_is_null(json_object_get_member(post_object, "fact_check"))) {
-                JsonObject *fact_check = json_object_get_object_member(post_object, "fact_check");
-                if (json_object_has_member(fact_check, "note")) {
-                    tweet->note = g_strdup(json_object_get_string_member(fact_check, "note"));
-                }
-                if (json_object_has_member(fact_check, "severity")) {
-                    tweet->note_severity = g_strdup(json_object_get_string_member(fact_check, "severity"));
+                JsonNode *fc_node = json_object_get_member(post_object, "fact_check");
+                if (JSON_NODE_HOLDS_OBJECT(fc_node)) {
+                    JsonObject *fact_check = json_node_get_object(fc_node);
+                    if (json_object_has_member(fact_check, "note")) {
+                        tweet->note = g_strdup(json_object_get_string_member(fact_check, "note"));
+                    }
+                    if (json_object_has_member(fact_check, "severity")) {
+                        tweet->note_severity = g_strdup(json_object_get_string_member(fact_check, "severity"));
+                    }
                 }
             }
 
@@ -197,12 +200,15 @@ parse_profile_replies(const gchar *json_data)
                 tweet->id = g_strdup(json_object_get_string_member(reply_obj, "id"));
                 
                 if (json_object_has_member(reply_obj, "fact_check") && !json_node_is_null(json_object_get_member(reply_obj, "fact_check"))) {
-                    JsonObject *fact_check = json_object_get_object_member(reply_obj, "fact_check");
-                    if (json_object_has_member(fact_check, "note")) {
-                        tweet->note = g_strdup(json_object_get_string_member(fact_check, "note"));
-                    }
-                    if (json_object_has_member(fact_check, "severity")) {
-                        tweet->note_severity = g_strdup(json_object_get_string_member(fact_check, "severity"));
+                    JsonNode *fc_node = json_object_get_member(reply_obj, "fact_check");
+                    if (JSON_NODE_HOLDS_OBJECT(fc_node)) {
+                        JsonObject *fact_check = json_node_get_object(fc_node);
+                        if (json_object_has_member(fact_check, "note")) {
+                            tweet->note = g_strdup(json_object_get_string_member(fact_check, "note"));
+                        }
+                        if (json_object_has_member(fact_check, "severity")) {
+                            tweet->note_severity = g_strdup(json_object_get_string_member(fact_check, "severity"));
+                        }
                     }
                 }
 
@@ -504,12 +510,65 @@ parse_login_response(const gchar *json_data, gchar **token_out, gchar **username
                     if (is_admin_out) {
                         *is_admin_out = FALSE;
                         if (json_object_has_member(user_obj, "admin")) {
-                             *is_admin_out = json_object_get_boolean_member(user_obj, "admin");
+                            JsonNode *node = json_object_get_member(user_obj, "admin");
+                            if (JSON_NODE_HOLDS_VALUE(node)) {
+                                if (json_node_get_value_type(node) == G_TYPE_BOOLEAN)
+                                    *is_admin_out = json_node_get_boolean(node);
+                                else
+                                    *is_admin_out = (json_node_get_int(node) != 0);
+                            }
                         }
                     }
                     success = TRUE;
                 }
             }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return success;
+}
+
+gboolean
+parse_user_me_response(const gchar *json_data, gboolean *is_admin_out)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    gboolean success = FALSE;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        
+        if (json_object_has_member(obj, "user")) {
+            JsonObject *user_obj = json_object_get_object_member(obj, "user");
+            if (is_admin_out) {
+                *is_admin_out = FALSE;
+                
+                if (json_object_has_member(user_obj, "admin")) {
+                    JsonNode *node = json_object_get_member(user_obj, "admin");
+                    if (JSON_NODE_HOLDS_VALUE(node)) {
+                        if (json_node_get_value_type(node) == G_TYPE_BOOLEAN)
+                            *is_admin_out = json_node_get_boolean(node);
+                        else
+                            *is_admin_out = (json_node_get_int(node) != 0);
+                    }
+                }
+                
+                if (!(*is_admin_out) && json_object_has_member(user_obj, "superadmin")) {
+                    JsonNode *node = json_object_get_member(user_obj, "superadmin");
+                    if (JSON_NODE_HOLDS_VALUE(node)) {
+                        if (json_node_get_value_type(node) == G_TYPE_BOOLEAN)
+                            *is_admin_out = json_node_get_boolean(node);
+                        else
+                            *is_admin_out = (json_node_get_int(node) != 0);
+                    }
+                }
+            }
+            success = TRUE;
         }
     } else {
         g_error_free(error);

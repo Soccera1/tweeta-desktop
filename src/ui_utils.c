@@ -15,7 +15,9 @@ set_image_pixbuf(gpointer data)
     }
 
     g_object_unref(pixbuf);
-    g_object_unref(image);
+    if (G_IS_OBJECT(image)) {
+        g_object_unref(image);
+    }
     g_free(data);
     return G_SOURCE_REMOVE;
 }
@@ -40,7 +42,7 @@ fetch_avatar_thread(gpointer data)
         if (pixbuf) {
             gpointer *params = g_new(gpointer, 2);
             params[0] = pixbuf; // Already has ref from creation
-            params[1] = g_object_ref(avatar_data->image);
+            params[1] = G_IS_OBJECT(avatar_data->image) ? g_object_ref(avatar_data->image) : NULL;
             g_idle_add(set_image_pixbuf, params);
         }
         g_object_unref(stream);

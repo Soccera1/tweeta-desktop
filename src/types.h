@@ -124,6 +124,7 @@ struct QuoteContext {
 struct NoteContext {
     GtkWidget *text_view;
     gchar *tweet_id;
+    gchar *severity;
 };
 
 struct InteractionData {

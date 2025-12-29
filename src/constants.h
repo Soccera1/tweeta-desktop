@@ -7,6 +7,7 @@
 #define MEDIA_SIZE 400
 #define PUBLIC_TWEETS_URL API_BASE_URL "/public-tweets"
 #define LOGIN_URL API_BASE_URL "/auth/basic-login"
+#define AUTH_ME_URL API_BASE_URL "/auth/me"
 #define POST_TWEET_URL API_BASE_URL "/tweets/"
 #define TWEET_DETAILS_URL API_BASE_URL "/tweets/%s"
 #define SEARCH_USERS_URL API_BASE_URL "/search/users"

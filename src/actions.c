@@ -76,7 +76,15 @@ gboolean perform_login(const gchar *username, const gchar *password)
             g_auth_token = token;
             g_free(g_current_username);
             g_current_username = uname;
-            save_session(g_auth_token, g_current_username);
+            
+            // The basic-login endpoint doesn't return admin status, so we fetch /auth/me
+            struct MemoryStruct me_chunk;
+            if (fetch_url(AUTH_ME_URL, &me_chunk, NULL, "GET")) {
+                parse_user_me_response(me_chunk.memory, &g_is_admin);
+                free(me_chunk.memory);
+            }
+
+            save_session(g_auth_token, g_current_username, g_is_admin);
             success = TRUE;
         }
         free(chunk.memory);
@@ -1251,7 +1259,7 @@ GList* fetch_emojis(void)
     return emojis;
 }
 
-static gboolean perform_add_note(const gchar *tweet_id, const gchar *note)
+static gboolean perform_add_note(const gchar *tweet_id, const gchar *note, const gchar *severity)
 {
     struct MemoryStruct chunk;
     gboolean success = FALSE;
@@ -1262,7 +1270,7 @@ static gboolean perform_add_note(const gchar *tweet_id, const gchar *note)
     json_builder_set_member_name(builder, "note");
     json_builder_add_string_value(builder, note);
     json_builder_set_member_name(builder, "severity");
-    json_builder_add_string_value(builder, "warning"); // Default severity
+    json_builder_add_string_value(builder, severity ? severity : "warning");
     json_builder_end_object(builder);
 
     JsonGenerator *gen = json_generator_new();
@@ -1292,7 +1300,7 @@ static void on_note_response(GtkDialog *dialog, gint response_id, gpointer user_
         gchar *note = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
 
         if (note && strlen(note) > 0) {
-            if (perform_add_note(ctx->tweet_id, note)) {
+            if (perform_add_note(ctx->tweet_id, note, ctx->severity)) {
                 // Refresh to show the new note
                 start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
             } else {
@@ -1309,31 +1317,34 @@ static void on_note_response(GtkDialog *dialog, gint response_id, gpointer user_
     }
 
     g_free(ctx->tweet_id);
+    g_free(ctx->severity);
     g_free(ctx);
     gtk_widget_destroy(GTK_WIDGET(dialog));
 }
 
-void on_add_note_clicked(GtkWidget *widget, gpointer user_data)
+static void open_add_note_dialog(GtkWidget *parent_widget, const gchar *tweet_id, const gchar *severity)
 {
-    (void)user_data;
-    if (!g_auth_token) return;
-
-    const gchar *tweet_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
-    
-    GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+    GtkWidget *toplevel = gtk_widget_get_toplevel(parent_widget);
     GtkWindow *window = GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL;
 
-    GtkWidget *dialog = gtk_dialog_new_with_buttons("Add Note",
+    gchar *title = g_strdup_printf("Add %s Note", severity);
+    // Capitalize first letter
+    if (title[4] >= 'a' && title[4] <= 'z') title[4] -= 32;
+
+    GtkWidget *dialog = gtk_dialog_new_with_buttons(title,
                                                     window,
                                                     GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
                                                     "_Cancel", GTK_RESPONSE_CANCEL,
                                                     "_Add Note", GTK_RESPONSE_ACCEPT,
                                                     NULL);
+    g_free(title);
 
     GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
     gtk_container_set_border_width(GTK_CONTAINER(content_area), 10);
 
-    GtkWidget *label = gtk_label_new("Enter public note/fact check:");
+    gchar *label_text = g_strdup_printf("Enter %s note/fact check:", severity);
+    GtkWidget *label = gtk_label_new(label_text);
+    g_free(label_text);
     gtk_widget_set_halign(label, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(content_area), label, FALSE, FALSE, 5);
 
@@ -1345,7 +1356,46 @@ void on_add_note_clicked(GtkWidget *widget, gpointer user_data)
     struct NoteContext *ctx = g_new(struct NoteContext, 1);
     ctx->text_view = text_view;
     ctx->tweet_id = g_strdup(tweet_id);
+    ctx->severity = g_strdup(severity);
 
     gtk_widget_show_all(dialog);
     g_signal_connect(dialog, "response", G_CALLBACK(on_note_response), ctx);
 }
+
+static void on_note_menu_item_activated(GtkMenuItem *menuitem, gpointer user_data)
+{
+    const gchar *severity = (const gchar *)user_data;
+    GtkWidget *btn = g_object_get_data(G_OBJECT(menuitem), "origin_button");
+    const gchar *tweet_id = g_object_get_data(G_OBJECT(btn), "tweet_id");
+    
+    open_add_note_dialog(btn, tweet_id, severity);
+}
+
+void on_note_button_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)user_data;
+    if (!g_auth_token) return;
+
+    GtkWidget *menu = gtk_menu_new();
+
+    const struct {
+        const gchar *label;
+        const gchar *severity;
+    } options[] = {
+        {"Info Note (Blue)", "info"},
+        {"Warning Note (Orange)", "warning"},
+        {"Danger Note (Red)", "danger"},
+        {NULL, NULL}
+    };
+
+    for (int i = 0; options[i].label != NULL; i++) {
+        GtkWidget *item = gtk_menu_item_new_with_label(options[i].label);
+        g_object_set_data(G_OBJECT(item), "origin_button", widget);
+        g_signal_connect(item, "activate", G_CALLBACK(on_note_menu_item_activated), (gpointer)options[i].severity);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+    }
+
+    gtk_widget_show_all(menu);
+    gtk_menu_popup_at_widget(GTK_MENU(menu), widget, GDK_GRAVITY_SOUTH_WEST, GDK_GRAVITY_NORTH_WEST, NULL);
+}
+
