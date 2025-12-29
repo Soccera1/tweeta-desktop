@@ -21,7 +21,8 @@ void on_notifications_clicked(GtkWidget *widget, gpointer user_data);
 void on_messages_clicked(GtkWidget *widget, gpointer user_data);
 void on_mark_all_read_clicked(GtkWidget *widget, gpointer user_data);
 void on_compose_clicked(GtkWidget *widget, gpointer window);
-void on_refresh_clicked(GtkWidget *widget, gpointer user_data);
+void on_add_note_clicked(GtkWidget *widget, gpointer user_data);
+void update_login_ui();
 void on_login_clicked(GtkWidget *widget, gpointer window);
 void on_scroll_edge_reached(GtkScrolledWindow *scrolled_window, GtkPositionType pos, gpointer user_data);
 

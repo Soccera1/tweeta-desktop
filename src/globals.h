@@ -5,6 +5,7 @@
 
 extern gchar *g_auth_token;
 extern gchar *g_current_username;
+extern gboolean g_is_admin;
 extern GtkWidget *g_login_button;
 extern GtkWidget *g_compose_button;
 extern GtkWidget *g_user_label;

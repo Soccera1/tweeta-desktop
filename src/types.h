@@ -17,6 +17,8 @@ struct Tweet {
   gchar *author_username;
   gchar *author_avatar;
   gchar *id;
+  gchar *note;
+  gchar *note_severity;
   GList *attachments;
   gboolean liked;
   gboolean retweeted;
@@ -117,6 +119,11 @@ struct ReplyContext {
 struct QuoteContext {
     GtkWidget *text_view;
     gchar *quote_id;
+};
+
+struct NoteContext {
+    GtkWidget *text_view;
+    gchar *tweet_id;
 };
 
 struct InteractionData {

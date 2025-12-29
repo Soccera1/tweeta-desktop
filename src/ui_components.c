@@ -482,6 +482,30 @@ create_tweet_widget(struct Tweet *tweet)
     gtk_box_pack_start(GTK_BOX(box), author_btn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(box), content_label, FALSE, FALSE, 0);
 
+    if (tweet->note) {
+        GtkWidget *note_frame = gtk_frame_new(NULL);
+        
+        GtkWidget *note_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+        gtk_container_set_border_width(GTK_CONTAINER(note_box), 10);
+        
+        GtkWidget *note_header = gtk_label_new("⚠ Note");
+        PangoAttrList *note_attrs = pango_attr_list_new();
+        pango_attr_list_insert(note_attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+        gtk_label_set_attributes(GTK_LABEL(note_header), note_attrs);
+        pango_attr_list_unref(note_attrs);
+        gtk_widget_set_halign(note_header, GTK_ALIGN_START);
+
+        GtkWidget *note_label = gtk_label_new(tweet->note);
+        gtk_label_set_xalign(GTK_LABEL(note_label), 0.0);
+        gtk_label_set_line_wrap(GTK_LABEL(note_label), TRUE);
+
+        gtk_box_pack_start(GTK_BOX(note_box), note_header, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(note_box), note_label, FALSE, FALSE, 0);
+        gtk_container_add(GTK_CONTAINER(note_frame), note_box);
+        
+        gtk_box_pack_start(GTK_BOX(box), note_frame, FALSE, FALSE, 5);
+    }
+
     add_attachments_to_box(GTK_BOX(box), tweet->attachments);
 
     GtkWidget *button_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
@@ -527,6 +551,14 @@ create_tweet_widget(struct Tweet *tweet)
     gtk_box_pack_start(GTK_BOX(button_box), reply_btn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(button_box), bookmark_btn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(button_box), reaction_btn, FALSE, FALSE, 0);
+
+    if (g_is_admin) {
+        GtkWidget *note_btn = gtk_button_new_with_label("✎ Note");
+        gtk_button_set_relief(GTK_BUTTON(note_btn), GTK_RELIEF_NONE);
+        g_object_set_data_full(G_OBJECT(note_btn), "tweet_id", g_strdup(tweet->id), g_free);
+        g_signal_connect(note_btn, "clicked", G_CALLBACK(on_add_note_clicked), NULL);
+        gtk_box_pack_start(GTK_BOX(button_box), note_btn, FALSE, FALSE, 0);
+    }
 
     gtk_box_pack_start(GTK_BOX(box), button_box, FALSE, FALSE, 0);
 

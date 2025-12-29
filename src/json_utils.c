@@ -63,6 +63,16 @@ parse_tweets(const gchar *json_data)
                 tweet->id = NULL;
             }
 
+            if (json_object_has_member(post_object, "fact_check") && !json_node_is_null(json_object_get_member(post_object, "fact_check"))) {
+                JsonObject *fact_check = json_object_get_object_member(post_object, "fact_check");
+                if (json_object_has_member(fact_check, "note")) {
+                    tweet->note = g_strdup(json_object_get_string_member(fact_check, "note"));
+                }
+                if (json_object_has_member(fact_check, "severity")) {
+                    tweet->note_severity = g_strdup(json_object_get_string_member(fact_check, "severity"));
+                }
+            }
+
             tweet->attachments = parse_attachments(post_object);
 
             tweet->liked = FALSE;
@@ -185,6 +195,17 @@ parse_profile_replies(const gchar *json_data)
                     tweet->author_avatar = g_strdup(json_object_get_string_member(author_obj, "avatar"));
                 }
                 tweet->id = g_strdup(json_object_get_string_member(reply_obj, "id"));
+                
+                if (json_object_has_member(reply_obj, "fact_check") && !json_node_is_null(json_object_get_member(reply_obj, "fact_check"))) {
+                    JsonObject *fact_check = json_object_get_object_member(reply_obj, "fact_check");
+                    if (json_object_has_member(fact_check, "note")) {
+                        tweet->note = g_strdup(json_object_get_string_member(fact_check, "note"));
+                    }
+                    if (json_object_has_member(fact_check, "severity")) {
+                        tweet->note_severity = g_strdup(json_object_get_string_member(fact_check, "severity"));
+                    }
+                }
+
                 tweet->attachments = parse_attachments(reply_obj);
 
                 tweet->liked = FALSE;
@@ -458,7 +479,7 @@ construct_dm_payload(const gchar *content)
 }
 
 gboolean
-parse_login_response(const gchar *json_data, gchar **token_out, gchar **username_out)
+parse_login_response(const gchar *json_data, gchar **token_out, gchar **username_out, gboolean *is_admin_out)
 {
     JsonParser *parser = json_parser_new();
     GError *error = NULL;
@@ -479,6 +500,13 @@ parse_login_response(const gchar *json_data, gchar **token_out, gchar **username
                 if (token && uname) {
                     *token_out = g_strdup(token);
                     *username_out = g_strdup(uname);
+                    
+                    if (is_admin_out) {
+                        *is_admin_out = FALSE;
+                        if (json_object_has_member(user_obj, "admin")) {
+                             *is_admin_out = json_object_get_boolean_member(user_obj, "admin");
+                        }
+                    }
                     success = TRUE;
                 }
             }
@@ -538,6 +566,8 @@ free_tweet(gpointer data)
     g_free(tweet->author_username);
     g_free(tweet->author_avatar);
     g_free(tweet->id);
+    g_free(tweet->note);
+    g_free(tweet->note_severity);
     if (tweet->attachments) {
         g_list_free_full(tweet->attachments, free_attachment);
     }

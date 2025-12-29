@@ -81,3 +81,8 @@ View and participate in private conversations:
 ## Session Persistence
 
 Tweeta Desktop automatically saves your session when you log in. Your credentials (auth token and username) are stored in `~/.config/tweeta-desktop/session.json`. When you start the application again, it will attempt to log you in automatically. Logging out will delete this file.
+
+## Admin Features
+
+If you are logged in as a site administrator:
+- **Add Note**: You will see a "Note" button on tweets. Click it to add a public "Note" or fact check to the post. This note will be visible to all users.

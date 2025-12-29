@@ -11,7 +11,7 @@ GList* parse_users(const gchar *json_data);
 GList* parse_notifications(const gchar *json_data);
 GList* parse_conversations(const gchar *json_data);
 GList* parse_messages(const gchar *json_data);
-gboolean parse_login_response(const gchar *json_data, gchar **token_out, gchar **username_out);
+gboolean parse_login_response(const gchar *json_data, gchar **token_out, gchar **username_out, gboolean *is_admin_out);
 gchar* construct_tweet_payload(const gchar *content, const gchar *reply_to_id);
 gchar* construct_dm_payload(const gchar *content);
 

@@ -71,7 +71,7 @@ gboolean perform_login(const gchar *username, const gchar *password)
     if (fetch_url(LOGIN_URL, &chunk, post_data, "POST")) {
         gchar *token = NULL;
         gchar *uname = NULL;
-        if (parse_login_response(chunk.memory, &token, &uname)) {
+        if (parse_login_response(chunk.memory, &token, &uname, &g_is_admin)) {
             g_free(g_auth_token);
             g_auth_token = token;
             g_free(g_current_username);
@@ -1249,4 +1249,103 @@ GList* fetch_emojis(void)
     }
 
     return emojis;
+}
+
+static gboolean perform_add_note(const gchar *tweet_id, const gchar *note)
+{
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+    gchar *url = g_strdup_printf("%s/admin/fact-check/%s", API_BASE_URL, tweet_id);
+
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "note");
+    json_builder_add_string_value(builder, note);
+    json_builder_set_member_name(builder, "severity");
+    json_builder_add_string_value(builder, "warning"); // Default severity
+    json_builder_end_object(builder);
+
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, json_builder_get_root(builder));
+    gchar *post_data = json_generator_to_data(gen, NULL);
+
+    if (fetch_url(url, &chunk, post_data, "POST")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(post_data);
+    g_object_unref(gen);
+    g_object_unref(builder);
+    g_free(url);
+    return success;
+}
+
+static void on_note_response(GtkDialog *dialog, gint response_id, gpointer user_data)
+{
+    struct NoteContext *ctx = (struct NoteContext *)user_data;
+
+    if (response_id == GTK_RESPONSE_ACCEPT) {
+        GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(ctx->text_view));
+        GtkTextIter start, end;
+        gtk_text_buffer_get_bounds(buffer, &start, &end);
+        gchar *note = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+
+        if (note && strlen(note) > 0) {
+            if (perform_add_note(ctx->tweet_id, note)) {
+                // Refresh to show the new note
+                start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+            } else {
+                GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
+                                         GTK_DIALOG_DESTROY_WITH_PARENT,
+                                         GTK_MESSAGE_ERROR,
+                                         GTK_BUTTONS_CLOSE,
+                                         "Failed to add note.");
+                gtk_dialog_run(GTK_DIALOG(error_dialog));
+                gtk_widget_destroy(error_dialog);
+            }
+        }
+        g_free(note);
+    }
+
+    g_free(ctx->tweet_id);
+    g_free(ctx);
+    gtk_widget_destroy(GTK_WIDGET(dialog));
+}
+
+void on_add_note_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)user_data;
+    if (!g_auth_token) return;
+
+    const gchar *tweet_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
+    
+    GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+    GtkWindow *window = GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL;
+
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Add Note",
+                                                    window,
+                                                    GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                    "_Cancel", GTK_RESPONSE_CANCEL,
+                                                    "_Add Note", GTK_RESPONSE_ACCEPT,
+                                                    NULL);
+
+    GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    gtk_container_set_border_width(GTK_CONTAINER(content_area), 10);
+
+    GtkWidget *label = gtk_label_new("Enter public note/fact check:");
+    gtk_widget_set_halign(label, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(content_area), label, FALSE, FALSE, 5);
+
+    GtkWidget *text_view = gtk_text_view_new();
+    gtk_widget_set_size_request(text_view, 300, 100);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(text_view), GTK_WRAP_WORD_CHAR);
+    gtk_box_pack_start(GTK_BOX(content_area), text_view, TRUE, TRUE, 0);
+
+    struct NoteContext *ctx = g_new(struct NoteContext, 1);
+    ctx->text_view = text_view;
+    ctx->tweet_id = g_strdup(tweet_id);
+
+    gtk_widget_show_all(dialog);
+    g_signal_connect(dialog, "response", G_CALLBACK(on_note_response), ctx);
 }

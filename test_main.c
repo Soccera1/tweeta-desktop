@@ -34,16 +34,52 @@ static void test_parse_tweets() {
     free_tweets(tweets);
 }
 
+static void test_parse_tweets_with_note() {
+    const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"Fake news\", \"author\": {\"name\": \"User\", \"username\": \"u\"}, \"fact_check\": {\"note\": \"This is false.\", \"severity\": \"warning\"}}]}";
+    GList *tweets = parse_tweets(json_input);
+
+    g_assert_nonnull(tweets);
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    g_assert_cmpstr(t->content, ==, "Fake news");
+    g_assert_nonnull(t->note);
+    g_assert_cmpstr(t->note, ==, "This is false.");
+    g_assert_cmpstr(t->note_severity, ==, "warning");
+
+    free_tweets(tweets);
+}
+
 static void test_parse_login_response() {
     gchar *token = NULL;
     gchar *username = NULL;
+    gboolean is_admin = FALSE;
 
     // Test Valid
-    const char *valid_json = "{\"token\": \"abc123token\", \"user\": {\"id\": \"1\", \"username\": \"validuser\"}}";
-    gboolean success = parse_login_response(valid_json, &token, &username);
+    const char *valid_json = "{\"token\": \"abc123token\", \"user\": {\"id\": \"1\", \"username\": \"validuser\", \"admin\": true}}";
+    gboolean success = parse_login_response(valid_json, &token, &username, &is_admin);
     g_assert_true(success);
     g_assert_cmpstr(token, ==, "abc123token");
     g_assert_cmpstr(username, ==, "validuser");
+    g_assert_true(is_admin);
+    g_free(token);
+    g_free(username);
+    token = NULL;
+    username = NULL;
+
+    // Test Valid Non-Admin
+    const char *valid_user = "{\"token\": \"abc123token\", \"user\": {\"id\": \"1\", \"username\": \"validuser\", \"admin\": false}}";
+    success = parse_login_response(valid_user, &token, &username, &is_admin);
+    g_assert_true(success);
+    g_assert_false(is_admin);
+    g_free(token);
+    g_free(username);
+    token = NULL;
+    username = NULL;
+
+    // Test Valid Default Admin (missing field)
+    const char *default_user = "{\"token\": \"abc123token\", \"user\": {\"id\": \"1\", \"username\": \"validuser\"}}";
+    success = parse_login_response(default_user, &token, &username, &is_admin);
+    g_assert_true(success);
+    g_assert_false(is_admin);
     g_free(token);
     g_free(username);
     token = NULL;
@@ -51,19 +87,19 @@ static void test_parse_login_response() {
 
     // Test Missing Token
     const char *missing_token = "{\"user\": {\"username\": \"validuser\"}}";
-    success = parse_login_response(missing_token, &token, &username);
+    success = parse_login_response(missing_token, &token, &username, &is_admin);
     g_assert_false(success);
     g_assert_null(token);
     g_assert_null(username);
 
     // Test Missing User
     const char *missing_user = "{\"token\": \"abc123token\"}";
-    success = parse_login_response(missing_user, &token, &username);
+    success = parse_login_response(missing_user, &token, &username, &is_admin);
     g_assert_false(success);
 
     // Test Malformed JSON
     const char *malformed = "{ token: invalid }";
-    success = parse_login_response(malformed, &token, &username);
+    success = parse_login_response(malformed, &token, &username, &is_admin);
     g_assert_false(success);
 }
 
@@ -292,6 +328,7 @@ static void test_parse_messages() {
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     g_test_add_func("/parsetweets/basic", test_parse_tweets);
+    g_test_add_func("/parsetweets/note", test_parse_tweets_with_note);
     g_test_add_func("/parsetweets/attachments", test_parse_tweets_with_attachments);
     g_test_add_func("/parselogin/basic", test_parse_login_response);
     g_test_add_func("/constructpayload/basic", test_construct_tweet_payload);

@@ -21,8 +21,8 @@ This will:
 
 The current test suite covers:
 - `writememorycallback`: Memory buffering for curl responses.
-- `parsetweets`: JSON parsing for tweet lists.
-- `parselogin`: JSON parsing for authentication responses.
+- `parsetweets`: JSON parsing for tweet lists, including attachments and notes.
+- `parselogin`: JSON parsing for authentication responses, including admin status.
 - `constructpayload`: JSON construction for new posts.
 - `session`: Saving, loading, and clearing user sessions.
 - `parseprofile`: JSON parsing for user profile data.
