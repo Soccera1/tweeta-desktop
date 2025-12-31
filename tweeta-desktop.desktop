@@ -5,4 +5,4 @@ Icon=tweeta-desktop
 Type=Application
 Terminal=false
 Comment=A GTK3 client for Tweetapus, written in C.
-Categories=Network;Social;
+Categories=Network;Chat;InstantMessaging;
