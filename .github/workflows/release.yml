@@ -27,11 +27,20 @@ jobs:
       - name: Create AppDir
         run: |
           mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/lib
           mkdir -p AppDir/usr/share/applications
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
           
           # Copy binary
           cp tweeta-desktop AppDir/usr/bin/
+          
+          # Bundle dependencies manually
+          # We exclude core system libs that should come from the host (libc, libpthread, libdl, libm, librt, libX11, etc.)
+          # but include project-specific ones like libcurl, libjson-glib, and GTK stack.
+          LIBS=$(ldd tweeta-desktop | grep "=> /" | awk '{print $3}' | grep -vE "libc\.so|libpthread\.so|libdl\.so|libm\.so|librt\.so|libX11\.so|libxcb\.so|libGL\.so")
+          for lib in $LIBS; do
+            cp "$lib" AppDir/usr/lib/
+          done
           
           # Copy desktop file and icon to both usr and root of AppDir
           cp tweeta-desktop.desktop AppDir/usr/share/applications/
@@ -39,10 +48,11 @@ jobs:
           cp logo.png AppDir/usr/share/icons/hicolor/256x256/apps/tweeta-desktop.png
           cp logo.png AppDir/tweeta-desktop.png
           
-          # Create AppRun script
+          # Create AppRun script with LD_LIBRARY_PATH
           cat <<EOF > AppDir/AppRun
           #!/bin/sh
           HERE=\$(dirname "\$(readlink -f "\$0")")
+          export LD_LIBRARY_PATH="\$HERE/usr/lib:\$LD_LIBRARY_PATH"
           export PATH="\$HERE/usr/bin:\$PATH"
           exec tweeta-desktop "\$@"
           EOF
