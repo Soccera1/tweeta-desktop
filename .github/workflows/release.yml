@@ -199,6 +199,10 @@ jobs:
           # Insert the patch code at the beginning of main()
           sed -i "s/GtkWidget \*window;/GtkWidget *window;\\n\\n$PATCH_CODE/" src/main.c
 
+          # Patch Makefile to use gcc instead of c99
+          # POSIX make may default CC to c99 if .POSIX is present and CC is not forced
+          sed -i 's/CC      ?= gcc/CC      = gcc/' Makefile
+
       - name: Build project
         shell: msys2 {0}
         run: |
