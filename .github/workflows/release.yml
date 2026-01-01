@@ -218,7 +218,7 @@ jobs:
           cp logo.png dist/
           
           # Create Icon
-          magick convert logo.png -define icon:auto-resize=256,128,64,48,32,16 dist/logo.ico
+          magick logo.png -define icon:auto-resize=256,128,64,48,32,16 dist/logo.ico
           
           # Collect all required DLLs using ldd
           echo "Collecting DLLs..."
@@ -265,18 +265,24 @@ jobs:
           
           # Create SFX (Self-Extracting Archive)
           # We use 7z with a config to run the app after extraction
-          cat <<EOF > sfx_config.txt
-          ;!@Install@!UTF-8!
-          RunProgram="tweeta-desktop.exe"
-          ;!@InstallEnd@!
-          EOF
+          echo ';!@Install@!UTF-8!' > sfx_config.txt
+          echo 'RunProgram="tweeta-desktop.exe"' >> sfx_config.txt
+          echo ';!@InstallEnd@!' >> sfx_config.txt
+          
           7z a -t7z archive.7z ./dist/*
-          # Look for the SFX module in standard p7zip locations
+          
+          # Look for the SFX module
+          # In MSYS2 p7zip, it's often in /usr/lib/p7zip/7zS.sfx or similar
           SFX_MODULE=""
-          [ -f /usr/lib/p7zip/7zS.sfx ] && SFX_MODULE=/usr/lib/p7zip/7zS.sfx
-          [ -f /mingw64/lib/p7zip/7zS.sfx ] && SFX_MODULE=/mingw64/lib/p7zip/7zS.sfx
-          if [ -n "\$SFX_MODULE" ]; then
-            cat "\$SFX_MODULE" sfx_config.txt archive.7z > Tweeta_Desktop-portable-x64.exe
+          for path in /usr/lib/p7zip/7zS.sfx /mingw64/lib/p7zip/7zS.sfx /usr/share/p7zip/7zS.sfx; do
+            if [ -f "$path" ]; then
+              SFX_MODULE="$path"
+              break
+            fi
+          done
+
+          if [ -n "$SFX_MODULE" ]; then
+            cat "$SFX_MODULE" sfx_config.txt archive.7z > Tweeta_Desktop-portable-x64.exe
           else
             # Fallback to simple SFX if specialized module not found
             7z a -sfx Tweeta_Desktop-portable-x64.exe ./dist/*
