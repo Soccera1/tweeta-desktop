@@ -33,11 +33,17 @@ void update_login_ui()
         gtk_label_set_text(GTK_LABEL(g_user_label), label_text);
         gtk_button_set_label(GTK_BUTTON(g_login_button), "Logout");
         gtk_widget_set_sensitive(g_compose_button, TRUE);
+        if (g_is_admin) {
+            gtk_widget_show(g_admin_button);
+        } else {
+            gtk_widget_hide(g_admin_button);
+        }
         g_free(label_text);
     } else {
         gtk_label_set_text(GTK_LABEL(g_user_label), "Not logged in");
         gtk_button_set_label(GTK_BUTTON(g_login_button), "Login");
         gtk_widget_set_sensitive(g_compose_button, FALSE);
+        gtk_widget_hide(g_admin_button);
     }
 }
 
@@ -731,6 +737,8 @@ void on_refresh_clicked(GtkWidget *widget, gpointer user_data)
         if (conv_id) {
             start_loading_messages(GTK_LIST_BOX(g_dm_messages_list), conv_id);
         }
+    } else if (g_strcmp0(current_view, "admin") == 0) {
+        start_loading_admin_stats();
     } else {
         start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
     }
@@ -1035,6 +1043,53 @@ void on_settings_clicked(GtkWidget *widget, gpointer user_data)
     (void)user_data;
     gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "settings");
     gtk_widget_show(g_back_button);
+}
+
+static gboolean
+on_admin_stats_loaded(gpointer data)
+{
+    gchar *stats_text = (gchar *)data;
+    if (stats_text) {
+        gtk_label_set_text(GTK_LABEL(g_admin_stats_label), stats_text);
+        g_free(stats_text);
+    } else {
+        gtk_label_set_text(GTK_LABEL(g_admin_stats_label), "Failed to load admin statistics.");
+    }
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_stats_thread(gpointer data)
+{
+    (void)data;
+    struct MemoryStruct chunk;
+    gchar *stats_text = NULL;
+
+    if (fetch_url(ADMIN_STATS_URL, &chunk, NULL, "GET")) {
+        stats_text = parse_admin_stats(chunk.memory);
+        free(chunk.memory);
+    }
+
+    g_idle_add(on_admin_stats_loaded, stats_text);
+    return NULL;
+}
+
+void start_loading_admin_stats()
+{
+    if (!g_auth_token || !g_is_admin) return;
+    gtk_label_set_text(GTK_LABEL(g_admin_stats_label), "Loading admin statistics...");
+    g_thread_new("admin-stats-loader", fetch_admin_stats_thread, NULL);
+}
+
+void on_admin_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+    if (!g_is_admin) return;
+
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "admin");
+    gtk_widget_show(g_back_button);
+    start_loading_admin_stats();
 }
 
 static gboolean on_users_loaded(gpointer data)

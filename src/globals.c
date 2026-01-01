@@ -15,6 +15,10 @@ GtkWidget *g_dm_entry = NULL;
 GtkWidget *g_conversation_list = NULL;
 GtkWidget *g_stack = NULL;
 GtkWidget *g_back_button = NULL;
+GtkWidget *g_admin_button = NULL;
+
+// Admin widgets
+GtkWidget *g_admin_stats_label = NULL;
 
 // Search widgets
 GtkWidget *g_search_entry = NULL;

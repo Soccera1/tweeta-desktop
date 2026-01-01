@@ -18,6 +18,10 @@ extern GtkWidget *g_dm_entry;
 extern GtkWidget *g_conversation_list;
 extern GtkWidget *g_stack;
 extern GtkWidget *g_back_button;
+extern GtkWidget *g_admin_button;
+
+// Admin widgets
+extern GtkWidget *g_admin_stats_label;
 
 // Search widgets
 extern GtkWidget *g_search_entry;

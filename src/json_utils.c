@@ -615,6 +615,49 @@ construct_dm_payload(const gchar *content)
     return post_data;
 }
 
+gchar*
+parse_admin_stats(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    gchar *result = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+
+        if (json_object_has_member(obj, "userStats") && json_object_has_member(obj, "postStats")) {
+            JsonObject *user_stats = json_object_get_object_member(obj, "userStats");
+            JsonObject *post_stats = json_object_get_object_member(obj, "postStats");
+            
+            result = g_strdup_printf(
+                "User Statistics:\n"
+                "  Total Users: %" G_GINT64_FORMAT "\n"
+                "  Suspended Users: %" G_GINT64_FORMAT "\n"
+                "  Admins: %" G_GINT64_FORMAT "\n"
+                "  Verified Users: %" G_GINT64_FORMAT "\n\n"
+                "Post Statistics:\n"
+                "  Total Posts: %" G_GINT64_FORMAT "\n"
+                "  Total Likes: %" G_GINT64_FORMAT "\n"
+                "  Total Retweets: %" G_GINT64_FORMAT "",
+                json_object_get_int_member(user_stats, "total"),
+                json_object_get_int_member(user_stats, "suspended"),
+                json_object_get_int_member(user_stats, "admins"),
+                json_object_get_int_member(user_stats, "verified"),
+                json_object_get_int_member(post_stats, "totalPosts"),
+                json_object_get_int_member(post_stats, "totalLikes"),
+                json_object_get_int_member(post_stats, "totalRetweets")
+            );
+        }
+    } else {
+        g_error_free(error);
+    }
+
+    g_object_unref(parser);
+    return result;
+}
+
 gboolean
 parse_login_response(const gchar *json_data, gchar **token_out, gchar **username_out, gboolean *is_admin_out)
 {

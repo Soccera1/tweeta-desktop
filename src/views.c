@@ -218,6 +218,32 @@ create_settings_view()
 }
 
 GtkWidget*
+create_admin_view()
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(box), 20);
+
+    GtkWidget *title = gtk_label_new("Admin Panel");
+    PangoAttrList *attrs = pango_attr_list_new();
+    pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+    pango_attr_list_insert(attrs, pango_attr_scale_new(1.5));
+    gtk_label_set_attributes(GTK_LABEL(title), attrs);
+    pango_attr_list_unref(attrs);
+    gtk_box_pack_start(GTK_BOX(box), title, FALSE, FALSE, 10);
+
+    g_admin_stats_label = gtk_label_new("Loading admin statistics...");
+    gtk_label_set_justify(GTK_LABEL(g_admin_stats_label), GTK_JUSTIFY_LEFT);
+    gtk_label_set_xalign(GTK_LABEL(g_admin_stats_label), 0.0);
+    gtk_box_pack_start(GTK_BOX(box), g_admin_stats_label, FALSE, FALSE, 10);
+
+    GtkWidget *refresh_btn = gtk_button_new_with_label("Refresh Statistics");
+    g_signal_connect(refresh_btn, "clicked", G_CALLBACK(on_refresh_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(box), refresh_btn, FALSE, FALSE, 0);
+
+    return box;
+}
+
+GtkWidget*
 create_window()
 {
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -269,6 +295,13 @@ create_window()
     g_signal_connect(refresh_button, "clicked", G_CALLBACK(on_refresh_clicked), NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), refresh_button);
 
+    // Admin Button (Left)
+    g_admin_button = gtk_button_new_from_icon_name("dialog-password-symbolic", GTK_ICON_SIZE_BUTTON);
+    gtk_widget_set_no_show_all(g_admin_button, TRUE);
+    gtk_widget_hide(g_admin_button);
+    g_signal_connect(g_admin_button, "clicked", G_CALLBACK(on_admin_clicked), NULL);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), g_admin_button);
+
     // Login Button (Right)
     g_login_button = gtk_button_new_with_label("Login");
     g_signal_connect(g_login_button, "clicked", G_CALLBACK(on_login_clicked), window);
@@ -318,6 +351,10 @@ create_window()
     // Settings View
     GtkWidget *settings_view = create_settings_view();
     gtk_stack_add_named(GTK_STACK(g_stack), settings_view, "settings");
+
+    // Admin View
+    GtkWidget *admin_view = create_admin_view();
+    gtk_stack_add_named(GTK_STACK(g_stack), admin_view, "admin");
 
     return window;
 }
