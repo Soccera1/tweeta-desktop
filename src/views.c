@@ -229,7 +229,7 @@ create_window()
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), g_compose_button);
 
     // Notifications Button (Left)
-    GtkWidget *notif_button = gtk_button_new_from_icon_name("preferences-desktop-notification-symbolic", GTK_ICON_SIZE_BUTTON);
+    GtkWidget *notif_button = gtk_button_new_from_icon_name("preferences-system-notifications-symbolic", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(notif_button, "clicked", G_CALLBACK(on_notifications_clicked), NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), notif_button);
 
