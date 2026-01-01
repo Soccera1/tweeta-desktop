@@ -184,6 +184,7 @@ jobs:
             mingw-w64-x86_64-make
             mingw-w64-x86_64-nsis
             mingw-w64-x86_64-imagemagick
+            make
             p7zip
             zip
 
@@ -201,6 +202,7 @@ jobs:
       - name: Build project
         shell: msys2 {0}
         run: |
+          export PATH="/mingw64/bin:$PATH"
           make all LDFLAGS="-mwindows"
         working-directory: ${{ github.workspace }}
 
