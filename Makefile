@@ -24,7 +24,7 @@ TEST_TARGET = test_runner
 # Define objects
 CORE_OBJS = globals.o network.o json_utils.o \
             session.o ui_utils.o ui_components.o \
-            views.o actions.o
+            views.o actions.o challenge.o
 
 OBJS = main.o $(CORE_OBJS)
 

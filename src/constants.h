@@ -24,5 +24,7 @@
 #define DM_MESSAGES_URL API_BASE_URL "/dm/conversations/%s"
 #define DM_SEND_MESSAGE_URL API_BASE_URL "/dm/conversations/%s/messages"
 #define DM_MARK_READ_URL API_BASE_URL "/dm/conversations/%s/read"
+#define CAP_CHALLENGE_URL API_BASE_URL "/auth/cap/challenge"
+#define CAP_REDEEM_URL API_BASE_URL "/auth/cap/redeem"
 
 #endif // CONSTANTS_H

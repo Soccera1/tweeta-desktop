@@ -9,6 +9,7 @@
 #include "network.h"
 #include "actions.h"
 #include "constants.h"
+#include "challenge.h"
 
 // We need to declare internal functions if they are not in headers but needed for tests.
 // Actually most of them ARE in headers now.
@@ -352,6 +353,31 @@ static void test_parse_messages() {
     free_messages(msgs);
 }
 
+static void test_challenge_solver() {
+    // A simple challenge: 1 challenge, salt length 8, difficulty 2 (1 byte match)
+    const char *challenge_json = "{\"c\": 1, \"s\": 8, \"d\": 2}";
+    
+    // Generate a random token to ensure the nonce is different each time
+    gchar *token = g_strdup_printf("testtoken-%u", g_random_int());
+    
+    gchar *solutions_json = solve_challenge(challenge_json, token);
+    g_assert_nonnull(solutions_json);
+    
+    JsonParser *parser = json_parser_new();
+    g_assert_true(json_parser_load_from_data(parser, solutions_json, -1, NULL));
+    JsonNode *root = json_parser_get_root(parser);
+    g_assert_true(JSON_NODE_HOLDS_ARRAY(root));
+    JsonArray *array = json_node_get_array(root);
+    g_assert_cmpint(json_array_get_length(array), ==, 1);
+    
+    gint64 nonce = json_array_get_int_element(array, 0);
+    g_message("Solved random challenge with token '%s', nonce: %ld", token, (long)nonce);
+    
+    g_object_unref(parser);
+    g_free(solutions_json);
+    g_free(token);
+}
+
 static void test_integration_login() {
     const gchar *username = g_getenv("USERNAME");
     const gchar *password = g_getenv("PASSWORD");
@@ -398,6 +424,7 @@ int main(int argc, char** argv) {
     g_test_add_func("/parsenotifications/basic", test_parse_notifications);
     g_test_add_func("/parseconversations/basic", test_parse_conversations);
     g_test_add_func("/parsemessages/basic", test_parse_messages);
+    g_test_add_func("/challenge/solver", test_challenge_solver);
     
     int result = g_test_run();
     

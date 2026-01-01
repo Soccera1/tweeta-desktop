@@ -16,7 +16,8 @@ sources = [
   'src/ui_utils.c',
   'src/ui_components.c',
   'src/views.c',
-  'src/actions.c'
+  'src/actions.c',
+  'src/challenge.c'
 ]
 
 executable('tweeta-desktop',
