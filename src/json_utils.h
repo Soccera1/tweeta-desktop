@@ -5,6 +5,7 @@
 #include "types.h"
 
 GList* parse_tweets(const gchar *json_data);
+GList* parse_tweet_details(const gchar *json_data);
 struct Profile* parse_profile(const gchar *json_data);
 GList* parse_profile_replies(const gchar *json_data);
 GList* parse_users(const gchar *json_data);

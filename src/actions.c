@@ -559,7 +559,69 @@ static gboolean on_tweet_loaded(gpointer data)
     struct AsyncData *async_data = (struct AsyncData *)data;
     
     if (async_data->success && async_data->tweets) {
-        populate_tweet_list(GTK_LIST_BOX(g_conversation_list), async_data->tweets);
+        GList *children = gtk_container_get_children(GTK_CONTAINER(g_conversation_list));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+
+        // Find OP username (the author of the very first tweet in the thread)
+        const gchar *op_username = NULL;
+        if (async_data->tweets) {
+            struct Tweet *first_t = (struct Tweet *)async_data->tweets->data;
+            op_username = first_t->author_username;
+        }
+
+        gboolean main_tweet_reached = FALSE;
+        for (GList *l = async_data->tweets; l != NULL; l = l->next) {
+            struct Tweet *t = (struct Tweet *)l->data;
+            
+            if (g_strcmp0(t->id, async_data->query) == 0) {
+                // This is the main tweet
+                if (!main_tweet_reached && l != async_data->tweets) {
+                     // Add a separator before the main tweet if there were parents
+                     gtk_list_box_insert(GTK_LIST_BOX(g_conversation_list), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), -1);
+                }
+                main_tweet_reached = TRUE;
+            } else if (main_tweet_reached && l != async_data->tweets) {
+                GList *prev_l = g_list_previous(l);
+                if (prev_l) {
+                    struct Tweet *prev_t = (struct Tweet *)prev_l->data;
+                    if (g_strcmp0(prev_t->id, async_data->query) == 0) {
+                        // Just after the main tweet, add a "Replies" header
+                        GtkWidget *header = gtk_label_new("Replies");
+                        gtk_widget_set_margin_top(header, 10);
+                        gtk_widget_set_margin_bottom(header, 5);
+                        gtk_widget_set_halign(header, GTK_ALIGN_START);
+                        gtk_widget_set_margin_start(header, 10);
+                        PangoAttrList *attrs = pango_attr_list_new();
+                        pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+                        gtk_label_set_attributes(GTK_LABEL(header), attrs);
+                        pango_attr_list_unref(attrs);
+                        
+                        gtk_widget_show(header);
+                        gtk_list_box_insert(GTK_LIST_BOX(g_conversation_list), header, -1);
+                    }
+                }
+            }
+
+            // Don't show OP tag on the root tweet or the main focused tweet
+            const gchar *current_op = op_username;
+            if (l == async_data->tweets || g_strcmp0(t->id, async_data->query) == 0) {
+                current_op = NULL;
+            }
+
+            GtkWidget *tweet_widget = create_tweet_widget_full(t, current_op);
+            
+            // Highlight main tweet
+            if (g_strcmp0(t->id, async_data->query) == 0) {
+                GtkStyleContext *context = gtk_widget_get_style_context(tweet_widget);
+                gtk_style_context_add_class(context, "main-tweet");
+            }
+
+            gtk_widget_show_all(tweet_widget);
+            gtk_list_box_insert(GTK_LIST_BOX(g_conversation_list), tweet_widget, -1);
+        }
+
         free_tweets(async_data->tweets);
     } else {
         GList *children = gtk_container_get_children(GTK_CONTAINER(g_conversation_list));
@@ -584,42 +646,8 @@ static gpointer fetch_tweet_thread(gpointer data)
     gchar *url = g_strdup_printf(TWEET_DETAILS_URL, async_data->query);
 
     if (fetch_url(url, &chunk, NULL, "GET")) {
-        // The API returns { tweet: {...}, threadPosts: [...], replies: [...] }
-        // For now let's just parse the main tweet.
-        // We need a way to parse the single tweet from this response.
-        
-        JsonParser *parser = json_parser_new();
-        GError *error = NULL;
-        json_parser_load_from_data(parser, chunk.memory, -1, &error);
-        if (!error) {
-            JsonNode *root = json_parser_get_root(parser);
-            JsonObject *obj = json_node_get_object(root);
-            if (json_object_has_member(obj, "tweet")) {
-                // We can reuse parse_tweets if we wrap it in a "posts" array, 
-                // or just manually parse it.
-                // Let's manually parse it for simplicity or adjust parse_tweets.
-                
-                // Actually, let's just use the tweet object.
-                // Since parse_tweets expects a list, let's create a dummy json
-                JsonObject *post_obj = json_object_get_object_member(obj, "tweet");
-                JsonArray *posts_arr = json_array_new();
-                json_array_add_object_element(posts_arr, json_object_ref(post_obj));
-                
-                JsonObject *dummy_root = json_object_new();
-                json_object_set_array_member(dummy_root, "posts", posts_arr);
-                
-                JsonGenerator *gen = json_generator_new();
-                json_generator_set_root(gen, json_node_init_object(json_node_alloc(), dummy_root));
-                gchar *dummy_json = json_generator_to_data(gen, NULL);
-                
-                async_data->tweets = parse_tweets(dummy_json);
-                async_data->success = (async_data->tweets != NULL);
-                
-                g_free(dummy_json);
-                g_object_unref(gen);
-            }
-        }
-        g_object_unref(parser);
+        async_data->tweets = parse_tweet_details(chunk.memory);
+        async_data->success = (async_data->tweets != NULL);
         free(chunk.memory);
     } else {
         async_data->success = FALSE;

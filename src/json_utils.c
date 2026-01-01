@@ -141,6 +141,137 @@ parse_tweets(const gchar *json_data)
     return tweets;
 }
 
+static struct Tweet*
+parse_single_tweet(JsonObject *post_object)
+{
+    JsonObject *author_object = json_object_get_object_member(post_object, "author");
+
+    struct Tweet *tweet = g_new0(struct Tweet, 1);
+    tweet->content = g_strdup(json_object_get_string_member(post_object, "content"));
+    tweet->author_name = g_strdup(json_object_get_string_member(author_object, "name"));
+    tweet->author_username = g_strdup(json_object_get_string_member(author_object, "username"));
+    if (json_object_has_member(author_object, "avatar") && !json_node_is_null(json_object_get_member(author_object, "avatar"))) {
+        tweet->author_avatar = g_strdup(json_object_get_string_member(author_object, "avatar"));
+    }
+
+    if (json_object_has_member(post_object, "id")) {
+        tweet->id = g_strdup(json_object_get_string_member(post_object, "id"));
+    }
+
+    if (json_object_has_member(post_object, "fact_check") && !json_node_is_null(json_object_get_member(post_object, "fact_check"))) {
+        JsonNode *fc_node = json_object_get_member(post_object, "fact_check");
+        if (JSON_NODE_HOLDS_OBJECT(fc_node)) {
+            JsonObject *fact_check = json_node_get_object(fc_node);
+            if (json_object_has_member(fact_check, "note")) {
+                tweet->note = g_strdup(json_object_get_string_member(fact_check, "note"));
+            }
+            if (json_object_has_member(fact_check, "severity")) {
+                tweet->note_severity = g_strdup(json_object_get_string_member(fact_check, "severity"));
+            }
+        }
+    }
+
+    tweet->attachments = parse_attachments(post_object);
+
+    tweet->liked = FALSE;
+    if (json_object_has_member(post_object, "liked_by_user")) {
+        JsonNode *node = json_object_get_member(post_object, "liked_by_user");
+        if (JSON_NODE_HOLDS_VALUE(node)) {
+            if (json_node_get_value_type(node) == G_TYPE_BOOLEAN)
+                tweet->liked = json_node_get_boolean(node);
+            else if (json_node_get_value_type(node) == G_TYPE_INT64)
+                tweet->liked = json_node_get_int(node) != 0;
+        }
+    } else if (json_object_has_member(post_object, "liked")) {
+        tweet->liked = json_object_get_boolean_member(post_object, "liked");
+    }
+
+    tweet->retweeted = FALSE;
+    if (json_object_has_member(post_object, "retweeted_by_user")) {
+        JsonNode *node = json_object_get_member(post_object, "retweeted_by_user");
+        if (JSON_NODE_HOLDS_VALUE(node)) {
+            if (json_node_get_value_type(node) == G_TYPE_BOOLEAN)
+                tweet->retweeted = json_node_get_boolean(node);
+            else if (json_node_get_value_type(node) == G_TYPE_INT64)
+                tweet->retweeted = json_node_get_int(node) != 0;
+        }
+    } else if (json_object_has_member(post_object, "retweeted")) {
+        tweet->retweeted = json_object_get_boolean_member(post_object, "retweeted");
+    }
+
+    tweet->bookmarked = FALSE;
+    if (json_object_has_member(post_object, "bookmarked")) {
+        tweet->bookmarked = json_object_get_boolean_member(post_object, "bookmarked");
+    }
+
+    if (json_object_has_member(post_object, "likes")) {
+        tweet->like_count = json_object_get_int_member(post_object, "likes");
+    }
+    if (json_object_has_member(post_object, "retweets")) {
+        tweet->retweet_count = json_object_get_int_member(post_object, "retweets");
+    }
+    if (json_object_has_member(post_object, "replies")) {
+        tweet->reply_count = json_object_get_int_member(post_object, "replies");
+    }
+
+    return tweet;
+}
+
+GList*
+parse_tweet_details(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    GList *tweets = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        gchar *main_id = NULL;
+
+        if (json_object_has_member(obj, "tweet")) {
+            JsonObject *post_obj = json_object_get_object_member(obj, "tweet");
+            main_id = g_strdup(json_object_get_string_member(post_obj, "id"));
+        }
+
+        // 1. threadPosts (Parents)
+        if (json_object_has_member(obj, "threadPosts")) {
+            JsonArray *arr = json_object_get_array_member(obj, "threadPosts");
+            for (guint i = 0; i < json_array_get_length(arr); i++) {
+                JsonObject *post_obj = json_array_get_object_element(arr, i);
+                const gchar *id = json_object_get_string_member(post_obj, "id");
+                // Don't add the main tweet again if it's in threadPosts
+                if (main_id && g_strcmp0(id, main_id) == 0) continue;
+                tweets = g_list_append(tweets, parse_single_tweet(post_obj));
+            }
+        }
+
+        // 2. The main tweet
+        if (json_object_has_member(obj, "tweet")) {
+            JsonObject *post_obj = json_object_get_object_member(obj, "tweet");
+            tweets = g_list_append(tweets, parse_single_tweet(post_obj));
+        }
+
+        // 3. replies
+        if (json_object_has_member(obj, "replies")) {
+            JsonArray *arr = json_object_get_array_member(obj, "replies");
+            for (guint i = 0; i < json_array_get_length(arr); i++) {
+                JsonObject *post_obj = json_array_get_object_element(arr, i);
+                const gchar *id = json_object_get_string_member(post_obj, "id");
+                // Safety check against duplicates
+                if (main_id && g_strcmp0(id, main_id) == 0) continue;
+                tweets = g_list_append(tweets, parse_single_tweet(post_obj));
+            }
+        }
+        g_free(main_id);
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return tweets;
+}
+
 struct Profile*
 parse_profile(const gchar *json_data)
 {

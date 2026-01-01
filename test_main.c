@@ -353,6 +353,29 @@ static void test_parse_messages() {
     free_messages(msgs);
 }
 
+static void test_parse_tweet_details() {
+    const char *json_input = "{"
+        "\"tweet\": {\"id\": \"main\", \"content\": \"Main tweet\", \"author\": {\"name\": \"User\", \"username\": \"user\"}},"
+        "\"threadPosts\": [{\"id\": \"parent\", \"content\": \"Parent tweet\", \"author\": {\"name\": \"Parent\", \"username\": \"parent\"}}],"
+        "\"replies\": [{\"id\": \"reply\", \"content\": \"Reply tweet\", \"author\": {\"name\": \"Replier\", \"username\": \"replier\"}}]"
+    "}";
+    GList *tweets = parse_tweet_details(json_input);
+
+    g_assert_nonnull(tweets);
+    g_assert_cmpint(g_list_length(tweets), ==, 3);
+
+    struct Tweet *t1 = (struct Tweet *)g_list_nth_data(tweets, 0);
+    g_assert_cmpstr(t1->id, ==, "parent");
+    
+    struct Tweet *t2 = (struct Tweet *)g_list_nth_data(tweets, 1);
+    g_assert_cmpstr(t2->id, ==, "main");
+    
+    struct Tweet *t3 = (struct Tweet *)g_list_nth_data(tweets, 2);
+    g_assert_cmpstr(t3->id, ==, "reply");
+
+    free_tweets(tweets);
+}
+
 static void test_challenge_solver() {
     // A simple challenge: 1 challenge, salt length 8, difficulty 2 (1 byte match)
     const char *challenge_json = "{\"c\": 1, \"s\": 8, \"d\": 2}";
@@ -424,6 +447,7 @@ int main(int argc, char** argv) {
     g_test_add_func("/parsenotifications/basic", test_parse_notifications);
     g_test_add_func("/parseconversations/basic", test_parse_conversations);
     g_test_add_func("/parsemessages/basic", test_parse_messages);
+    g_test_add_func("/parsetweetdetails/basic", test_parse_tweet_details);
     g_test_add_func("/challenge/solver", test_challenge_solver);
     
     int result = g_test_run();

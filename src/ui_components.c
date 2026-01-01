@@ -333,7 +333,12 @@ on_reply_response(GtkDialog *dialog, gint response_id, gpointer user_data)
 
         if (content && strlen(content) > 0) {
              if (perform_post_tweet(content, ctx->reply_to_id)) {
-                start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+                const gchar *current_view = gtk_stack_get_visible_child_name(GTK_STACK(g_stack));
+                if (g_strcmp0(current_view, "conversation") == 0 && ctx->reply_to_id) {
+                    show_tweet(ctx->reply_to_id);
+                } else {
+                    start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+                }
              } else {
                 GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
                                          GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -446,10 +451,30 @@ add_attachments_to_box(GtkBox *box, GList *attachments)
     }
 }
 
+static gboolean
+on_tweet_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
+{
+    (void)event;
+    (void)user_data;
+    const gchar *tweet_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
+    if (tweet_id) {
+        show_tweet(tweet_id);
+    }
+    return TRUE;
+}
+
 GtkWidget*
 create_tweet_widget(struct Tweet *tweet)
 {
+    return create_tweet_widget_full(tweet, NULL);
+}
+
+GtkWidget*
+create_tweet_widget_full(struct Tweet *tweet, const gchar *op_username)
+{
     GtkWidget *outer_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    
+    GtkWidget *event_box = gtk_event_box_new();
     GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
     gtk_container_set_border_width(GTK_CONTAINER(hbox), 5);
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
@@ -459,6 +484,7 @@ create_tweet_widget(struct Tweet *tweet)
     gtk_widget_set_valign(avatar_image, GTK_ALIGN_START);
     load_avatar(avatar_image, tweet->author_avatar, AVATAR_SIZE);
 
+    GtkWidget *author_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     gchar *author_str = g_strdup_printf("%s (@%s)", tweet->author_name, tweet->author_username);
 
     GtkWidget *author_btn = gtk_button_new_with_label(author_str);
@@ -474,12 +500,25 @@ create_tweet_widget(struct Tweet *tweet)
     g_object_set_data_full(G_OBJECT(author_btn), "username", g_strdup(tweet->author_username), g_free);
     g_signal_connect(author_btn, "clicked", G_CALLBACK(on_author_clicked), NULL);
 
+    gtk_box_pack_start(GTK_BOX(author_hbox), author_btn, FALSE, FALSE, 0);
+
+    if (op_username && g_strcmp0(tweet->author_username, op_username) == 0) {
+        GtkWidget *op_label = gtk_label_new("OP");
+        GtkStyleContext *context = gtk_widget_get_style_context(op_label);
+        gtk_style_context_add_class(context, "op-badge");
+        
+        // Manual styling if CSS classes aren't enough/defined
+        gtk_label_set_markup(GTK_LABEL(op_label), "<span foreground='white' background='#007bff' size='small' weight='bold'> OP </span>");
+        
+        gtk_box_pack_start(GTK_BOX(author_hbox), op_label, FALSE, FALSE, 0);
+    }
+
     GtkWidget *content_label = gtk_label_new(tweet->content);
     gtk_label_set_xalign(GTK_LABEL(content_label), 0.0);
     gtk_label_set_line_wrap(GTK_LABEL(content_label), TRUE);
     gtk_label_set_selectable(GTK_LABEL(content_label), TRUE);
 
-    gtk_box_pack_start(GTK_BOX(box), author_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), author_hbox, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(box), content_label, FALSE, FALSE, 0);
 
     if (tweet->note) {
@@ -522,8 +561,18 @@ create_tweet_widget(struct Tweet *tweet)
 
     add_attachments_to_box(GTK_BOX(box), tweet->attachments);
 
+    gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), box, TRUE, TRUE, 0);
+    
+    gtk_container_add(GTK_CONTAINER(event_box), hbox);
+    g_object_set_data_full(G_OBJECT(event_box), "tweet_id", g_strdup(tweet->id), g_free);
+    g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_tweet_clicked), NULL);
+
+    gtk_box_pack_start(GTK_BOX(outer_box), event_box, TRUE, TRUE, 0);
+
     GtkWidget *button_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     gtk_widget_set_halign(button_box, GTK_ALIGN_START);
+    gtk_container_set_border_width(GTK_CONTAINER(button_box), 5);
 
     gboolean *liked_state = g_new(gboolean, 1);
     *liked_state = tweet->liked;
@@ -572,16 +621,9 @@ create_tweet_widget(struct Tweet *tweet)
         g_object_set_data_full(G_OBJECT(note_btn), "tweet_id", g_strdup(tweet->id), g_free);
         g_signal_connect(note_btn, "clicked", G_CALLBACK(on_note_button_clicked), NULL);
         gtk_box_pack_start(GTK_BOX(button_box), note_btn, FALSE, FALSE, 0);
-    } else {
-        // fprintf(stderr, "[DEBUG] Not an admin, hiding Note button\n");
     }
 
-    gtk_box_pack_start(GTK_BOX(box), button_box, FALSE, FALSE, 0);
-
-    gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(hbox), box, TRUE, TRUE, 0);
-
-    gtk_box_pack_start(GTK_BOX(outer_box), hbox, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(outer_box), button_box, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(outer_box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 5);
 
     g_free(author_str);
