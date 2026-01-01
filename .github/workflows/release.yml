@@ -162,9 +162,131 @@ jobs:
           name: tweeta-desktop-macos-dmg
           path: Tweeta_Desktop-macos.dmg
 
+  build_windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-gtk3
+            mingw-w64-x86_64-json-glib
+            mingw-w64-x86_64-curl
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-nsis
+            mingw-w64-x86_64-imagemagick
+            p7zip
+            zip
+
+      - name: Patch main.c for Windows portability
+        shell: msys2 {0}
+        run: |
+          # Add Windows-specific headers and logic to main.c via sed
+          sed -i '/#include <stdlib.h>/a #include <windows.h>' src/main.c
+          
+          PATCH_CODE='    gchar *dir = g_win32_get_package_installation_directory_of_module(NULL);\n    if (dir) {\n        gchar *share_path = g_build_filename(dir, "share", NULL);\n        gchar *loaders_path = g_build_filename(dir, "lib", "gdk-pixbuf-2.0", "2.10.0", "loaders.cache", NULL);\n        g_setenv("XDG_DATA_DIRS", share_path, TRUE);\n        g_setenv("GDK_PIXBUF_MODULE_FILE", loaders_path, TRUE);\n        g_free(share_path);\n        g_free(loaders_path);\n        g_free(dir);\n    }'
+          
+          # Insert the patch code at the beginning of main()
+          sed -i "s/GtkWidget \*window;/GtkWidget *window;\\n\\n$PATCH_CODE/" src/main.c
+
+      - name: Build project
+        shell: msys2 {0}
+        run: |
+          make all LDFLAGS="-mwindows"
+        working-directory: ${{ github.workspace }}
+
+      - name: Bundle Windows executable
+        shell: msys2 {0}
+        run: |
+          mkdir -p dist
+          cp tweeta-desktop.exe dist/
+          cp logo.png dist/
+          
+          # Create Icon
+          magick convert logo.png -define icon:auto-resize=256,128,64,48,32,16 dist/logo.ico
+          
+          # Collect all required DLLs using ldd
+          echo "Collecting DLLs..."
+          for dll in $(ldd tweeta-desktop.exe | grep /mingw64/bin/ | awk '{print $3}'); do
+            cp "$dll" dist/
+          done
+          
+          # Also need the GTK gdk-pixbuf loaders and schemas
+          mkdir -p dist/lib/gdk-pixbuf-2.0/2.10.0/loaders
+          cp /mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders/*.dll dist/lib/gdk-pixbuf-2.0/2.10.0/loaders/
+          gdk-pixbuf-query-loaders > dist/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache
+          # Fix paths in loaders.cache to be relative
+          sed -i "s|/mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders/||g" dist/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache
+
+          mkdir -p dist/share/glib-2.0/schemas
+          cp /mingw64/share/glib-2.0/schemas/gschemas.compiled dist/share/glib-2.0/schemas/
+          
+          # Create NSIS script
+          cat <<EOF > setup.nsi
+          !include "MUI2.nsh"
+          Name "Tweeta Desktop"
+          OutFile "Tweeta_Desktop-setup-x64.exe"
+          InstallDir "\$PROGRAMFILES64\Tweeta Desktop"
+          !define MUI_ICON "dist\logo.ico"
+          !insertmacro MUI_PAGE_DIRECTORY
+          !insertmacro MUI_PAGE_INSTFILES
+          !insertmacro MUI_LANGUAGE "English"
+          Section "Install"
+              SetOutPath "\$INSTDIR"
+              File /r "dist\*"
+              WriteUninstaller "\$INSTDIR\uninstall.exe"
+              CreateShortcut "\$DESKTOP\Tweeta Desktop.lnk" "\$INSTDIR\tweeta-desktop.exe" "" "\$INSTDIR\logo.ico"
+              CreateShortcut "\$SMPROGRAMS\Tweeta Desktop.lnk" "\$INSTDIR\tweeta-desktop.exe" "" "\$INSTDIR\logo.ico"
+          SectionEnd
+          Section "Uninstall"
+              Delete "\$DESKTOP\Tweeta Desktop.lnk"
+              Delete "\$SMPROGRAMS\Tweeta Desktop.lnk"
+              RMDir /r "\$INSTDIR"
+          SectionEnd
+          EOF
+          
+          # Compile Installer
+          makensis setup.nsi
+          
+          # Create SFX (Self-Extracting Archive)
+          # We use 7z with a config to run the app after extraction
+          cat <<EOF > sfx_config.txt
+          ;!@Install@!UTF-8!
+          RunProgram="tweeta-desktop.exe"
+          ;!@InstallEnd@!
+          EOF
+          7z a -t7z archive.7z ./dist/*
+          # Look for the SFX module in standard p7zip locations
+          SFX_MODULE=""
+          [ -f /usr/lib/p7zip/7zS.sfx ] && SFX_MODULE=/usr/lib/p7zip/7zS.sfx
+          [ -f /mingw64/lib/p7zip/7zS.sfx ] && SFX_MODULE=/mingw64/lib/p7zip/7zS.sfx
+          if [ -n "\$SFX_MODULE" ]; then
+            cat "\$SFX_MODULE" sfx_config.txt archive.7z > Tweeta_Desktop-portable-x64.exe
+          else
+            # Fallback to simple SFX if specialized module not found
+            7z a -sfx Tweeta_Desktop-portable-x64.exe ./dist/*
+          fi
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tweeta-desktop-windows
+          path: |
+            Tweeta_Desktop-setup-x64.exe
+            Tweeta_Desktop-portable-x64.exe
+
   create_release_and_upload_assets:
     runs-on: ubuntu-latest
-    needs: [build_linux_appimage, build_macos_dmg]
+    needs: [build_linux_appimage, build_macos_dmg, build_windows]
     permissions:
       contents: write
 
@@ -218,10 +340,9 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Download AppImage artifact
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: tweeta-desktop-appimage
           path: ./artifacts/
 
       - name: Upload AppImage Release Asset
@@ -230,15 +351,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/Tweeta_Desktop-x86_64.AppImage
+          asset_path: ./artifacts/tweeta-desktop-appimage/Tweeta_Desktop-x86_64.AppImage
           asset_name: Tweeta_Desktop-${{ env.NEW_TAG }}-x86_64.AppImage
           asset_content_type: application/octet-stream
-
-      - name: Download MacOS DMG artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tweeta-desktop-macos-dmg
-          path: ./artifacts/
 
       - name: Upload MacOS DMG Release Asset
         uses: actions/upload-release-asset@v1
@@ -246,6 +361,27 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/Tweeta_Desktop-macos.dmg
+          asset_path: ./artifacts/tweeta-desktop-macos-dmg/Tweeta_Desktop-macos.dmg
           asset_name: Tweeta_Desktop-${{ env.NEW_TAG }}-macos.dmg
           asset_content_type: application/octet-stream
+
+      - name: Upload Windows Setup Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./artifacts/tweeta-desktop-windows/Tweeta_Desktop-setup-x64.exe
+          asset_name: Tweeta_Desktop-${{ env.NEW_TAG }}-setup-x64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload Windows Portable Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./artifacts/tweeta-desktop-windows/Tweeta_Desktop-portable-x64.exe
+          asset_name: Tweeta_Desktop-${{ env.NEW_TAG }}-portable-x64.exe
+          asset_content_type: application/octet-stream
+
