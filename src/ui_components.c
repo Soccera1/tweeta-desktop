@@ -463,6 +463,75 @@ on_tweet_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
     return TRUE;
 }
 
+static void
+on_admin_delete_post_activated(GtkMenuItem *menuitem, gpointer user_data)
+{
+    (void)menuitem;
+    const gchar *post_id = (const gchar *)user_data;
+    perform_admin_delete_post(post_id);
+}
+
+static gboolean
+on_admin_post_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
+{
+    (void)user_data;
+    if (event->type == GDK_BUTTON_PRESS && event->button == 3) {
+        const gchar *post_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
+        if (!post_id) return FALSE;
+
+        GtkWidget *menu = gtk_menu_new();
+        GtkWidget *delete_item = gtk_menu_item_new_with_label("Admin: Delete Post");
+        g_signal_connect(delete_item, "activate", G_CALLBACK(on_admin_delete_post_activated), g_strdup(post_id));
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), delete_item);
+        
+        gtk_widget_show_all(menu);
+        gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void
+on_admin_verify_user_activated(GtkMenuItem *menuitem, gpointer user_data)
+{
+    (void)menuitem;
+    const gchar *username = (const gchar *)user_data;
+    perform_admin_verify(username, TRUE);
+}
+
+static void
+on_admin_delete_user_activated(GtkMenuItem *menuitem, gpointer user_data)
+{
+    (void)menuitem;
+    const gchar *username = (const gchar *)user_data;
+    perform_admin_delete_user(username);
+}
+
+static gboolean
+on_admin_user_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
+{
+    (void)user_data;
+    if (event->type == GDK_BUTTON_PRESS && event->button == 3) {
+        const gchar *username = g_object_get_data(G_OBJECT(widget), "username");
+        if (!username) return FALSE;
+
+        GtkWidget *menu = gtk_menu_new();
+        
+        GtkWidget *verify_item = gtk_menu_item_new_with_label("Admin: Verify User");
+        g_signal_connect(verify_item, "activate", G_CALLBACK(on_admin_verify_user_activated), g_strdup(username));
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), verify_item);
+
+        GtkWidget *delete_item = gtk_menu_item_new_with_label("Admin: Delete User");
+        g_signal_connect(delete_item, "activate", G_CALLBACK(on_admin_delete_user_activated), g_strdup(username));
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), delete_item);
+
+        gtk_widget_show_all(menu);
+        gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
+        return TRUE;
+    }
+    return FALSE;
+}
+
 GtkWidget*
 create_tweet_widget(struct Tweet *tweet)
 {
@@ -567,6 +636,10 @@ create_tweet_widget_full(struct Tweet *tweet, const gchar *op_username)
     gtk_container_add(GTK_CONTAINER(event_box), hbox);
     g_object_set_data_full(G_OBJECT(event_box), "tweet_id", g_strdup(tweet->id), g_free);
     g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_tweet_clicked), NULL);
+
+    if (g_is_admin) {
+        g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_admin_post_button_press), NULL);
+    }
 
     gtk_box_pack_start(GTK_BOX(outer_box), event_box, TRUE, TRUE, 0);
 
@@ -687,7 +760,15 @@ create_user_widget(struct Profile *user)
     gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hbox), box, TRUE, TRUE, 0);
 
-    gtk_box_pack_start(GTK_BOX(outer_box), hbox, TRUE, TRUE, 0);
+    GtkWidget *event_box = gtk_event_box_new();
+    gtk_container_add(GTK_CONTAINER(event_box), hbox);
+    g_object_set_data_full(G_OBJECT(event_box), "username", g_strdup(user->username), g_free);
+    
+    if (g_is_admin) {
+        g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_admin_user_button_press), NULL);
+    }
+
+    gtk_box_pack_start(GTK_BOX(outer_box), event_box, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(outer_box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 5);
 
     g_free(user_str);

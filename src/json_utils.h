@@ -12,6 +12,8 @@ GList* parse_users(const gchar *json_data);
 GList* parse_notifications(const gchar *json_data);
 GList* parse_conversations(const gchar *json_data);
 GList* parse_messages(const gchar *json_data);
+GList* parse_admin_users(const gchar *json_data);
+GList* parse_admin_posts(const gchar *json_data);
 gchar* parse_admin_stats(const gchar *json_data);
 gboolean parse_login_response(const gchar *json_data, gchar **token_out, gchar **username_out, gboolean *is_admin_out);
 gboolean parse_user_me_response(const gchar *json_data, gboolean *is_admin_out);

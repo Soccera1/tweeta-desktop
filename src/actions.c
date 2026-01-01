@@ -1090,6 +1090,154 @@ void on_admin_clicked(GtkWidget *widget, gpointer user_data)
     gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "admin");
     gtk_widget_show(g_back_button);
     start_loading_admin_stats();
+    start_loading_admin_users(NULL);
+    start_loading_admin_posts(NULL);
+}
+
+static gboolean
+on_admin_users_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    if (async_data->success && async_data->users) {
+        populate_user_list(GTK_LIST_BOX(g_admin_users_list), async_data->users);
+        free_users(async_data->users);
+    } else {
+        gtk_label_set_text(GTK_LABEL(g_user_label), "Failed to load admin users.");
+    }
+    g_free(async_data->query);
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_users_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+    gchar *url;
+    if (async_data->query && strlen(async_data->query) > 0) {
+        gchar *escaped = g_uri_escape_string(async_data->query, NULL, FALSE);
+        url = g_strdup_printf("%s?search=%s", ADMIN_USERS_URL, escaped);
+        g_free(escaped);
+    } else {
+        url = g_strdup(ADMIN_USERS_URL);
+    }
+
+    if (fetch_url(url, &chunk, NULL, "GET")) {
+        async_data->users = parse_admin_users(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+    g_free(url);
+    g_idle_add(on_admin_users_loaded, async_data);
+    return NULL;
+}
+
+void start_loading_admin_users(const gchar *search)
+{
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->query = g_strdup(search);
+    g_thread_new("admin-users-loader", fetch_admin_users_thread, data);
+}
+
+static gboolean
+on_admin_posts_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    if (async_data->success && async_data->tweets) {
+        populate_tweet_list(GTK_LIST_BOX(g_admin_posts_list), async_data->tweets);
+        free_tweets(async_data->tweets);
+    }
+    g_free(async_data->query);
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_posts_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+    gchar *url;
+    if (async_data->query && strlen(async_data->query) > 0) {
+        gchar *escaped = g_uri_escape_string(async_data->query, NULL, FALSE);
+        url = g_strdup_printf("%s?search=%s", ADMIN_POSTS_URL, escaped);
+        g_free(escaped);
+    } else {
+        url = g_strdup(ADMIN_POSTS_URL);
+    }
+
+    if (fetch_url(url, &chunk, NULL, "GET")) {
+        async_data->tweets = parse_admin_posts(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+    g_free(url);
+    g_idle_add(on_admin_posts_loaded, async_data);
+    return NULL;
+}
+
+void start_loading_admin_posts(const gchar *search)
+{
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->query = g_strdup(search);
+    g_thread_new("admin-posts-loader", fetch_admin_posts_thread, data);
+}
+
+void perform_admin_verify(const gchar *username, gboolean verify)
+{
+    if (!g_is_admin) return;
+    gchar *url = g_strdup_printf("%s/%s", ADMIN_USERS_URL, username);
+    gchar *post_data = g_strdup_printf("{\"verified\": %s}", verify ? "true" : "false");
+    struct MemoryStruct chunk;
+    if (fetch_url(url, &chunk, post_data, "PATCH")) {
+        free(chunk.memory);
+        start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
+    }
+    g_free(post_data);
+    g_free(url);
+}
+
+void perform_admin_suspend(const gchar *username, const gchar *reason)
+{
+    if (!g_is_admin) return;
+    gchar *url = g_strdup_printf("%s/%s/suspend", ADMIN_USERS_URL, username);
+    gchar *post_data = g_strdup_printf("{\"reason\": \"%s\", \"action\": \"suspend\"}", reason);
+    struct MemoryStruct chunk;
+    if (fetch_url(url, &chunk, post_data, "POST")) {
+        free(chunk.memory);
+        start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
+    }
+    g_free(post_data);
+    g_free(url);
+}
+
+void perform_admin_delete_user(const gchar *username)
+{
+    if (!g_is_admin) return;
+    gchar *url = g_strdup_printf("%s/%s", ADMIN_USERS_URL, username);
+    struct MemoryStruct chunk;
+    if (fetch_url(url, &chunk, NULL, "DELETE")) {
+        free(chunk.memory);
+        start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
+    }
+    g_free(url);
+}
+
+void perform_admin_delete_post(const gchar *post_id)
+{
+    if (!g_is_admin) return;
+    gchar *url = g_strdup_printf("%s/%s", ADMIN_POSTS_URL, post_id);
+    struct MemoryStruct chunk;
+    if (fetch_url(url, &chunk, NULL, "DELETE")) {
+        free(chunk.memory);
+        start_loading_admin_posts(gtk_entry_get_text(GTK_ENTRY(g_admin_posts_search)));
+    }
+    g_free(url);
 }
 
 static gboolean on_users_loaded(gpointer data)

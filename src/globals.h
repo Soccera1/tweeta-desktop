@@ -22,6 +22,10 @@ extern GtkWidget *g_admin_button;
 
 // Admin widgets
 extern GtkWidget *g_admin_stats_label;
+extern GtkWidget *g_admin_users_list;
+extern GtkWidget *g_admin_posts_list;
+extern GtkWidget *g_admin_users_search;
+extern GtkWidget *g_admin_posts_search;
 
 // Search widgets
 extern GtkWidget *g_search_entry;

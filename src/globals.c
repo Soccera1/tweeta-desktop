@@ -19,6 +19,10 @@ GtkWidget *g_admin_button = NULL;
 
 // Admin widgets
 GtkWidget *g_admin_stats_label = NULL;
+GtkWidget *g_admin_users_list = NULL;
+GtkWidget *g_admin_posts_list = NULL;
+GtkWidget *g_admin_users_search = NULL;
+GtkWidget *g_admin_posts_search = NULL;
 
 // Search widgets
 GtkWidget *g_search_entry = NULL;

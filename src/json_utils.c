@@ -615,6 +615,70 @@ construct_dm_payload(const gchar *content)
     return post_data;
 }
 
+GList*
+parse_admin_users(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    GList *users = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "users")) {
+            JsonArray *arr = json_object_get_array_member(obj, "users");
+            for (guint i = 0; i < json_array_get_length(arr); i++) {
+                JsonObject *u_obj = json_array_get_object_element(arr, i);
+                struct Profile *user = g_new0(struct Profile, 1);
+                user->username = g_strdup(json_object_get_string_member(u_obj, "username"));
+                user->name = g_strdup(json_object_get_string_member(u_obj, "name"));
+                if (json_object_has_member(u_obj, "avatar") && !json_node_is_null(json_object_get_member(u_obj, "avatar")))
+                    user->avatar = g_strdup(json_object_get_string_member(u_obj, "avatar"));
+                if (json_object_has_member(u_obj, "bio") && !json_node_is_null(json_object_get_member(u_obj, "bio")))
+                    user->bio = g_strdup(json_object_get_string_member(u_obj, "bio"));
+                users = g_list_append(users, user);
+            }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return users;
+}
+
+GList*
+parse_admin_posts(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    GList *tweets = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "posts")) {
+            JsonArray *arr = json_object_get_array_member(obj, "posts");
+            for (guint i = 0; i < json_array_get_length(arr); i++) {
+                JsonObject *p_obj = json_array_get_object_element(arr, i);
+                struct Tweet *tweet = g_new0(struct Tweet, 1);
+                tweet->id = g_strdup(json_object_get_string_member(p_obj, "id"));
+                tweet->content = g_strdup(json_object_get_string_member(p_obj, "content"));
+                tweet->author_username = g_strdup(json_object_get_string_member(p_obj, "username"));
+                tweet->author_name = g_strdup(json_object_get_string_member(p_obj, "name"));
+                if (json_object_has_member(p_obj, "avatar") && !json_node_is_null(json_object_get_member(p_obj, "avatar")))
+                    tweet->author_avatar = g_strdup(json_object_get_string_member(p_obj, "avatar"));
+                tweets = g_list_append(tweets, tweet);
+            }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return tweets;
+}
+
 gchar*
 parse_admin_stats(const gchar *json_data)
 {

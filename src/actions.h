@@ -8,7 +8,16 @@ void start_loading_notifications(GtkListBox *list_box);
 void start_loading_conversations(GtkListBox *list_box);
 void start_loading_messages(GtkListBox *list_box, const gchar *conversation_id);
 void start_loading_admin_stats();
+void start_loading_admin_users(const gchar *search);
+void start_loading_admin_posts(const gchar *search);
 void load_more_tweets(GtkListBox *list_box, const gchar *before_id);
+
+// Admin action handlers
+void perform_admin_verify(const gchar *username, gboolean verify);
+void perform_admin_suspend(const gchar *username, const gchar *reason);
+void perform_admin_delete_user(const gchar *username);
+void perform_admin_delete_post(const gchar *post_id);
+
 void perform_search(const gchar *query);
 void update_login_ui();
 void perform_logout();

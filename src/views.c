@@ -217,29 +217,76 @@ create_settings_view()
     return box;
 }
 
+static void
+on_admin_users_search_activated(GtkEntry *entry, gpointer user_data)
+{
+    (void)user_data;
+    const gchar *query = gtk_entry_get_text(entry);
+    start_loading_admin_users(query);
+}
+
+static void
+on_admin_posts_search_activated(GtkEntry *entry, gpointer user_data)
+{
+    (void)user_data;
+    const gchar *query = gtk_entry_get_text(entry);
+    start_loading_admin_posts(query);
+}
+
 GtkWidget*
 create_admin_view()
 {
-    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-    gtk_container_set_border_width(GTK_CONTAINER(box), 20);
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
-    GtkWidget *title = gtk_label_new("Admin Panel");
-    PangoAttrList *attrs = pango_attr_list_new();
-    pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
-    pango_attr_list_insert(attrs, pango_attr_scale_new(1.5));
-    gtk_label_set_attributes(GTK_LABEL(title), attrs);
-    pango_attr_list_unref(attrs);
-    gtk_box_pack_start(GTK_BOX(box), title, FALSE, FALSE, 10);
+    GtkWidget *notebook = gtk_notebook_new();
 
+    // Stats Tab
+    GtkWidget *stats_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(stats_box), 20);
+    
     g_admin_stats_label = gtk_label_new("Loading admin statistics...");
     gtk_label_set_justify(GTK_LABEL(g_admin_stats_label), GTK_JUSTIFY_LEFT);
     gtk_label_set_xalign(GTK_LABEL(g_admin_stats_label), 0.0);
     gtk_label_set_line_wrap(GTK_LABEL(g_admin_stats_label), TRUE);
-    gtk_box_pack_start(GTK_BOX(box), g_admin_stats_label, FALSE, FALSE, 10);
+    gtk_box_pack_start(GTK_BOX(stats_box), g_admin_stats_label, FALSE, FALSE, 10);
 
     GtkWidget *refresh_btn = gtk_button_new_with_label("Refresh Statistics");
     g_signal_connect(refresh_btn, "clicked", G_CALLBACK(on_refresh_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(box), refresh_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(stats_box), refresh_btn, FALSE, FALSE, 0);
+    
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), stats_box, gtk_label_new("Stats"));
+
+    // Users Tab
+    GtkWidget *users_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    g_admin_users_search = gtk_search_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_users_search), "Search users...");
+    g_signal_connect(g_admin_users_search, "activate", G_CALLBACK(on_admin_users_search_activated), NULL);
+    gtk_box_pack_start(GTK_BOX(users_vbox), g_admin_users_search, FALSE, FALSE, 5);
+
+    GtkWidget *users_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_admin_users_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_users_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(users_scroll), g_admin_users_list);
+    gtk_box_pack_start(GTK_BOX(users_vbox), users_scroll, TRUE, TRUE, 0);
+    
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), users_vbox, gtk_label_new("Users"));
+
+    // Posts Tab
+    GtkWidget *posts_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    g_admin_posts_search = gtk_search_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_posts_search), "Search posts...");
+    g_signal_connect(g_admin_posts_search, "activate", G_CALLBACK(on_admin_posts_search_activated), NULL);
+    gtk_box_pack_start(GTK_BOX(posts_vbox), g_admin_posts_search, FALSE, FALSE, 5);
+
+    GtkWidget *posts_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_admin_posts_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_posts_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(posts_scroll), g_admin_posts_list);
+    gtk_box_pack_start(GTK_BOX(posts_vbox), posts_scroll, TRUE, TRUE, 0);
+
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), posts_vbox, gtk_label_new("Posts"));
+
+    gtk_box_pack_start(GTK_BOX(box), notebook, TRUE, TRUE, 0);
 
     return box;
 }

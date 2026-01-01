@@ -81,6 +81,19 @@ struct Conversation {
     GList *participants; // List of Profile*
 };
 
+struct AdminStats {
+    gint64 total_users;
+    gint64 suspended_users;
+    gint64 restricted_users;
+    gint64 verified_users;
+    gint64 gold_users;
+    gint64 gray_users;
+    gint64 total_posts;
+    gint64 active_suspensions;
+    gint64 active_restricted;
+    gint64 active_suspended;
+};
+
 // Memory buffer for curl
 struct MemoryStruct {
   char *memory;
