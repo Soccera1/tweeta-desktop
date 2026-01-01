@@ -2,6 +2,9 @@
 
 This document provides information for developers who wish to contribute to Tweeta Desktop or run the test suite.
 
+> [!WARNING]
+> **Linux Only:** While Tweeta Desktop may compile on non-Linux systems (such as macOS or Windows), it is **horribly broken and completely unsupported**. Official binaries for macOS and Windows are provided solely for convenience as compiling on those systems requires significant manual patching. Using them or building from source on non-Linux systems is at your own risk.
+
 ## Running Tests
 
 Tweeta Desktop uses GLib's testing framework. Tests are located in `test_main.c` and are linked against the modular components in the `src/` directory.
