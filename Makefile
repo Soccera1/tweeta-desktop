@@ -7,15 +7,15 @@
 # Licensed under the AGPLv3 license
 #
 
-CC      = gcc
-PREFIX  = /usr/local
-SRCDIR  = .
+CC      ?= gcc
+PREFIX  ?= /usr/local
+SRCDIR  =  .
 
 # Dependencies (backticks are evaluated by the shell in rules)
 GTK_CFLAGS = `pkg-config --cflags gtk+-3.0 json-glib-1.0`
 GTK_LIBS   = `pkg-config --libs gtk+-3.0 json-glib-1.0 libcurl`
 
-CFLAGS  = -Wall -Wextra -std=c99 -I$(SRCDIR)/src
+CFLAGS  = -Wall -Wextra -std=c99 -O3 -I$(SRCDIR)/src
 LDFLAGS = -L/usr/lib
 
 TARGET      = tweeta-desktop
