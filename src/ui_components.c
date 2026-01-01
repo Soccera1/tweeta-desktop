@@ -454,8 +454,9 @@ add_attachments_to_box(GtkBox *box, GList *attachments)
 static gboolean
 on_tweet_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
 {
-    (void)event;
     (void)user_data;
+    if (event->button != 1) return FALSE;
+
     const gchar *tweet_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
     if (tweet_id) {
         show_tweet(tweet_id);
@@ -475,7 +476,7 @@ static gboolean
 on_admin_post_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
 {
     (void)user_data;
-    if (event->type == GDK_BUTTON_PRESS && event->button == 3) {
+    if (event->button == 3) {
         const gchar *post_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
         if (!post_id) return FALSE;
 
@@ -511,7 +512,7 @@ static gboolean
 on_admin_user_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
 {
     (void)user_data;
-    if (event->type == GDK_BUTTON_PRESS && event->button == 3) {
+    if (event->button == 3) {
         const gchar *username = g_object_get_data(G_OBJECT(widget), "username");
         if (!username) return FALSE;
 
@@ -635,11 +636,11 @@ create_tweet_widget_full(struct Tweet *tweet, const gchar *op_username)
     
     gtk_container_add(GTK_CONTAINER(event_box), hbox);
     g_object_set_data_full(G_OBJECT(event_box), "tweet_id", g_strdup(tweet->id), g_free);
-    g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_tweet_clicked), NULL);
 
     if (g_is_admin) {
         g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_admin_post_button_press), NULL);
     }
+    g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_tweet_clicked), NULL);
 
     gtk_box_pack_start(GTK_BOX(outer_box), event_box, TRUE, TRUE, 0);
 
@@ -814,8 +815,9 @@ on_notification_avatar_clicked(GtkWidget *widget, gpointer user_data)
 static gboolean
 on_notification_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_data)
 {
-    (void)event;
     (void)user_data;
+    if (event->button != 1) return FALSE;
+
     const gchar *tweet_id = g_object_get_data(G_OBJECT(widget), "related_id");
     if (tweet_id) {
         show_tweet(tweet_id);
