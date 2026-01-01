@@ -19,6 +19,7 @@ void on_search_activated(GtkEntry *entry, gpointer user_data);
 void on_back_clicked(GtkWidget *widget, gpointer user_data);
 void on_notifications_clicked(GtkWidget *widget, gpointer user_data);
 void on_messages_clicked(GtkWidget *widget, gpointer user_data);
+void on_settings_clicked(GtkWidget *widget, gpointer user_data);
 void on_mark_all_read_clicked(GtkWidget *widget, gpointer user_data);
 void on_refresh_clicked(GtkWidget *widget, gpointer user_data);
 void on_compose_clicked(GtkWidget *widget, gpointer window);

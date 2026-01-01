@@ -1029,6 +1029,14 @@ void on_messages_clicked(GtkWidget *widget, gpointer user_data)
     start_loading_conversations(GTK_LIST_BOX(g_conversations_list));
 }
 
+void on_settings_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "settings");
+    gtk_widget_show(g_back_button);
+}
+
 static gboolean on_users_loaded(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;

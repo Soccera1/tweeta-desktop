@@ -197,6 +197,27 @@ create_dm_messages_view()
 }
 
 GtkWidget*
+create_settings_view()
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
+    gtk_container_set_border_width(GTK_CONTAINER(box), 20);
+
+    GtkWidget *title = gtk_label_new("Settings");
+    PangoAttrList *attrs = pango_attr_list_new();
+    pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+    pango_attr_list_insert(attrs, pango_attr_scale_new(1.5));
+    gtk_label_set_attributes(GTK_LABEL(title), attrs);
+    pango_attr_list_unref(attrs);
+    gtk_box_pack_start(GTK_BOX(box), title, FALSE, FALSE, 0);
+
+    GtkWidget *placeholder_label = gtk_label_new("Settings are currently under development.\nCheck back soon for theme, notification, and account options!");
+    gtk_label_set_justify(GTK_LABEL(placeholder_label), GTK_JUSTIFY_CENTER);
+    gtk_box_pack_start(GTK_BOX(box), placeholder_label, TRUE, TRUE, 0);
+
+    return box;
+}
+
+GtkWidget*
 create_window()
 {
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -237,6 +258,11 @@ create_window()
     GtkWidget *messages_button = gtk_button_new_from_icon_name("mail-unread-symbolic", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(messages_button, "clicked", G_CALLBACK(on_messages_clicked), NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), messages_button);
+
+    // Settings Button (Left)
+    GtkWidget *settings_button = gtk_button_new_from_icon_name("emblem-system-symbolic", GTK_ICON_SIZE_BUTTON);
+    g_signal_connect(settings_button, "clicked", G_CALLBACK(on_settings_clicked), NULL);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), settings_button);
 
     // Refresh Button (Left)
     GtkWidget *refresh_button = gtk_button_new_from_icon_name("view-refresh-symbolic", GTK_ICON_SIZE_BUTTON);
@@ -289,5 +315,10 @@ create_window()
     GtkWidget *conversation_view = create_conversation_view();
     gtk_stack_add_named(GTK_STACK(g_stack), conversation_view, "conversation");
 
+    // Settings View
+    GtkWidget *settings_view = create_settings_view();
+    gtk_stack_add_named(GTK_STACK(g_stack), settings_view, "settings");
+
     return window;
 }
+
