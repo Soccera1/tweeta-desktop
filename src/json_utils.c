@@ -627,27 +627,36 @@ parse_admin_stats(const gchar *json_data)
         JsonNode *root = json_parser_get_root(parser);
         JsonObject *obj = json_node_get_object(root);
 
-        if (json_object_has_member(obj, "userStats") && json_object_has_member(obj, "postStats")) {
-            JsonObject *user_stats = json_object_get_object_member(obj, "userStats");
-            JsonObject *post_stats = json_object_get_object_member(obj, "postStats");
+        if (json_object_has_member(obj, "stats")) {
+            JsonObject *stats = json_object_get_object_member(obj, "stats");
+            JsonObject *user_stats = json_object_get_object_member(stats, "users");
+            JsonObject *post_stats = json_object_get_object_member(stats, "posts");
+            JsonObject *suspension_stats = json_object_get_object_member(stats, "suspensions");
             
             result = g_strdup_printf(
                 "User Statistics:\n"
                 "  Total Users: %" G_GINT64_FORMAT "\n"
-                "  Suspended Users: %" G_GINT64_FORMAT "\n"
-                "  Admins: %" G_GINT64_FORMAT "\n"
-                "  Verified Users: %" G_GINT64_FORMAT "\n\n"
+                "  Suspended: %" G_GINT64_FORMAT "\n"
+                "  Restricted: %" G_GINT64_FORMAT "\n"
+                "  Verified: %" G_GINT64_FORMAT "\n"
+                "  Gold: %" G_GINT64_FORMAT "\n"
+                "  Gray: %" G_GINT64_FORMAT "\n\n"
                 "Post Statistics:\n"
-                "  Total Posts: %" G_GINT64_FORMAT "\n"
-                "  Total Likes: %" G_GINT64_FORMAT "\n"
-                "  Total Retweets: %" G_GINT64_FORMAT "",
+                "  Total Posts: %" G_GINT64_FORMAT "\n\n"
+                "Suspension Statistics:\n"
+                "  Active: %" G_GINT64_FORMAT "\n"
+                "  Restricted: %" G_GINT64_FORMAT "\n"
+                "  Suspended: %" G_GINT64_FORMAT "",
                 json_object_get_int_member(user_stats, "total"),
                 json_object_get_int_member(user_stats, "suspended"),
-                json_object_get_int_member(user_stats, "admins"),
+                json_object_get_int_member(user_stats, "restricted"),
                 json_object_get_int_member(user_stats, "verified"),
-                json_object_get_int_member(post_stats, "totalPosts"),
-                json_object_get_int_member(post_stats, "totalLikes"),
-                json_object_get_int_member(post_stats, "totalRetweets")
+                json_object_get_int_member(user_stats, "gold"),
+                json_object_get_int_member(user_stats, "gray"),
+                json_object_get_int_member(post_stats, "total"),
+                json_object_get_int_member(suspension_stats, "active"),
+                json_object_get_int_member(suspension_stats, "active_restricted"),
+                json_object_get_int_member(suspension_stats, "active_suspended")
             );
         }
     } else {

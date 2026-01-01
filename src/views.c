@@ -234,6 +234,7 @@ create_admin_view()
     g_admin_stats_label = gtk_label_new("Loading admin statistics...");
     gtk_label_set_justify(GTK_LABEL(g_admin_stats_label), GTK_JUSTIFY_LEFT);
     gtk_label_set_xalign(GTK_LABEL(g_admin_stats_label), 0.0);
+    gtk_label_set_line_wrap(GTK_LABEL(g_admin_stats_label), TRUE);
     gtk_box_pack_start(GTK_BOX(box), g_admin_stats_label, FALSE, FALSE, 10);
 
     GtkWidget *refresh_btn = gtk_button_new_with_label("Refresh Statistics");
