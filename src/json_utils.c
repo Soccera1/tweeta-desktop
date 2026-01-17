@@ -1,6 +1,8 @@
 #include <json-glib/json-glib.h>
 #include "json_utils.h"
 
+static struct Tweet* parse_single_tweet(JsonObject *post_object);
+
 static GList*
 parse_attachments(JsonObject *post_object)
 {
@@ -133,6 +135,11 @@ parse_tweets(const gchar *json_data)
                 tweet->reply_count = json_object_get_int_member(post_object, "replies");
             }
 
+            if (json_object_has_member(post_object, "quoted_tweet") && !json_node_is_null(json_object_get_member(post_object, "quoted_tweet"))) {
+                JsonObject *quote_obj = json_object_get_object_member(post_object, "quoted_tweet");
+                tweet->quote_tweet = parse_single_tweet(quote_obj);
+            }
+
             tweets = g_list_append(tweets, tweet);
         }
     }
@@ -212,6 +219,11 @@ parse_single_tweet(JsonObject *post_object)
     }
     if (json_object_has_member(post_object, "replies")) {
         tweet->reply_count = json_object_get_int_member(post_object, "replies");
+    }
+
+    if (json_object_has_member(post_object, "quoted_tweet") && !json_node_is_null(json_object_get_member(post_object, "quoted_tweet"))) {
+        JsonObject *quote_obj = json_object_get_object_member(post_object, "quoted_tweet");
+        tweet->quote_tweet = parse_single_tweet(quote_obj);
     }
 
     return tweet;
@@ -396,6 +408,11 @@ parse_profile_replies(const gchar *json_data)
                 }
                 if (json_object_has_member(reply_obj, "replies")) {
                     tweet->reply_count = json_object_get_int_member(reply_obj, "replies");
+                }
+
+                if (json_object_has_member(reply_obj, "quoted_tweet") && !json_node_is_null(json_object_get_member(reply_obj, "quoted_tweet"))) {
+                    JsonObject *quote_obj = json_object_get_object_member(reply_obj, "quoted_tweet");
+                    tweet->quote_tweet = parse_single_tweet(quote_obj);
                 }
 
                 tweets = g_list_append(tweets, tweet);
@@ -874,6 +891,9 @@ free_tweet(gpointer data)
     g_free(tweet->id);
     g_free(tweet->note);
     g_free(tweet->note_severity);
+    if (tweet->quote_tweet) {
+        free_tweet(tweet->quote_tweet);
+    }
     if (tweet->attachments) {
         g_list_free_full(tweet->attachments, free_attachment);
     }

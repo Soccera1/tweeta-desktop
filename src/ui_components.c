@@ -534,6 +534,54 @@ on_admin_user_button_press(GtkWidget *widget, GdkEventButton *event, gpointer us
 }
 
 GtkWidget*
+create_quoted_tweet_widget(struct Tweet *tweet)
+{
+    GtkWidget *frame = gtk_frame_new(NULL);
+    
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    gtk_container_set_border_width(GTK_CONTAINER(box), 10);
+
+    // Author info
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    GtkWidget *avatar_image = gtk_image_new();
+    gtk_widget_set_size_request(avatar_image, 20, 20);
+    load_avatar(avatar_image, tweet->author_avatar, 20);
+    
+    gchar *author_str = g_strdup_printf("<b>%s</b> <span foreground='gray'>@%s</span>", tweet->author_name, tweet->author_username);
+    GtkWidget *author_label = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(author_label), author_str);
+    g_free(author_str);
+    
+    gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hbox), author_label, FALSE, FALSE, 0);
+    
+    gtk_box_pack_start(GTK_BOX(box), hbox, FALSE, FALSE, 0);
+    
+    // Content
+    if (tweet->content && strlen(tweet->content) > 0) {
+        GtkWidget *content_label = gtk_label_new(tweet->content);
+        gtk_label_set_xalign(GTK_LABEL(content_label), 0.0);
+        gtk_label_set_line_wrap(GTK_LABEL(content_label), TRUE);
+        gtk_label_set_ellipsize(GTK_LABEL(content_label), PANGO_ELLIPSIZE_END);
+        gtk_label_set_max_width_chars(GTK_LABEL(content_label), 50);
+        gtk_box_pack_start(GTK_BOX(box), content_label, FALSE, FALSE, 0);
+    }
+    
+    // Attachments
+    add_attachments_to_box(GTK_BOX(box), tweet->attachments);
+    
+    gtk_container_add(GTK_CONTAINER(frame), box);
+    
+    // Make the whole frame clickable to go to the quoted tweet
+    GtkWidget *event_box = gtk_event_box_new();
+    gtk_container_add(GTK_CONTAINER(event_box), frame);
+    g_object_set_data_full(G_OBJECT(event_box), "tweet_id", g_strdup(tweet->id), g_free);
+    g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_tweet_clicked), NULL);
+    
+    return event_box;
+}
+
+GtkWidget*
 create_tweet_widget(struct Tweet *tweet)
 {
     return create_tweet_widget_full(tweet, NULL);
@@ -630,6 +678,11 @@ create_tweet_widget_full(struct Tweet *tweet, const gchar *op_username)
     }
 
     add_attachments_to_box(GTK_BOX(box), tweet->attachments);
+
+    if (tweet->quote_tweet) {
+        GtkWidget *quote_widget = create_quoted_tweet_widget(tweet->quote_tweet);
+        gtk_box_pack_start(GTK_BOX(box), quote_widget, FALSE, FALSE, 5);
+    }
 
     gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hbox), box, TRUE, TRUE, 0);

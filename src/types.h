@@ -26,6 +26,7 @@ struct Tweet {
   int like_count;
   int retweet_count;
   int reply_count;
+  struct Tweet *quote_tweet;
 };
 
 struct Emoji {
