@@ -13,7 +13,7 @@ SRCDIR  = .
 
 # Dependencies (backticks are evaluated by shell in rules)
 GTK_CFLAGS = `pkg-config --cflags gtk+-3.0 json-glib-1.0`
-GTK_LIBS   = `pkg-config --libs gtk+-3.0 json-glib-1.0 libcurl`
+GTK_LIBS   = `pkg-config --libs gtk+-3.0 json-glib-1.0 libcurl gpgme`
 
 CFLAGS  = -Wall -Wextra -pedantic-errors -std=c99 -O3 -Isrc
 # Let pkg-config provide library paths via GTK_LIBS
@@ -26,7 +26,8 @@ TEST_TARGET = test_runner
 MAIN_SRC = src/main.c
 CORE_SRCS = src/globals.c src/network.c src/json_utils.c \
             src/session.c src/ui_utils.c src/ui_components.c \
-            src/views.c src/actions.c src/challenge.c
+            src/views.c src/actions.c src/challenge.c src/p2p_crypto.c \
+            src/p2p_network.c src/actions_p2p_network.c
 
 # Object files with src/ prefix
 MAIN_OBJ = $(patsubst %.c,%.o,$(MAIN_SRC))

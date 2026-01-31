@@ -5,6 +5,12 @@
 #include "network.h"
 #include "ui_components.h"
 #include "views.h"
+#include "p2p_network.h"
+#include "p2p_crypto.h"
+
+/* Forward declarations */
+extern gboolean on_p2p_contact_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_data);
+extern gboolean p2p_send_message(const gchar *recipient_username, const gchar *plaintext, const gchar *recipient_fingerprint);
 
 static inline gchar* get_username_safe(void) {
     g_mutex_lock(&g_globals_mutex);
@@ -247,7 +253,29 @@ on_dm_send_clicked(GtkWidget *widget, gpointer user_data)
     (void)user_data;
     const gchar *content = gtk_entry_get_text(GTK_ENTRY(g_dm_entry));
     const gchar *conv_id = g_object_get_data(G_OBJECT(g_dm_messages_list), "conversation_id");
+    const gchar *p2p_recipient = g_object_get_data(G_OBJECT(g_dm_messages_list), "p2p_recipient");
 
+    /* Check if this is a P2P encrypted conversation */
+    if (p2p_recipient && g_p2p_session) {
+        /* Send encrypted P2P message */
+        g_mutex_lock(&g_p2p_session->session_mutex);
+        struct P2PContact *contact = g_hash_table_lookup(g_p2p_session->contacts, p2p_recipient);
+        gchar *fingerprint = contact && contact->public_key_fingerprint ? 
+            g_strdup(contact->public_key_fingerprint) : NULL;
+        g_mutex_unlock(&g_p2p_session->session_mutex);
+        
+        if (fingerprint && content && strlen(content) > 0) {
+            p2p_send_message(p2p_recipient, content, fingerprint);
+            gtk_entry_set_text(GTK_ENTRY(g_dm_entry), "");
+            
+            /* Refresh the messages view */
+            on_p2p_contact_clicked(NULL, NULL, NULL);
+        }
+        g_free(fingerprint);
+        return;
+    }
+
+    /* Regular tweetapus DM */
     if (content && strlen(content) > 0 && conv_id) {
         gchar *url = g_strdup_printf(DM_SEND_MESSAGE_URL, conv_id);
         gchar *post_data = construct_dm_payload(content);
@@ -267,11 +295,109 @@ on_dm_send_clicked(GtkWidget *widget, gpointer user_data)
 GtkWidget*
 create_messages_view(void)
 {
-    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    GtkWidget *notebook = gtk_notebook_new();
+    gtk_notebook_set_tab_pos(GTK_NOTEBOOK(notebook), GTK_POS_TOP);
+
+    /* Tab 1: Regular tweetapus conversations */
+    GtkWidget *conversations_scroll = gtk_scrolled_window_new(NULL, NULL);
     g_conversations_list = gtk_list_box_new();
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_conversations_list), GTK_SELECTION_NONE);
-    gtk_container_add(GTK_CONTAINER(scroll), g_conversations_list);
-    return scroll;
+    gtk_container_add(GTK_CONTAINER(conversations_scroll), g_conversations_list);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), conversations_scroll,
+        gtk_label_new("Tweetapus Conversations"));
+
+    /* Tab 2: Encrypted Messaging */
+    GtkWidget *p2p_view = create_p2p_messages_view();
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), p2p_view,
+        gtk_label_new("Encrypted"));
+
+    return notebook;
+}
+
+GtkWidget*
+create_p2p_messages_view(void)
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    
+    /* Action bar with buttons for key management and contacts */
+    GtkWidget *action_bar = gtk_action_bar_new();
+    
+    GtkWidget *setup_keys_btn = gtk_button_new_with_label("Setup Keys");
+    g_signal_connect(setup_keys_btn, "clicked", G_CALLBACK(on_p2p_setup_clicked), NULL);
+    gtk_action_bar_pack_start(GTK_ACTION_BAR(action_bar), setup_keys_btn);
+    
+    GtkWidget *add_contact_btn = gtk_button_new_with_label("Add Contact");
+    g_signal_connect(add_contact_btn, "clicked", G_CALLBACK(on_p2p_add_contact_clicked), NULL);
+    gtk_action_bar_pack_start(GTK_ACTION_BAR(action_bar), add_contact_btn);
+    
+    GtkWidget *import_key_btn = gtk_button_new_with_label("Import Key");
+    g_signal_connect(import_key_btn, "clicked", G_CALLBACK(on_p2p_import_contact_clicked), NULL);
+    gtk_action_bar_pack_start(GTK_ACTION_BAR(action_bar), import_key_btn);
+    
+    /* Transport mode selector */
+    GtkWidget *transport_combo = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(transport_combo), "Direct P2P");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(transport_combo), "Relay Mode");
+    gtk_combo_box_set_active(GTK_COMBO_BOX(transport_combo), 1);  /* Default to relay for ease of use */
+    g_signal_connect(transport_combo, "changed", G_CALLBACK(on_p2p_transport_changed), NULL);
+    gtk_action_bar_pack_end(GTK_ACTION_BAR(action_bar), transport_combo);
+    
+    GtkWidget *transport_label = gtk_label_new("Transport:");
+    gtk_action_bar_pack_end(GTK_ACTION_BAR(action_bar), transport_label);
+    
+    gtk_box_pack_start(GTK_BOX(box), action_bar, FALSE, FALSE, 0);
+    
+    /* Header - similar to DM interface */
+    GtkWidget *header_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(header_box), 10);
+    g_p2p_title_label = gtk_label_new("Select a contact to start encrypted messaging");
+    PangoAttrList *attrs = pango_attr_list_new();
+    pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+    gtk_label_set_attributes(GTK_LABEL(g_p2p_title_label), attrs);
+    pango_attr_list_unref(attrs);
+    gtk_box_pack_start(GTK_BOX(header_box), g_p2p_title_label, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(box), header_box, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
+
+    /* Split view: contacts list and messages */
+    GtkWidget *paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+    
+    /* Contacts list on the left */
+    GtkWidget *contacts_scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_widget_set_size_request(contacts_scroll, 250, -1);
+    g_p2p_contacts_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_p2p_contacts_list), GTK_SELECTION_SINGLE);
+    g_signal_connect(g_p2p_contacts_list, "row-selected", G_CALLBACK(on_p2p_contact_selected), NULL);
+    gtk_container_add(GTK_CONTAINER(contacts_scroll), g_p2p_contacts_list);
+    gtk_paned_pack1(GTK_PANED(paned), contacts_scroll, FALSE, TRUE);
+    
+    /* Messages area on the right */
+    GtkWidget *messages_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_p2p_messages_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_p2p_messages_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(scroll), g_p2p_messages_list);
+    gtk_box_pack_start(GTK_BOX(messages_box), scroll, TRUE, TRUE, 0);
+    
+    /* Input area - similar to DM interface */
+    GtkWidget *input_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_container_set_border_width(GTK_CONTAINER(input_hbox), 5);
+    g_p2p_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_p2p_entry), "Type encrypted message...");
+    g_signal_connect(g_p2p_entry, "activate", G_CALLBACK(on_p2p_send_clicked), NULL);
+    
+    GtkWidget *send_btn = gtk_button_new_with_label("Send");
+    g_signal_connect(send_btn, "clicked", G_CALLBACK(on_p2p_send_clicked), NULL);
+    
+    gtk_box_pack_start(GTK_BOX(input_hbox), g_p2p_entry, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(input_hbox), send_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(messages_box), input_hbox, FALSE, FALSE, 0);
+    
+    gtk_paned_pack2(GTK_PANED(paned), messages_box, TRUE, TRUE);
+    gtk_box_pack_start(GTK_BOX(box), paned, TRUE, TRUE, 0);
+
+    return box;
 }
 
 GtkWidget*

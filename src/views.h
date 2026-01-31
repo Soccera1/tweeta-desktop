@@ -15,5 +15,6 @@ GtkWidget* create_admin_view(void);
 GtkWidget* create_bookmarks_view(void);
 GtkWidget* create_communities_view(void);
 GtkWidget* create_community_tweets_view(void);
+GtkWidget* create_p2p_messages_view(void);
 
 #endif /* VIEWS_H */

@@ -64,4 +64,12 @@ extern gboolean g_dm_notifications_enabled;
 extern gboolean g_compact_mode_enabled;
 extern int g_theme_preference;
 
+/* P2P Encrypted Messaging globals */
+extern GtkWidget *g_p2p_contacts_list;
+extern GtkWidget *g_p2p_messages_list;
+extern GtkWidget *g_p2p_entry;
+extern GtkWidget *g_p2p_title_label;
+extern GtkWidget *g_p2p_status_label;
+extern struct P2PSession *g_p2p_session;
+
 #endif /* GLOBALS_H */

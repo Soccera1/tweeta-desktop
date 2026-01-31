@@ -59,3 +59,11 @@ gboolean g_sound_enabled = TRUE;
 gboolean g_dm_notifications_enabled = TRUE;
 gboolean g_compact_mode_enabled = FALSE;
 int g_theme_preference = 2;
+
+/* P2P Encrypted Messaging globals */
+GtkWidget *g_p2p_contacts_list = NULL;
+GtkWidget *g_p2p_messages_list = NULL;
+GtkWidget *g_p2p_entry = NULL;
+GtkWidget *g_p2p_title_label = NULL;
+GtkWidget *g_p2p_status_label = NULL;
+struct P2PSession *g_p2p_session = NULL;

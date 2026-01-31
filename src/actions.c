@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <curl/curl.h>
 #include <gtk/gtk.h>
 #include "actions.h"
@@ -12,6 +13,14 @@
 #include "ui_components.h"
 #include "ui_utils.h"
 #include "views.h"
+#include "p2p_crypto.h"
+
+static inline gchar* get_username_safe(void) {
+    g_mutex_lock(&g_globals_mutex);
+    gchar *username = g_current_username ? g_strdup(g_current_username) : NULL;
+    g_mutex_unlock(&g_globals_mutex);
+    return username;
+}
 
 static GMutex load_tweets_mutex;
 static guint active_tweets_request_id = 0;
@@ -32,11 +41,415 @@ static inline gchar* get_auth_token_safe(void) {
     return token;
 }
 
-static inline gchar* get_username_safe(void) {
-    g_mutex_lock(&g_globals_mutex);
-    gchar *username = g_current_username ? g_strdup(g_current_username) : NULL;
-    g_mutex_unlock(&g_globals_mutex);
-    return username;
+/* P2P Encrypted Messaging Implementation */
+
+static gchar *g_p2p_current_contact = NULL;
+static GMutex g_p2p_mutex;
+
+void
+on_p2p_send_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+
+    if (!g_p2p_current_contact) {
+        GtkWidget *dialog = gtk_message_dialog_new(NULL,
+            GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_WARNING,
+            GTK_BUTTONS_CLOSE,
+            "Please select a contact first.");
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+        return;
+    }
+
+    const gchar *plaintext = gtk_entry_get_text(GTK_ENTRY(g_p2p_entry));
+    if (!plaintext || strlen(plaintext) == 0) {
+        return;
+    }
+
+    p2p_send_encrypted_message(g_p2p_current_contact, plaintext);
+    gtk_entry_set_text(GTK_ENTRY(g_p2p_entry), "");
+}
+
+void
+on_p2p_setup_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("P2P Encryption Setup",
+        NULL,
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "_Generate Keys", GTK_RESPONSE_ACCEPT,
+        NULL);
+
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    gtk_container_set_border_width(GTK_CONTAINER(content), 20);
+
+    GtkWidget *info_label = gtk_label_new(
+        "This will generate a new GPG key pair for P2P encrypted messaging.\n"
+        "Your private key will be stored locally.\n"
+        "Your public key can be shared with contacts to enable encrypted communication.");
+    gtk_label_set_line_wrap(GTK_LABEL(info_label), TRUE);
+    gtk_box_pack_start(GTK_BOX(content), info_label, FALSE, FALSE, 10);
+
+    GtkWidget *passphrase_label = gtk_label_new("Passphrase (optional):");
+    gtk_box_pack_start(GTK_BOX(content), passphrase_label, FALSE, FALSE, 5);
+
+    GtkWidget *passphrase_entry = gtk_entry_new();
+    gtk_entry_set_visibility(GTK_ENTRY(passphrase_entry), FALSE);
+    gtk_box_pack_start(GTK_BOX(content), passphrase_entry, FALSE, FALSE, 5);
+
+    gtk_widget_show_all(content);
+
+    gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+    if (response == GTK_RESPONSE_ACCEPT) {
+        g_mutex_lock(&g_globals_mutex);
+        gchar *username = g_current_username ? g_strdup(g_current_username) : NULL;
+        g_mutex_unlock(&g_globals_mutex);
+
+        if (username) {
+            gchar *email = g_strdup_printf("%s@tweetapus.local", username);
+            const gchar *passphrase = gtk_entry_get_text(GTK_ENTRY(passphrase_entry));
+
+            gchar *fingerprint = p2p_generate_keypair(username, email,
+                passphrase && strlen(passphrase) > 0 ? passphrase : NULL);
+
+            if (fingerprint) {
+                gchar *status = g_strdup_printf("Key: %s", fingerprint);
+                gtk_label_set_text(GTK_LABEL(g_p2p_status_label), status);
+                g_free(status);
+
+                /* Export and show public key */
+                gchar *public_key = p2p_export_public_key(fingerprint);
+                if (public_key) {
+                    GtkWidget *key_dialog = gtk_dialog_new_with_buttons("Your Public Key",
+                        GTK_WINDOW(dialog),
+                        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                        "_Close", GTK_RESPONSE_CLOSE,
+                        NULL);
+                    GtkWidget *key_content = gtk_dialog_get_content_area(GTK_DIALOG(key_dialog));
+                    GtkWidget *key_view = gtk_text_view_new();
+                    gtk_text_view_set_editable(GTK_TEXT_VIEW(key_view), FALSE);
+                    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(key_view));
+                    gtk_text_buffer_set_text(buffer, public_key, -1);
+                    GtkWidget *key_scroll = gtk_scrolled_window_new(NULL, NULL);
+                    gtk_widget_set_size_request(key_scroll, 500, 300);
+                    gtk_container_add(GTK_CONTAINER(key_scroll), key_view);
+                    gtk_box_pack_start(GTK_BOX(key_content), key_scroll, TRUE, TRUE, 0);
+                    gtk_widget_show_all(key_content);
+                    gtk_dialog_run(GTK_DIALOG(key_dialog));
+                    gtk_widget_destroy(key_dialog);
+                    g_free(public_key);
+                }
+                g_free(fingerprint);
+            } else {
+                GtkWidget *error = gtk_message_dialog_new(GTK_WINDOW(dialog),
+                    GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                    GTK_MESSAGE_ERROR,
+                    GTK_BUTTONS_CLOSE,
+                    "Failed to generate key pair.");
+                gtk_dialog_run(GTK_DIALOG(error));
+                gtk_widget_destroy(error);
+            }
+            g_free(email);
+        } else {
+            GtkWidget *error = gtk_message_dialog_new(GTK_WINDOW(dialog),
+                GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                GTK_MESSAGE_ERROR,
+                GTK_BUTTONS_CLOSE,
+                "You must be logged in to generate keys.");
+            gtk_dialog_run(GTK_DIALOG(error));
+            gtk_widget_destroy(error);
+        }
+        g_free(username);
+    }
+
+    gtk_widget_destroy(dialog);
+}
+
+static void
+on_p2p_contact_row_selected(GtkListBox *box, GtkListBoxRow *row, gpointer user_data)
+{
+    (void)box;
+    (void)user_data;
+
+    if (!row) return;
+
+    GtkWidget *child = gtk_bin_get_child(GTK_BIN(row));
+    const gchar *username = g_object_get_data(G_OBJECT(child), "contact_username");
+
+    g_mutex_lock(&g_p2p_mutex);
+    g_free(g_p2p_current_contact);
+    g_p2p_current_contact = username ? g_strdup(username) : NULL;
+    g_mutex_unlock(&g_p2p_mutex);
+
+    if (username) {
+        const gchar *display_name = g_object_get_data(G_OBJECT(child), "contact_name");
+        gchar *title = g_strdup_printf("P2P: %s", display_name ? display_name : username);
+        gtk_label_set_text(GTK_LABEL(g_p2p_title_label), title);
+        g_free(title);
+
+        p2p_refresh_messages_list(username);
+    }
+}
+
+void
+on_p2p_contact_selected(GtkWidget *widget, gpointer user_data)
+{
+    (void)user_data;
+    const gchar *username = g_object_get_data(G_OBJECT(widget), "contact_username");
+
+    g_mutex_lock(&g_p2p_mutex);
+    g_free(g_p2p_current_contact);
+    g_p2p_current_contact = username ? g_strdup(username) : NULL;
+    g_mutex_unlock(&g_p2p_mutex);
+}
+
+void
+on_p2p_generate_keys_clicked(GtkWidget *widget, gpointer user_data)
+{
+    on_p2p_setup_clicked(widget, user_data);
+}
+
+void
+on_p2p_import_contact_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Import Contact",
+        NULL,
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "_Import", GTK_RESPONSE_ACCEPT,
+        NULL);
+
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    gtk_container_set_border_width(GTK_CONTAINER(content), 20);
+
+    GtkWidget *username_label = gtk_label_new("Contact Username:");
+    gtk_box_pack_start(GTK_BOX(content), username_label, FALSE, FALSE, 5);
+
+    GtkWidget *username_entry = gtk_entry_new();
+    gtk_box_pack_start(GTK_BOX(content), username_entry, FALSE, FALSE, 5);
+
+    GtkWidget *key_label = gtk_label_new("Public Key (armored):");
+    gtk_box_pack_start(GTK_BOX(content), key_label, FALSE, FALSE, 5);
+
+    GtkWidget *key_view = gtk_text_view_new();
+    gtk_widget_set_size_request(key_view, 400, 200);
+    GtkWidget *key_scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_container_add(GTK_CONTAINER(key_scroll), key_view);
+    gtk_box_pack_start(GTK_BOX(content), key_scroll, TRUE, TRUE, 5);
+
+    gtk_widget_show_all(content);
+
+    gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+    if (response == GTK_RESPONSE_ACCEPT) {
+        const gchar *username = gtk_entry_get_text(GTK_ENTRY(username_entry));
+        GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(key_view));
+        GtkTextIter start, end;
+        gtk_text_buffer_get_bounds(buffer, &start, &end);
+        gchar *key_armor = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+
+        if (username && strlen(username) > 0 && key_armor && strlen(key_armor) > 0) {
+            /* Import the key */
+            if (p2p_import_public_key(key_armor, NULL)) {
+                /* Add to contacts */
+                struct P2PContact *contact = g_new0(struct P2PContact, 1);
+                contact->username = g_strdup(username);
+                contact->public_key_armor = g_strdup(key_armor);
+                contact->display_name = g_strdup(username);
+
+                if (g_p2p_session) {
+                    g_mutex_lock(&g_p2p_session->session_mutex);
+                    g_hash_table_insert(g_p2p_session->contacts, g_strdup(username), contact);
+                    g_mutex_unlock(&g_p2p_session->session_mutex);
+                }
+
+                p2p_refresh_contacts_list();
+            } else {
+                GtkWidget *error = gtk_message_dialog_new(GTK_WINDOW(dialog),
+                    GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                    GTK_MESSAGE_ERROR,
+                    GTK_BUTTONS_CLOSE,
+                    "Failed to import public key.");
+                gtk_dialog_run(GTK_DIALOG(error));
+                gtk_widget_destroy(error);
+            }
+        }
+        g_free(key_armor);
+    }
+
+    gtk_widget_destroy(dialog);
+}
+
+gboolean
+p2p_init_session(const gchar *username)
+{
+    if (!username) return FALSE;
+
+    if (g_p2p_session) {
+        /* Already initialized */
+        return TRUE;
+    }
+
+    if (!p2p_crypto_init()) {
+        g_warning("Failed to initialize P2P crypto");
+        return FALSE;
+    }
+
+    g_p2p_session = g_new0(struct P2PSession, 1);
+    g_p2p_session->local_username = g_strdup(username);
+    g_p2p_session->contacts = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    g_p2p_session->conversations = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    g_mutex_init(&g_p2p_session->session_mutex);
+
+    return TRUE;
+}
+
+void
+p2p_send_encrypted_message(const gchar *recipient, const gchar *plaintext)
+{
+    if (!recipient || !plaintext || !g_p2p_session) return;
+
+    g_mutex_lock(&g_p2p_session->session_mutex);
+    struct P2PContact *contact = g_hash_table_lookup(g_p2p_session->contacts, recipient);
+    g_mutex_unlock(&g_p2p_session->session_mutex);
+
+    if (!contact || !contact->public_key_fingerprint) {
+        g_warning("No public key for recipient: %s", recipient);
+        return;
+    }
+
+    gchar *encrypted = p2p_encrypt_message(plaintext, contact->public_key_fingerprint);
+    if (!encrypted) {
+        g_warning("Failed to encrypt message for %s", recipient);
+        return;
+    }
+
+    /* Store the message locally */
+    struct P2PMessage *msg = g_new0(struct P2PMessage, 1);
+    msg->id = g_strdup_printf("p2p_%ld", time(NULL));
+    msg->sender_username = g_strdup(g_p2p_session->local_username);
+    msg->recipient_username = g_strdup(recipient);
+    msg->plaintext_content = g_strdup(plaintext);
+    msg->encrypted_content = encrypted;
+    msg->timestamp = g_strdup("");
+    msg->is_outgoing = TRUE;
+    msg->is_verified = TRUE;
+
+    /* Add to conversation */
+    g_mutex_lock(&g_p2p_session->session_mutex);
+    GList *conversation = g_hash_table_lookup(g_p2p_session->conversations, recipient);
+    conversation = g_list_append(conversation, msg);
+    g_hash_table_insert(g_p2p_session->conversations, g_strdup(recipient), conversation);
+    g_mutex_unlock(&g_p2p_session->session_mutex);
+
+    /* Refresh UI */
+    p2p_refresh_messages_list(recipient);
+
+    /* TODO: Implement actual P2P transmission via direct connection or out-of-band */
+    g_debug("P2P message encrypted and stored for %s", recipient);
+}
+
+void
+p2p_refresh_contacts_list(void)
+{
+    if (!g_p2p_contacts_list || !g_p2p_session) return;
+
+    /* Clear existing list */
+    GList *children = gtk_container_get_children(GTK_CONTAINER(g_p2p_contacts_list));
+    for (GList *l = children; l; l = l->next) {
+        gtk_widget_destroy(GTK_WIDGET(l->data));
+    }
+    g_list_free(children);
+
+    /* Populate with contacts */
+    g_mutex_lock(&g_p2p_session->session_mutex);
+    GHashTableIter iter;
+    gpointer key, value;
+    g_hash_table_iter_init(&iter, g_p2p_session->contacts);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        struct P2PContact *contact = value;
+        if (!contact) continue;
+
+        GtkWidget *row_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+        gtk_container_set_border_width(GTK_CONTAINER(row_box), 10);
+
+        GtkWidget *avatar = gtk_image_new_from_icon_name("avatar-default", GTK_ICON_SIZE_MENU);
+        gtk_widget_set_size_request(avatar, 32, 32);
+        gtk_box_pack_start(GTK_BOX(row_box), avatar, FALSE, FALSE, 0);
+
+        GtkWidget *name_label = gtk_label_new(contact->display_name ? contact->display_name : contact->username);
+        gtk_label_set_xalign(GTK_LABEL(name_label), 0.0);
+        gtk_box_pack_start(GTK_BOX(row_box), name_label, TRUE, TRUE, 0);
+
+        GtkWidget *status_dot = gtk_label_new(contact->is_online ? "●" : "○");
+        gtk_box_pack_end(GTK_BOX(row_box), status_dot, FALSE, FALSE, 0);
+
+        g_object_set_data_full(G_OBJECT(row_box), "contact_username",
+            g_strdup(contact->username), g_free);
+        g_object_set_data_full(G_OBJECT(row_box), "contact_name",
+            g_strdup(contact->display_name ? contact->display_name : contact->username), g_free);
+
+        GtkWidget *row = gtk_list_box_row_new();
+        gtk_container_add(GTK_CONTAINER(row), row_box);
+        gtk_list_box_insert(GTK_LIST_BOX(g_p2p_contacts_list), row, -1);
+        gtk_widget_show_all(row);
+    }
+    g_mutex_unlock(&g_p2p_session->session_mutex);
+
+    /* Connect selection handler */
+    g_signal_connect(g_p2p_contacts_list, "row-selected",
+        G_CALLBACK(on_p2p_contact_row_selected), NULL);
+}
+
+void
+p2p_refresh_messages_list(const gchar *contact_username)
+{
+    if (!g_p2p_messages_list || !g_p2p_session || !contact_username) return;
+
+    /* Clear existing messages */
+    GList *children = gtk_container_get_children(GTK_CONTAINER(g_p2p_messages_list));
+    for (GList *l = children; l; l = l->next) {
+        gtk_widget_destroy(GTK_WIDGET(l->data));
+    }
+    g_list_free(children);
+
+    /* Get conversation */
+    g_mutex_lock(&g_p2p_session->session_mutex);
+    GList *conversation = g_hash_table_lookup(g_p2p_session->conversations, contact_username);
+    g_mutex_unlock(&g_p2p_session->session_mutex);
+
+    /* Display messages */
+    for (GList *l = conversation; l; l = l->next) {
+        struct P2PMessage *msg = l->data;
+        if (!msg) continue;
+
+        GtkWidget *msg_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+        gtk_container_set_border_width(GTK_CONTAINER(msg_box), 5);
+
+        if (msg->is_outgoing) {
+            gtk_widget_set_halign(msg_box, GTK_ALIGN_END);
+        } else {
+            gtk_widget_set_halign(msg_box, GTK_ALIGN_START);
+        }
+
+        GtkWidget *content_label = gtk_label_new(msg->plaintext_content);
+        gtk_label_set_line_wrap(GTK_LABEL(content_label), TRUE);
+        gtk_widget_set_size_request(content_label, 200, -1);
+
+        GtkStyleContext *ctx = gtk_widget_get_style_context(content_label);
+        gtk_style_context_add_class(ctx, msg->is_outgoing ? "message-out" : "message-in");
+
+        gtk_box_pack_start(GTK_BOX(msg_box), content_label, FALSE, FALSE, 0);
+        gtk_list_box_insert(GTK_LIST_BOX(g_p2p_messages_list), msg_box, -1);
+        gtk_widget_show_all(msg_box);
+    }
 }
 
 void update_login_ui(void)

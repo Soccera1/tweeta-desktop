@@ -192,6 +192,37 @@ struct Community {
     gboolean is_moderator;
 };
 
+struct P2PContact {
+    gchar *username;
+    gchar *display_name;
+    gchar *public_key_fingerprint;
+    gchar *public_key_armor;
+    gchar *avatar_url;
+    gboolean is_online;
+    gchar *last_seen;
+    gchar *direct_host;         /* For direct P2P connections */
+    guint16 direct_port;
+};
+
+struct P2PMessage {
+    gchar *id;
+    gchar *sender_username;
+    gchar *recipient_username;
+    gchar *encrypted_content;
+    gchar *plaintext_content;  /* Decrypted locally */
+    gchar *timestamp;
+    gboolean is_outgoing;
+    gboolean is_verified;
+};
+
+struct P2PSession {
+    gchar *local_username;
+    gchar *local_key_fingerprint;
+    GHashTable *contacts;      /* username -> P2PContact* */
+    GHashTable *conversations; /* username -> GList* of P2PMessage* */
+    GMutex session_mutex;
+};
+
 struct UploadContext {
     GtkWidget *parent_dialog;
     GtkWidget *file_label;

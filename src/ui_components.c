@@ -10,6 +10,7 @@
 
 static void on_join_community_clicked(GtkButton *button, gpointer user_data);
 static void on_community_clicked(GtkListBoxRow *row, gpointer user_data);
+extern gboolean on_p2p_contact_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_data);
 
 static inline gboolean is_logged_in(void) {
     g_mutex_lock(&g_globals_mutex);
@@ -1384,6 +1385,59 @@ populate_conversation_list(GtkListBox *list_box, GList *conversations)
         GtkWidget *conv_widget = create_conversation_widget(l->data);
         gtk_widget_show_all(conv_widget);
         gtk_list_box_insert(list_box, conv_widget, -1);
+    }
+
+    /* Add P2P contacts to the conversation list */
+    if (g_p2p_session) {
+        g_mutex_lock(&g_p2p_session->session_mutex);
+        GHashTableIter p2p_iter;
+        gpointer key, value;
+        g_hash_table_iter_init(&p2p_iter, g_p2p_session->contacts);
+        while (g_hash_table_iter_next(&p2p_iter, &key, &value)) {
+            struct P2PContact *contact = value;
+            if (!contact) continue;
+
+            GtkWidget *event_box = gtk_event_box_new();
+            GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+            gtk_container_set_border_width(GTK_CONTAINER(hbox), 10);
+            
+            /* Use a lock icon to indicate encrypted */
+            GtkWidget *avatar_image = gtk_image_new_from_icon_name("security-high", GTK_ICON_SIZE_DIALOG);
+            gtk_widget_set_size_request(avatar_image, 48, 48);
+
+            GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+            
+            GtkWidget *name_label = gtk_label_new(NULL);
+            gchar *name_markup = g_strdup_printf("<b>%s</b> <span foreground=\"#2ecc71\" size=\"small\">[Encrypted]</span>", 
+                contact->display_name ? contact->display_name : contact->username);
+            gtk_label_set_markup(GTK_LABEL(name_label), name_markup);
+            gtk_label_set_xalign(GTK_LABEL(name_label), 0.0);
+            g_free(name_markup);
+
+            GtkWidget *last_msg_label = gtk_label_new("P2P encrypted messaging");
+            gtk_label_set_xalign(GTK_LABEL(last_msg_label), 0.0);
+            gtk_label_set_ellipsize(GTK_LABEL(last_msg_label), PANGO_ELLIPSIZE_END);
+            GtkStyleContext *context = gtk_widget_get_style_context(last_msg_label);
+            gtk_style_context_add_class(context, "dim-label");
+
+            gtk_box_pack_start(GTK_BOX(vbox), name_label, FALSE, FALSE, 0);
+            gtk_box_pack_start(GTK_BOX(vbox), last_msg_label, FALSE, FALSE, 0);
+
+            gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
+            gtk_box_pack_start(GTK_BOX(hbox), vbox, TRUE, TRUE, 0);
+
+            gtk_container_add(GTK_CONTAINER(event_box), hbox);
+            g_object_set_data_full(G_OBJECT(event_box), "p2p_contact_username", g_strdup(contact->username), g_free);
+            g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_p2p_contact_clicked), NULL);
+
+            GtkWidget *outer_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+            gtk_box_pack_start(GTK_BOX(outer_vbox), event_box, TRUE, TRUE, 0);
+            gtk_box_pack_start(GTK_BOX(outer_vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
+
+            gtk_widget_show_all(outer_vbox);
+            gtk_list_box_insert(list_box, outer_vbox, -1);
+        }
+        g_mutex_unlock(&g_p2p_session->session_mutex);
     }
 }
 

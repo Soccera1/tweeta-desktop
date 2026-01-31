@@ -93,4 +93,20 @@ void on_logout_clicked(GtkWidget *widget, gpointer user_data);
 void update_settings_username_display(void);
 void refresh_cache_size_display(void);
 
+/* P2P Encrypted Messaging actions */
+void on_p2p_send_clicked(GtkWidget *widget, gpointer user_data);
+void on_p2p_setup_clicked(GtkWidget *widget, gpointer user_data);
+void on_p2p_contact_selected(GtkWidget *widget, gpointer user_data);
+void on_p2p_generate_keys_clicked(GtkWidget *widget, gpointer user_data);
+void on_p2p_import_contact_clicked(GtkWidget *widget, gpointer user_data);
+void on_p2p_add_contact_clicked(GtkWidget *widget, gpointer user_data);
+void on_p2p_transport_changed(GtkComboBox *combo, gpointer user_data);
+void on_p2p_start_listener_clicked(GtkWidget *widget, gpointer user_data);
+void on_p2p_connect_clicked(GtkWidget *widget, gpointer user_data);
+gboolean on_p2p_contact_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_data);
+gboolean p2p_init_session(const gchar *username);
+void p2p_send_encrypted_message(const gchar *recipient, const gchar *plaintext);
+void p2p_refresh_contacts_list(void);
+void p2p_refresh_messages_list(const gchar *contact_username);
+
 #endif /* ACTIONS_H */
