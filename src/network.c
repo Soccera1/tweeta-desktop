@@ -1,11 +1,11 @@
-#include <curl/curl.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
+#include <curl/curl.h>
 #include <json-glib/json-glib.h>
-#include "network.h"
-#include "globals.h"
 #include "challenge.h"
 #include "constants.h"
+#include "globals.h"
+#include "network.h"
 
 static size_t
 WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)

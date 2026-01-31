@@ -1,8 +1,8 @@
-#include <json-glib/json-glib.h>
 #include <errno.h>
 #include <glib/gstdio.h>
-#include "session.h"
+#include <json-glib/json-glib.h>
 #include "globals.h"
+#include "session.h"
 
 gchar*
 get_config_path(void)

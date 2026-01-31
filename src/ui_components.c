@@ -1,11 +1,11 @@
 #include <string.h>
-#include "ui_components.h"
-#include "ui_utils.h"
-#include "json_utils.h"
-#include "network.h"
+#include "actions.h"
 #include "constants.h"
 #include "globals.h"
-#include "actions.h"
+#include "json_utils.h"
+#include "network.h"
+#include "ui_components.h"
+#include "ui_utils.h"
 
 // Forward declarations for community callbacks
 static void on_join_community_clicked(GtkButton *button, gpointer user_data);

@@ -1,10 +1,10 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <json-glib/json-glib.h>
 #include "challenge.h"
 #include "constants.h"
 #include "network.h"
-#include <json-glib/json-glib.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 static guint32 cap_hash(const gchar *e) {
     guint32 t = 2166136261U;

@@ -1,10 +1,10 @@
-#include "views.h"
-#include "globals.h"
-#include "ui_components.h"
 #include "actions.h"
 #include "constants.h"
+#include "globals.h"
 #include "json_utils.h"
 #include "network.h"
+#include "ui_components.h"
+#include "views.h"
 
 static void on_profile_edit_response(GtkDialog *dialog, gint response_id, gpointer user_data)
 {

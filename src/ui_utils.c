@@ -1,8 +1,8 @@
 #include <stdlib.h>
-#include "ui_utils.h"
-#include "network.h"
 #include "constants.h"
 #include "globals.h"
+#include "network.h"
+#include "ui_utils.h"
 
 static gboolean
 set_image_pixbuf(gpointer data)

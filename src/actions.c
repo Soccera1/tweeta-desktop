@@ -1,16 +1,16 @@
-#include <gtk/gtk.h>
-#include <curl/curl.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
+#include <curl/curl.h>
+#include <gtk/gtk.h>
 #include "actions.h"
 #include "constants.h"
-#include "types.h"
 #include "globals.h"
-#include "network.h"
 #include "json_utils.h"
+#include "network.h"
 #include "session.h"
-#include "ui_utils.h"
+#include "types.h"
 #include "ui_components.h"
+#include "ui_utils.h"
 #include "views.h"
 
 // Request tracking to prevent double-unref and race conditions
