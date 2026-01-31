@@ -14,7 +14,25 @@ Detailed documentation is available in the [docs/](docs/index.md) directory.
 
 ## Building
 
-To build the client, you will need to have GTK3, libcurl, and json-glib installed.
+To build the client, you will need to have GTK3, libcurl, json-glib, and GPGME installed.
+
+### Dependencies
+
+**Required packages:**
+- GTK3 (libgtk-3-dev on Debian/Ubuntu)
+- libcurl (libcurl4-openssl-dev on Debian/Ubuntu)
+- json-glib (libjson-glib-dev on Debian/Ubuntu)
+- GPGME (libgpgme-dev on Debian/Ubuntu) - for encrypted messaging support
+
+**Installing dependencies on Debian/Ubuntu:**
+```bash
+sudo apt-get install libgtk-3-dev libcurl4-openssl-dev libjson-glib-dev libgpgme-dev pkg-config
+```
+
+**Installing dependencies on macOS (Homebrew):**
+```bash
+brew install gtk+3 json-glib curl gpgme pkg-config
+```
 
 ### Using Make
 
