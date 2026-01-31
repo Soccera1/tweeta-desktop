@@ -16,7 +16,8 @@ GTK_CFLAGS = `pkg-config --cflags gtk+-3.0 json-glib-1.0`
 GTK_LIBS   = `pkg-config --libs gtk+-3.0 json-glib-1.0 libcurl`
 
 CFLAGS  = -Wall -Wextra -pedantic-errors -std=c99 -O3 -I$(SRCDIR)/src
-LDFLAGS = -L/usr/lib
+# Let pkg-config provide library paths via GTK_LIBS
+LDFLAGS =
 
 TARGET      = tweeta-desktop
 TEST_TARGET = test_runner
