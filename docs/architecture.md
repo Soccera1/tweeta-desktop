@@ -74,16 +74,22 @@ Infinite scrolling is implemented for the main timeline, profile feeds, and noti
 The application communicates with the Tweetapus API at `https://tweeta.tiago.zip/api`.
 
 Key endpoints used:
-- `/public-tweets`: Global timeline.
+- `/public-tweets`, `/timeline/following`: Global and following timelines.
 - `/auth/basic-login` and `/auth/me`: Authentication and user info.
 - `/tweets/`: Posting tweets, replies, and quoting.
 - `/tweets/{id}/like`, `/tweets/{id}/retweet`, `/tweets/{id}/reaction`: Interactions.
-- `/bookmarks/add`, `/bookmarks/remove`: Bookmarking.
-- `/profile/{username}`: User profiles.
+- `/tweets/{id}/poll/vote`: Poll voting.
+- `/bookmarks/add`, `/bookmarks/remove`, `/bookmarks`: Bookmarking.
+- `/profile/{username}`, `/profile/{username}/follow`, `/profile/followers/{username}`, `/profile/following/{username}`: User profiles and following.
+- `/profile/{username}`, `/profile/{username}/avatar`, `/profile/{username}/banner`: Profile editing.
 - `/search/users` and `/search/posts`: Search.
 - `/notifications`: User notifications.
 - `/dm/conversations`: Direct message conversations and messaging.
+- `/communities`, `/communities/{id}/join`, `/communities/{id}/leave`, `/communities/{id}/tweets`: Communities.
+- `/upload/`: Media uploads.
+- `/blocking/block`, `/blocking/unblock`, `/blocking/mute`, `/blocking/unmute`: Blocking and muting.
 - `/emojis`: Custom emoji list.
+- `/admin/stats`, `/admin/users`, `/admin/posts`: Admin endpoints.
 
 ## File Structure
 

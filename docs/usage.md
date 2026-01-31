@@ -23,6 +23,7 @@ The header bar contains the following controls:
 - **Compose Button**: Opens a dialog to post a new tweet (requires login).
 - **Notifications Button**: Opens your notification inbox (requires login).
 - **Messages Button**: Opens your direct message conversations (requires login).
+- **Bookmarks Button**: Opens your saved bookmarks (requires login).
 - **Refresh Button**: Refreshes the current timeline or view.
 - **Login/Logout Button**: Click to log in or log out of your Tweetapus account.
 - **User Label**: Displays your login status and username.
@@ -61,11 +62,43 @@ Displays information about a specific user:
 - **Stats**: Follower count, following count, and post count.
 - **Tabs**: Switch between the user's **Tweets** and **Replies**.
 
+#### Editing Your Profile
+
+When viewing your own profile (requires login):
+- Click the **Edit Profile** button to modify your profile information.
+- You can update your **Name**, **Bio**, **Avatar**, and **Banner** image.
+- Click **Save** to apply your changes.
+
 ### Search View
 
 Displays search results categorized into two tabs:
 - **Users**: Matching user accounts.
 - **Tweets**: Matching posts.
+
+### Bookmarks View
+
+Access your saved tweets for later reading:
+- Click the **Bookmarks** button (bookmark icon) in the header bar to view all your bookmarked tweets (requires login).
+- Bookmarked tweets are displayed in a timeline similar to the main timeline.
+- Click the **Refresh** button to update your bookmarks list.
+
+### Communities
+
+Join and participate in topic-based communities (requires login):
+- Click the **Communities** button in the header bar to browse available communities.
+- Communities can be **public** (open to all), **private** (invite-only), or **restricted** (approval required).
+- Click **Join** to become a member of a community.
+- View community-specific timelines by selecting a community.
+- Community members with moderator or admin privileges can manage community settings.
+
+### Polls
+
+Interact with polls on tweets:
+- Polls appear inline within tweets with multiple choice options.
+- **Voting**: Click on a poll option to cast your vote (requires login).
+- **Results**: View real-time results showing vote counts and percentages for each option.
+- **Active Polls**: Display the total vote count and remaining time.
+- **Closed Polls**: Show final results when the poll has ended.
 
 ### Direct Messages
 
@@ -80,7 +113,9 @@ View and participate in private conversations:
 1. Ensure you are logged in.
 2. Click the **Compose** button in the header bar.
 3. Enter your message in the dialog.
-4. Click **Tweet** to post it.
+4. **Attach Media** (optional): Click the attachment button to add images or videos to your tweet.
+5. **Create a Poll** (optional): Click the poll button to add a poll with multiple choice options.
+6. Click **Tweet** to post it.
 
 ## Replying to a Tweet
 

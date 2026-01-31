@@ -20,10 +20,15 @@ Tweeta Desktop provides a lightweight, native experience for interacting with Tw
 
 - **Timeline View**: View public tweets from the Tweetapus community.
 - **User Profiles**: View detailed profiles of users, including their bio, stats, and tweets.
+- **Profile Editing**: Edit your profile name, bio, avatar, and banner (requires login).
 - **Search**: Search for users and posts across the platform.
 - **Authentication**: Secure login and session persistence.
 - **Tweeting**: Post new tweets and reply to others.
+- **Media Uploads**: Attach images and videos to your tweets.
+- **Polls**: Create and vote in polls on tweets.
 - **Direct Messages**: Send and receive private messages with other users.
+- **Bookmarks**: Save tweets for later reading and access your bookmarked posts.
+- **Communities**: Join and participate in topic-based communities.
 - **Native Experience**: A GTK3 application that integrates well with Linux desktop environments.
 
 ## License

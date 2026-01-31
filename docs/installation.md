@@ -98,8 +98,24 @@ Both methods will perform the following actions:
 
 ## Uninstallation
 
+### Using Make
+
 To remove the application from your system, run:
 
 ```bash
 sudo make uninstall
+```
+
+### Using Meson
+
+To remove the application installed via Meson, run:
+
+```bash
+sudo ninja -C build uninstall
+```
+
+Or if using a newer Meson version:
+
+```bash
+sudo meson compile -C build uninstall
 ```

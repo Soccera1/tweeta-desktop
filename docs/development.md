@@ -29,7 +29,7 @@ This will:
 ### Test Categories
 
 The current test suite covers:
-- `parsetweets`: JSON parsing for tweet lists, including attachments, media, and notes.
+- `parsetweets`: JSON parsing for tweet lists, including attachments, media, notes, and polls.
 - `parselogin`: JSON parsing for authentication responses, including admin status.
 - `constructpayload`: JSON construction for new posts and DMs.
 - `session`: Saving, loading, and clearing user sessions with XDG path overrides.
@@ -37,6 +37,12 @@ The current test suite covers:
 - `parseusers`: JSON parsing for user lists in search.
 - `parsenotifications`: JSON parsing for various notification types.
 - `parseconversations` / `parsemessages`: JSON parsing for DM data.
+- `parsetweetdetails`: JSON parsing for individual tweet details.
+- `challenge`: CAPTCHA challenge solver functionality.
+- `polls`: Poll parsing, memory management, and closed poll handling.
+- `communities`: Community parsing (public and private) and memory management.
+- `upload`: Upload response parsing for success and failure cases.
+- `timeline`: Timeline type enum validation.
 - `integration`: Basic login flow integration test (requires environment variables).
 
 ## Code Style
