@@ -3,17 +3,17 @@
 
 #include <gtk/gtk.h>
 
-GtkWidget* create_window();
-GtkWidget* create_profile_view();
-GtkWidget* create_search_view();
-GtkWidget* create_notifications_view();
-GtkWidget* create_messages_view();
-GtkWidget* create_dm_messages_view();
-GtkWidget* create_conversation_view();
-GtkWidget* create_settings_view();
-GtkWidget* create_admin_view();
-GtkWidget* create_bookmarks_view();
-GtkWidget* create_communities_view();
-GtkWidget* create_community_tweets_view();
+GtkWidget* create_window(void);
+GtkWidget* create_profile_view(void);
+GtkWidget* create_search_view(void);
+GtkWidget* create_notifications_view(void);
+GtkWidget* create_messages_view(void);
+GtkWidget* create_dm_messages_view(void);
+GtkWidget* create_conversation_view(void);
+GtkWidget* create_settings_view(void);
+GtkWidget* create_admin_view(void);
+GtkWidget* create_bookmarks_view(void);
+GtkWidget* create_communities_view(void);
+GtkWidget* create_community_tweets_view(void);
 
 #endif // VIEWS_H

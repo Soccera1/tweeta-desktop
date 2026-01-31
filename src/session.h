@@ -3,9 +3,9 @@
 
 #include <glib.h>
 
-gchar* get_config_path();
+gchar* get_config_path(void);
 void save_session(const gchar *token, const gchar *username, gboolean is_admin);
-void clear_session();
-void load_session();
+void clear_session(void);
+void load_session(void);
 
 #endif // SESSION_H
