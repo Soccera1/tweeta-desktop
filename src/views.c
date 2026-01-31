@@ -6,6 +6,88 @@
 #include "json_utils.h"
 #include "network.h"
 
+static void on_profile_edit_response(GtkDialog *dialog, gint response_id, gpointer user_data)
+{
+    if (response_id == GTK_RESPONSE_ACCEPT) {
+        GtkWidget **entries = (GtkWidget **)user_data;
+        const gchar *name = gtk_entry_get_text(GTK_ENTRY(entries[0]));
+        const gchar *bio = gtk_entry_get_text(GTK_ENTRY(entries[1]));
+
+        if (g_current_username && perform_update_profile(g_current_username, name, bio)) {
+            show_profile(g_current_username);
+        } else {
+            GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
+                                     GTK_DIALOG_DESTROY_WITH_PARENT,
+                                     GTK_MESSAGE_ERROR,
+                                     GTK_BUTTONS_CLOSE,
+                                     "Failed to update profile.");
+            gtk_dialog_run(GTK_DIALOG(error_dialog));
+            gtk_widget_destroy(error_dialog);
+        }
+    }
+    g_free(user_data);
+    gtk_widget_destroy(GTK_WIDGET(dialog));
+}
+
+static void on_edit_profile_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+
+    if (!g_current_username) return;
+
+    GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+    GtkWindow *window = GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL;
+
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Edit Profile",
+                                                    window,
+                                                    GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                    "_Cancel", GTK_RESPONSE_CANCEL,
+                                                    "_Save", GTK_RESPONSE_ACCEPT,
+                                                    NULL);
+
+    GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    GtkWidget *grid = gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(grid), 5);
+    gtk_grid_set_column_spacing(GTK_GRID(grid), 5);
+    gtk_container_set_border_width(GTK_CONTAINER(grid), 10);
+
+    GtkWidget *name_entry = gtk_entry_new();
+    GtkWidget *bio_entry = gtk_entry_new();
+
+    gtk_entry_set_placeholder_text(GTK_ENTRY(name_entry), "Display name...");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(bio_entry), "Bio...");
+
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Name:"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), name_entry, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Bio:"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), bio_entry, 1, 1, 1, 1);
+
+    gtk_widget_show_all(grid);
+    gtk_box_pack_start(GTK_BOX(content_area), grid, TRUE, TRUE, 0);
+
+    GtkWidget **entries = g_new(GtkWidget*, 2);
+    entries[0] = name_entry;
+    entries[1] = bio_entry;
+
+    g_signal_connect(dialog, "response", G_CALLBACK(on_profile_edit_response), entries);
+    gtk_widget_show(dialog);
+}
+
+static void on_follow_button_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)user_data;
+    const gchar *username = g_object_get_data(G_OBJECT(widget), "username");
+    gboolean *is_following = g_object_get_data(G_OBJECT(widget), "is_following");
+
+    if (!username || !is_following || !g_auth_token) return;
+
+    if (perform_follow(username, !(*is_following))) {
+        *is_following = !(*is_following);
+        gtk_button_set_label(GTK_BUTTON(widget), *is_following ? "Unfollow" : "Follow");
+    }
+}
+
 GtkWidget*
 create_profile_view()
 {
@@ -34,9 +116,24 @@ create_profile_view()
     g_profile_stats_label = gtk_label_new("");
     gtk_widget_set_halign(g_profile_stats_label, GTK_ALIGN_START);
 
+    // Follow button
+    g_follow_button = gtk_button_new_with_label("Follow");
+    gtk_widget_set_no_show_all(g_follow_button, TRUE);
+    gtk_widget_hide(g_follow_button);
+    g_signal_connect(g_follow_button, "clicked", G_CALLBACK(on_follow_button_clicked), NULL);
+
+    // Edit Profile button (only for own profile)
+    GtkWidget *edit_profile_button = gtk_button_new_with_label("Edit Profile");
+    gtk_widget_set_no_show_all(edit_profile_button, TRUE);
+    gtk_widget_hide(edit_profile_button);
+    g_signal_connect(edit_profile_button, "clicked", G_CALLBACK(on_edit_profile_clicked), NULL);
+    g_object_set_data(G_OBJECT(box), "edit_profile_button", edit_profile_button);
+
     gtk_box_pack_start(GTK_BOX(vbox), g_profile_name_label, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), g_profile_bio_label, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), g_profile_stats_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), g_follow_button, FALSE, FALSE, 5);
+    gtk_box_pack_start(GTK_BOX(vbox), edit_profile_button, FALSE, FALSE, 5);
 
     gtk_box_pack_start(GTK_BOX(hbox), vbox, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(box), hbox, FALSE, FALSE, 0);
@@ -60,6 +157,20 @@ create_profile_view()
     gtk_container_add(GTK_CONTAINER(replies_scroll), g_profile_replies_list);
     g_signal_connect(replies_scroll, "edge-reached", G_CALLBACK(on_scroll_edge_reached), NULL);
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), replies_scroll, gtk_label_new("Replies"));
+
+    // Followers tab
+    GtkWidget *followers_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_followers_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_followers_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(followers_scroll), g_followers_list);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), followers_scroll, gtk_label_new("Followers"));
+
+    // Following tab
+    GtkWidget *following_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_following_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_following_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(following_scroll), g_following_list);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), following_scroll, gtk_label_new("Following"));
 
     gtk_box_pack_start(GTK_BOX(box), notebook, TRUE, TRUE, 0);
 
@@ -233,6 +344,117 @@ on_admin_posts_search_activated(GtkEntry *entry, gpointer user_data)
     start_loading_admin_posts(query);
 }
 
+static void on_communities_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+
+    if (!g_auth_token) {
+        GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+        GtkWindow *window = GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL;
+        GtkWidget *error_dialog = gtk_message_dialog_new(window,
+                                 GTK_DIALOG_DESTROY_WITH_PARENT,
+                                 GTK_MESSAGE_ERROR,
+                                 GTK_BUTTONS_CLOSE,
+                                 "You must be logged in to view communities.");
+        gtk_dialog_run(GTK_DIALOG(error_dialog));
+        gtk_widget_destroy(error_dialog);
+        return;
+    }
+
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "communities");
+    gtk_widget_show(g_back_button);
+    start_loading_communities(GTK_LIST_BOX(g_communities_list));
+}
+
+static void on_bookmarks_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+
+    if (!g_auth_token) {
+        GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+        GtkWindow *window = GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL;
+        GtkWidget *error_dialog = gtk_message_dialog_new(window,
+                                 GTK_DIALOG_DESTROY_WITH_PARENT,
+                                 GTK_MESSAGE_ERROR,
+                                 GTK_BUTTONS_CLOSE,
+                                 "You must be logged in to view bookmarks.");
+        gtk_dialog_run(GTK_DIALOG(error_dialog));
+        gtk_widget_destroy(error_dialog);
+        return;
+    }
+
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "bookmarks");
+    gtk_widget_show(g_back_button);
+    start_loading_bookmarks(GTK_LIST_BOX(g_bookmarks_list));
+}
+
+static void on_timeline_toggle_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)user_data;
+
+    if (g_current_timeline_type == TIMELINE_PUBLIC) {
+        set_timeline_type(TIMELINE_FOLLOWING);
+        gtk_button_set_label(GTK_BUTTON(widget), "Following");
+    } else {
+        set_timeline_type(TIMELINE_PUBLIC);
+        gtk_button_set_label(GTK_BUTTON(widget), "Public");
+    }
+
+    start_loading_timeline(GTK_LIST_BOX(g_main_list_box));
+}
+
+GtkWidget*
+create_bookmarks_view()
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_bookmarks_list = gtk_list_box_new();
+    g_object_set_data(G_OBJECT(g_bookmarks_list), "feed_type", "bookmarks");
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_bookmarks_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(scroll), g_bookmarks_list);
+    g_signal_connect(scroll, "edge-reached", G_CALLBACK(on_scroll_edge_reached), NULL);
+
+    gtk_box_pack_start(GTK_BOX(box), scroll, TRUE, TRUE, 0);
+
+    return box;
+}
+
+GtkWidget*
+create_communities_view()
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_communities_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_communities_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(scroll), g_communities_list);
+    g_signal_connect(scroll, "edge-reached", G_CALLBACK(on_scroll_edge_reached), NULL);
+
+    gtk_box_pack_start(GTK_BOX(box), scroll, TRUE, TRUE, 0);
+
+    return box;
+}
+
+GtkWidget*
+create_community_tweets_view()
+{
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_community_tweets_list = gtk_list_box_new();
+    g_object_set_data(G_OBJECT(g_community_tweets_list), "feed_type", "community_tweets");
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_community_tweets_list), GTK_SELECTION_NONE);
+    gtk_container_add(GTK_CONTAINER(scroll), g_community_tweets_list);
+    g_signal_connect(scroll, "edge-reached", G_CALLBACK(on_scroll_edge_reached), NULL);
+
+    gtk_box_pack_start(GTK_BOX(box), scroll, TRUE, TRUE, 0);
+
+    return box;
+}
+
 GtkWidget*
 create_admin_view()
 {
@@ -333,6 +555,16 @@ create_window()
     g_signal_connect(messages_button, "clicked", G_CALLBACK(on_messages_clicked), NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), messages_button);
 
+    // Bookmarks Button (Left)
+    GtkWidget *bookmarks_button = gtk_button_new_from_icon_name("bookmark-new-symbolic", GTK_ICON_SIZE_BUTTON);
+    g_signal_connect(bookmarks_button, "clicked", G_CALLBACK(on_bookmarks_clicked), NULL);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), bookmarks_button);
+
+    // Timeline Toggle Button (Left)
+    GtkWidget *timeline_toggle_button = gtk_button_new_with_label("Public");
+    g_signal_connect(timeline_toggle_button, "clicked", G_CALLBACK(on_timeline_toggle_clicked), timeline_toggle_button);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), timeline_toggle_button);
+
     // Settings Button (Left)
     GtkWidget *settings_button = gtk_button_new_from_icon_name("emblem-system-symbolic", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(settings_button, "clicked", G_CALLBACK(on_settings_clicked), NULL);
@@ -342,6 +574,11 @@ create_window()
     GtkWidget *refresh_button = gtk_button_new_from_icon_name("view-refresh-symbolic", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(refresh_button, "clicked", G_CALLBACK(on_refresh_clicked), NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), refresh_button);
+
+    // Communities Button (Left)
+    GtkWidget *communities_button = gtk_button_new_from_icon_name("users-symbolic", GTK_ICON_SIZE_BUTTON);
+    g_signal_connect(communities_button, "clicked", G_CALLBACK(on_communities_clicked), NULL);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), communities_button);
 
     // Admin Button (Left)
     g_admin_button = gtk_button_new_from_icon_name("dialog-password-symbolic", GTK_ICON_SIZE_BUTTON);
@@ -403,6 +640,18 @@ create_window()
     // Admin View
     GtkWidget *admin_view = create_admin_view();
     gtk_stack_add_named(GTK_STACK(g_stack), admin_view, "admin");
+
+    // Bookmarks View
+    GtkWidget *bookmarks_view = create_bookmarks_view();
+    gtk_stack_add_named(GTK_STACK(g_stack), bookmarks_view, "bookmarks");
+
+    // Communities View
+    GtkWidget *communities_view = create_communities_view();
+    gtk_stack_add_named(GTK_STACK(g_stack), communities_view, "communities");
+
+    // Community Tweets View
+    GtkWidget *community_tweets_view = create_community_tweets_view();
+    gtk_stack_add_named(GTK_STACK(g_stack), community_tweets_view, "community_tweets");
 
     return window;
 }

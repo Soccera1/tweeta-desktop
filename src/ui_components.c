@@ -7,6 +7,10 @@
 #include "globals.h"
 #include "actions.h"
 
+// Forward declarations for community callbacks
+static void on_join_community_clicked(GtkButton *button, gpointer user_data);
+static void on_community_clicked(GtkListBoxRow *row, gpointer user_data);
+
 static void
 on_like_clicked(GtkWidget *widget, gpointer user_data)
 {
@@ -410,6 +414,157 @@ on_reply_clicked(GtkWidget *widget, gpointer user_data)
     g_signal_connect(dialog, "response", G_CALLBACK(on_reply_response), ctx);
 }
 
+// Poll vote data structure for callback
+struct PollVoteData {
+    gchar *tweet_id;
+    gchar *option_id;
+};
+
+static void
+free_poll_vote_data(gpointer data)
+{
+    struct PollVoteData *vote_data = (struct PollVoteData *)data;
+    if (vote_data) {
+        g_free(vote_data->tweet_id);
+        g_free(vote_data->option_id);
+        g_free(vote_data);
+    }
+}
+
+static void
+on_poll_option_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    struct PollVoteData *vote_data = (struct PollVoteData *)user_data;
+
+    if (!g_auth_token) {
+        return;
+    }
+
+    if (perform_poll_vote(vote_data->tweet_id, vote_data->option_id)) {
+        show_tweet(vote_data->tweet_id);
+    }
+}
+
+GtkWidget*
+create_poll_widget(struct Poll *poll, const gchar *tweet_id)
+{
+    GtkWidget *frame = gtk_frame_new(NULL);
+    GtkStyleContext *frame_context = gtk_widget_get_style_context(frame);
+    gtk_style_context_add_class(frame_context, "poll-frame");
+
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_container_set_border_width(GTK_CONTAINER(box), 10);
+
+    // Poll question
+    GtkWidget *question_label = gtk_label_new(NULL);
+    gchar *question_markup = g_strdup_printf("<b>%s</b>", poll->question);
+    gtk_label_set_markup(GTK_LABEL(question_label), question_markup);
+    g_free(question_markup);
+    gtk_label_set_xalign(GTK_LABEL(question_label), 0.0);
+    gtk_label_set_line_wrap(GTK_LABEL(question_label), TRUE);
+    gtk_box_pack_start(GTK_BOX(box), question_label, FALSE, FALSE, 0);
+
+    // Check if user has voted or poll is closed
+    gboolean show_results = !poll->is_active;
+    if (!show_results) {
+        for (GList *l = poll->options; l != NULL; l = l->next) {
+            struct PollOption *option = l->data;
+            if (option->voted) {
+                show_results = TRUE;
+                break;
+            }
+        }
+    }
+
+    // Options
+    for (GList *l = poll->options; l != NULL; l = l->next) {
+        struct PollOption *option = l->data;
+
+        double percentage = 0.0;
+        if (poll->total_votes > 0) {
+            percentage = (double)option->vote_count / (double)poll->total_votes * 100.0;
+        }
+
+        if (show_results) {
+            // Results view with progress bar
+            GtkWidget *option_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+
+            GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+
+            // Option text with vote count
+            gchar *option_text;
+            if (option->voted) {
+                option_text = g_strdup_printf("✓ %s", option->option_text);
+            } else {
+                option_text = g_strdup_printf("  %s", option->option_text);
+            }
+            GtkWidget *text_label = gtk_label_new(option_text);
+            gtk_label_set_xalign(GTK_LABEL(text_label), 0.0);
+            g_free(option_text);
+
+            // Percentage label
+            gchar *percent_text = g_strdup_printf("%.1f%% (%d)", percentage, option->vote_count);
+            GtkWidget *percent_label = gtk_label_new(percent_text);
+            gtk_label_set_xalign(GTK_LABEL(percent_label), 1.0);
+            g_free(percent_text);
+
+            gtk_box_pack_start(GTK_BOX(hbox), text_label, TRUE, TRUE, 0);
+            gtk_box_pack_end(GTK_BOX(hbox), percent_label, FALSE, FALSE, 0);
+            gtk_box_pack_start(GTK_BOX(option_box), hbox, FALSE, FALSE, 0);
+
+            // Progress bar
+            GtkWidget *progress = gtk_progress_bar_new();
+            gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress), percentage / 100.0);
+            gtk_progress_bar_set_show_text(GTK_PROGRESS_BAR(progress), FALSE);
+
+            // Highlight user's vote
+            if (option->voted) {
+                gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress), 1.0);
+            }
+
+            gtk_box_pack_start(GTK_BOX(option_box), progress, FALSE, FALSE, 0);
+            gtk_box_pack_start(GTK_BOX(box), option_box, FALSE, FALSE, 0);
+        } else {
+            // Voting view with clickable buttons
+            GtkWidget *vote_btn = gtk_button_new_with_label(option->option_text);
+            gtk_button_set_relief(GTK_BUTTON(vote_btn), GTK_RELIEF_NORMAL);
+            gtk_widget_set_halign(vote_btn, GTK_ALIGN_FILL);
+
+            struct PollVoteData *vote_data = g_new0(struct PollVoteData, 1);
+            vote_data->tweet_id = g_strdup(tweet_id);
+            vote_data->option_id = g_strdup(option->id);
+
+            g_object_set_data_full(G_OBJECT(vote_btn), "poll_vote_data", vote_data, free_poll_vote_data);
+            g_signal_connect(vote_btn, "clicked", G_CALLBACK(on_poll_option_clicked), NULL);
+
+            gtk_box_pack_start(GTK_BOX(box), vote_btn, FALSE, FALSE, 0);
+        }
+    }
+
+    // Status and total votes
+    GtkWidget *status_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+
+    gchar *status_text;
+    if (poll->is_active) {
+        status_text = g_strdup_printf("Active · %d votes", poll->total_votes);
+    } else {
+        status_text = g_strdup_printf("Closed · %d votes", poll->total_votes);
+    }
+    GtkWidget *status_label = gtk_label_new(status_text);
+    gtk_label_set_xalign(GTK_LABEL(status_label), 0.0);
+    GtkStyleContext *status_context = gtk_widget_get_style_context(status_label);
+    gtk_style_context_add_class(status_context, "dim-label");
+    g_free(status_text);
+
+    gtk_box_pack_start(GTK_BOX(status_box), status_label, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(box), status_box, FALSE, FALSE, 0);
+
+    gtk_container_add(GTK_CONTAINER(frame), box);
+
+    return frame;
+}
+
 static void
 on_video_clicked(GtkWidget *widget, gpointer user_data)
 {
@@ -682,6 +837,11 @@ create_tweet_widget_full(struct Tweet *tweet, const gchar *op_username)
     if (tweet->quote_tweet) {
         GtkWidget *quote_widget = create_quoted_tweet_widget(tweet->quote_tweet);
         gtk_box_pack_start(GTK_BOX(box), quote_widget, FALSE, FALSE, 5);
+    }
+
+    if (tweet->poll) {
+        GtkWidget *poll_widget = create_poll_widget(tweet->poll, tweet->id);
+        gtk_box_pack_start(GTK_BOX(box), poll_widget, FALSE, FALSE, 5);
     }
 
     gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
@@ -1126,4 +1286,354 @@ populate_message_list(GtkListBox *list_box, GList *messages)
         GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(scrolled));
         gtk_adjustment_set_value(adj, gtk_adjustment_get_upper(adj) - gtk_adjustment_get_page_size(adj));
     }
+}
+
+// Community widgets
+GtkWidget* create_community_widget(struct Community *community)
+{
+    GtkWidget *row = gtk_list_box_row_new();
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    gtk_widget_set_margin_start(box, 10);
+    gtk_widget_set_margin_end(box, 10);
+    gtk_widget_set_margin_top(box, 10);
+    gtk_widget_set_margin_bottom(box, 10);
+    gtk_container_add(GTK_CONTAINER(row), box);
+
+    // Community icon
+    GtkWidget *icon = gtk_image_new_from_icon_name("avatar-default", GTK_ICON_SIZE_DND);
+    gtk_widget_set_size_request(icon, 48, 48);
+    if (community->icon_url) {
+        load_avatar(icon, community->icon_url, 48);
+    }
+    gtk_box_pack_start(GTK_BOX(box), icon, FALSE, FALSE, 0);
+
+    // Info box
+    GtkWidget *info_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    gtk_box_pack_start(GTK_BOX(box), info_box, TRUE, TRUE, 0);
+
+    // Name and badge row
+    GtkWidget *name_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_box_pack_start(GTK_BOX(info_box), name_row, FALSE, FALSE, 0);
+
+    // Community name (bold)
+    GtkWidget *name_label = gtk_label_new(community->name);
+    gtk_widget_set_halign(name_label, GTK_ALIGN_START);
+    PangoAttrList *attrs = pango_attr_list_new();
+    pango_attr_list_insert(attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+    gtk_label_set_attributes(GTK_LABEL(name_label), attrs);
+    pango_attr_list_unref(attrs);
+    gtk_box_pack_start(GTK_BOX(name_row), name_label, FALSE, FALSE, 0);
+
+    // Access mode badge
+    const gchar *badge_color = NULL;
+    if (g_strcmp0(community->access_mode, "public") == 0) {
+        badge_color = "#4CAF50";  // Green
+    } else if (g_strcmp0(community->access_mode, "private") == 0) {
+        badge_color = "#F44336";  // Red
+    } else if (g_strcmp0(community->access_mode, "restricted") == 0) {
+        badge_color = "#FF9800";  // Orange
+    }
+
+    if (badge_color) {
+        GtkWidget *badge = gtk_label_new(community->access_mode);
+        gtk_widget_set_halign(badge, GTK_ALIGN_START);
+        gchar *badge_markup = g_strdup_printf("<span bgcolor=\"%s\" fgcolor=\"white\" size=\"small\"> %s </span>",
+                                              badge_color, community->access_mode);
+        gtk_label_set_markup(GTK_LABEL(badge), badge_markup);
+        g_free(badge_markup);
+        gtk_box_pack_start(GTK_BOX(name_row), badge, FALSE, FALSE, 0);
+    }
+
+    // Description (ellipsized)
+    if (community->description) {
+        GtkWidget *desc_label = gtk_label_new(community->description);
+        gtk_widget_set_halign(desc_label, GTK_ALIGN_START);
+        gtk_label_set_ellipsize(GTK_LABEL(desc_label), PANGO_ELLIPSIZE_END);
+        gtk_label_set_max_width_chars(GTK_LABEL(desc_label), 50);
+        gtk_label_set_line_wrap(GTK_LABEL(desc_label), FALSE);
+        gtk_box_pack_start(GTK_BOX(info_box), desc_label, FALSE, FALSE, 0);
+    }
+
+    // Member count
+    gchar *members_text = g_strdup_printf("%d members", community->member_count);
+    GtkWidget *members_label = gtk_label_new(members_text);
+    gtk_widget_set_halign(members_label, GTK_ALIGN_START);
+    gtk_widget_set_opacity(members_label, 0.6);
+    gtk_box_pack_start(GTK_BOX(info_box), members_label, FALSE, FALSE, 0);
+    g_free(members_text);
+
+    // Join/Leave button
+    GtkWidget *join_btn = gtk_button_new_with_label(community->is_member ? "Leave" : "Join");
+    gtk_widget_set_valign(join_btn, GTK_ALIGN_CENTER);
+    g_object_set_data_full(G_OBJECT(join_btn), "community_id", g_strdup(community->id), g_free);
+    g_object_set_data(G_OBJECT(join_btn), "is_member", GINT_TO_POINTER(community->is_member));
+    g_signal_connect(join_btn, "clicked", G_CALLBACK(on_join_community_clicked), NULL);
+    gtk_box_pack_end(GTK_BOX(box), join_btn, FALSE, FALSE, 0);
+
+    // Store community data on row for click handler
+    g_object_set_data_full(G_OBJECT(row), "community_id", g_strdup(community->id), g_free);
+    g_signal_connect(row, "activate", G_CALLBACK(on_community_clicked), NULL);
+
+    gtk_widget_show_all(row);
+    return row;
+}
+
+void populate_community_list(GtkListBox *list_box, GList *communities)
+{
+    // Clear existing items
+    GList *children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    if (!communities) {
+        GtkWidget *empty_label = gtk_label_new("No communities found.");
+        gtk_widget_set_margin_top(empty_label, 20);
+        gtk_widget_show(empty_label);
+        gtk_list_box_insert(list_box, empty_label, -1);
+        return;
+    }
+
+    for (GList *l = communities; l != NULL; l = l->next) {
+        struct Community *community = (struct Community *)l->data;
+        GtkWidget *widget = create_community_widget(community);
+        gtk_list_box_insert(list_box, widget, -1);
+    }
+}
+
+static void on_community_clicked(GtkListBoxRow *row, gpointer user_data)
+{
+    (void)user_data;
+    const gchar *community_id = g_object_get_data(G_OBJECT(row), "community_id");
+    if (!community_id) return;
+
+    // Set current community ID
+    g_free(g_community_id);
+    g_community_id = g_strdup(community_id);
+
+    // Show community tweets
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "community");
+    gtk_widget_show(g_back_button);
+
+    // Load community tweets using the action function
+    start_loading_community_tweets(GTK_LIST_BOX(g_community_tweets_list), community_id);
+}
+
+static void on_join_community_clicked(GtkButton *button, gpointer user_data)
+{
+    (void)user_data;
+    const gchar *community_id = g_object_get_data(G_OBJECT(button), "community_id");
+    gboolean is_member = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "is_member"));
+
+    if (!community_id) return;
+
+    gboolean success;
+    if (is_member) {
+        success = perform_leave_community(community_id);
+    } else {
+        success = perform_join_community(community_id);
+    }
+
+    if (success) {
+        // Toggle button state
+        gtk_button_set_label(button, is_member ? "Join" : "Leave");
+        g_object_set_data(G_OBJECT(button), "is_member", GINT_TO_POINTER(!is_member));
+
+        // Refresh community list to show updated counts
+        start_loading_communities(GTK_LIST_BOX(g_communities_list));
+    } else {
+        GtkWidget *toplevel = gtk_widget_get_toplevel(GTK_WIDGET(button));
+        GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(toplevel),
+                                 GTK_DIALOG_DESTROY_WITH_PARENT,
+                                 GTK_MESSAGE_ERROR,
+                                 GTK_BUTTONS_CLOSE,
+                                 "Failed to %s community.",
+                                 is_member ? "leave" : "join");
+        gtk_dialog_run(GTK_DIALOG(error_dialog));
+        gtk_widget_destroy(error_dialog);
+    }
+}
+
+// Enhanced compose dialog with media upload
+static void on_file_selected(GtkFileChooserButton *chooser, gpointer user_data)
+{
+    struct UploadContext *ctx = (struct UploadContext *)user_data;
+    gchar *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
+
+    if (filename) {
+        g_free(ctx->file_path);
+        ctx->file_path = filename;
+
+        // Update label with selected filename
+        gchar *basename = g_path_get_basename(filename);
+        gchar *label_text = g_strdup_printf("Selected: %s", basename);
+        gtk_label_set_text(GTK_LABEL(ctx->file_label), label_text);
+        g_free(label_text);
+        g_free(basename);
+
+        // Detect file type
+        if (ctx->file_type) g_free(ctx->file_type);
+        if (g_str_has_suffix(filename, ".mp4")) {
+            ctx->file_type = g_strdup("video");
+        } else {
+            ctx->file_type = g_strdup("image");
+        }
+    }
+}
+
+static gboolean perform_post_tweet_with_media(const gchar *content, const gchar *media_url)
+{
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "content");
+    json_builder_add_string_value(builder, content);
+
+    if (media_url) {
+        json_builder_set_member_name(builder, "attachments");
+        json_builder_begin_array(builder);
+        json_builder_begin_object(builder);
+        json_builder_set_member_name(builder, "file_url");
+        json_builder_add_string_value(builder, media_url);
+        json_builder_set_member_name(builder, "file_type");
+        json_builder_add_string_value(builder, "image");
+        json_builder_end_object(builder);
+        json_builder_end_array(builder);
+    }
+
+    json_builder_end_object(builder);
+
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, json_builder_get_root(builder));
+    gchar *post_data = json_generator_to_data(gen, NULL);
+
+    if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(post_data);
+    g_object_unref(gen);
+    g_object_unref(builder);
+
+    return success;
+}
+
+void on_compose_with_media_response(GtkDialog *dialog, gint response_id, gpointer user_data)
+{
+    struct UploadContext *ctx = (struct UploadContext *)user_data;
+
+    if (response_id == GTK_RESPONSE_ACCEPT) {
+        GtkWidget *text_view = g_object_get_data(G_OBJECT(dialog), "text_view");
+        GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(text_view));
+        GtkTextIter start, end;
+        gtk_text_buffer_get_bounds(buffer, &start, &end);
+        gchar *content = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+
+        gchar *media_url = NULL;
+        gboolean upload_success = TRUE;
+
+        // Upload media if selected
+        if (ctx->file_path) {
+            media_url = perform_media_upload(ctx->file_path);
+            if (!media_url) {
+                upload_success = FALSE;
+            }
+        }
+
+        if (upload_success && content && strlen(content) > 0) {
+            if (perform_post_tweet_with_media(content, media_url)) {
+                start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+            } else {
+                GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
+                                         GTK_DIALOG_DESTROY_WITH_PARENT,
+                                         GTK_MESSAGE_ERROR,
+                                         GTK_BUTTONS_CLOSE,
+                                         "Failed to post tweet.");
+                gtk_dialog_run(GTK_DIALOG(error_dialog));
+                gtk_widget_destroy(error_dialog);
+            }
+        } else if (!upload_success) {
+            GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
+                                     GTK_DIALOG_DESTROY_WITH_PARENT,
+                                     GTK_MESSAGE_ERROR,
+                                     GTK_BUTTONS_CLOSE,
+                                     "Failed to upload media.");
+            gtk_dialog_run(GTK_DIALOG(error_dialog));
+            gtk_widget_destroy(error_dialog);
+        }
+
+        g_free(content);
+        g_free(media_url);
+    }
+
+    g_free(ctx->file_path);
+    g_free(ctx->file_type);
+    g_free(ctx);
+    gtk_widget_destroy(GTK_WIDGET(dialog));
+}
+
+void on_compose_with_media_clicked(GtkWidget *widget, gpointer window)
+{
+    (void)widget;
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Compose Tweet",
+                                                    GTK_WINDOW(window),
+                                                    GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                                    "_Cancel", GTK_RESPONSE_CANCEL,
+                                                    "_Tweet", GTK_RESPONSE_ACCEPT,
+                                                    NULL);
+
+    GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    gtk_container_set_border_width(GTK_CONTAINER(content_area), 10);
+
+    // Text view for tweet content
+    GtkWidget *text_view = gtk_text_view_new();
+    gtk_widget_set_size_request(text_view, 300, 150);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(text_view), GTK_WRAP_WORD_CHAR);
+    gtk_box_pack_start(GTK_BOX(content_area), text_view, TRUE, TRUE, 0);
+    g_object_set_data(G_OBJECT(dialog), "text_view", text_view);
+
+    // File chooser for media
+    GtkWidget *file_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_widget_set_margin_top(file_box, 10);
+    gtk_box_pack_start(GTK_BOX(content_area), file_box, FALSE, FALSE, 0);
+
+    GtkWidget *file_chooser = gtk_file_chooser_button_new("Select Media", GTK_FILE_CHOOSER_ACTION_OPEN);
+    gtk_file_chooser_button_set_title(GTK_FILE_CHOOSER_BUTTON(file_chooser), "Select Image/Video");
+
+    // Set file filter for images and videos
+    GtkFileFilter *filter = gtk_file_filter_new();
+    gtk_file_filter_set_name(filter, "Images and Videos");
+    gtk_file_filter_add_mime_type(filter, "image/png");
+    gtk_file_filter_add_mime_type(filter, "image/jpeg");
+    gtk_file_filter_add_mime_type(filter, "image/gif");
+    gtk_file_filter_add_mime_type(filter, "image/webp");
+    gtk_file_filter_add_mime_type(filter, "video/mp4");
+    gtk_file_filter_add_pattern(filter, "*.png");
+    gtk_file_filter_add_pattern(filter, "*.jpg");
+    gtk_file_filter_add_pattern(filter, "*.jpeg");
+    gtk_file_filter_add_pattern(filter, "*.gif");
+    gtk_file_filter_add_pattern(filter, "*.webp");
+    gtk_file_filter_add_pattern(filter, "*.mp4");
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(file_chooser), filter);
+
+    gtk_box_pack_start(GTK_BOX(file_box), file_chooser, FALSE, FALSE, 0);
+
+    // Label to show selected file
+    GtkWidget *file_label = gtk_label_new("No file selected");
+    gtk_widget_set_halign(file_label, GTK_ALIGN_START);
+    gtk_widget_set_opacity(file_label, 0.6);
+    gtk_box_pack_start(GTK_BOX(file_box), file_label, TRUE, TRUE, 0);
+
+    // Create upload context
+    struct UploadContext *ctx = g_new0(struct UploadContext, 1);
+    ctx->parent_dialog = dialog;
+    ctx->file_label = file_label;
+
+    g_signal_connect(file_chooser, "file-set", G_CALLBACK(on_file_selected), ctx);
+
+    gtk_widget_show_all(dialog);
+    g_signal_connect(dialog, "response", G_CALLBACK(on_compose_with_media_response), ctx);
 }

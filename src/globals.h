@@ -2,6 +2,7 @@
 #define GLOBALS_H
 
 #include <gtk/gtk.h>
+#include "types.h"
 
 extern gchar *g_auth_token;
 extern gchar *g_current_username;
@@ -39,5 +40,19 @@ extern GtkWidget *g_profile_stats_label;
 extern GtkWidget *g_profile_avatar_image;
 extern GtkWidget *g_profile_tweets_list;
 extern GtkWidget *g_profile_replies_list;
+extern GtkWidget *g_follow_button;
+extern GtkWidget *g_followers_list;
+extern GtkWidget *g_following_list;
+
+// Bookmarks widgets
+extern GtkWidget *g_bookmarks_list;
+
+// Timeline type
+extern TimelineType g_current_timeline_type;
+
+// Communities widgets
+extern GtkWidget *g_communities_list;
+extern GtkWidget *g_community_tweets_list;
+extern gchar *g_community_id;
 
 #endif // GLOBALS_H

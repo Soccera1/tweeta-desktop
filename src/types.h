@@ -3,6 +3,12 @@
 
 #include <gtk/gtk.h>
 
+// Timeline type enum
+typedef enum {
+    TIMELINE_PUBLIC,
+    TIMELINE_FOLLOWING
+} TimelineType;
+
 // Represents a media attachment
 struct Attachment {
     gchar *id;
@@ -27,6 +33,7 @@ struct Tweet {
   int retweet_count;
   int reply_count;
   struct Tweet *quote_tweet;
+  struct Poll *poll;  // Optional poll attached to the tweet
 };
 
 struct Emoji {
@@ -109,11 +116,13 @@ struct AsyncData {
     GList *notifications;
     GList *conversations;
     GList *messages;
+    GList *communities;  // List of Community*
     gboolean success;
     struct Profile *profile;
     gchar *username;
     gchar *query;
     gchar *conversation_id;
+    gchar *community_id;
     guint request_id;  // Track which request instance this is
     gboolean is_append;
     gchar *before_id;
@@ -151,6 +160,55 @@ struct InteractionData {
 struct ReactionContext {
     gchar *tweet_id;
     GtkWidget *parent_window;
+};
+
+// Poll structures
+struct PollOption {
+    gchar *id;
+    gchar *option_text;
+    int vote_count;
+    gboolean voted;
+};
+
+struct Poll {
+    gchar *id;
+    gchar *question;
+    GList *options;  // List of PollOption*
+    gboolean is_active;
+    gchar *expires_at;
+    int total_votes;
+};
+
+// Community structures
+struct Community {
+    gchar *id;
+    gchar *name;
+    gchar *description;
+    gchar *icon_url;
+    gchar *banner_url;
+    gchar *access_mode;  // "public", "private", "restricted"
+    int member_count;
+    gboolean is_member;
+    gboolean is_admin;
+    gboolean is_moderator;
+};
+
+// Upload/Attachment context
+struct UploadContext {
+    GtkWidget *parent_dialog;
+    GtkWidget *file_label;
+    gchar *file_path;
+    gchar *file_type;
+};
+
+// Profile edit context
+struct ProfileEditContext {
+    GtkWidget *name_entry;
+    GtkWidget *bio_entry;
+    GtkWidget *avatar_btn;
+    GtkWidget *banner_btn;
+    gchar *new_avatar_path;
+    gchar *new_banner_path;
 };
 
 #endif // TYPES_H

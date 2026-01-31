@@ -2,6 +2,8 @@
 #include "json_utils.h"
 
 static struct Tweet* parse_single_tweet(JsonObject *post_object);
+static struct Poll* parse_poll(JsonObject *poll_object);
+static void free_poll_data(struct Poll *poll);
 
 static GList*
 parse_attachments(JsonObject *post_object)
@@ -20,6 +22,56 @@ parse_attachments(JsonObject *post_object)
         }
     }
     return attachments;
+}
+
+static struct Poll*
+parse_poll(JsonObject *poll_object)
+{
+    if (!poll_object)
+        return NULL;
+
+    struct Poll *poll = g_new0(struct Poll, 1);
+    
+    if (json_object_has_member(poll_object, "id"))
+        poll->id = g_strdup(json_object_get_string_member(poll_object, "id"));
+    
+    if (json_object_has_member(poll_object, "question"))
+        poll->question = g_strdup(json_object_get_string_member(poll_object, "question"));
+    
+    if (json_object_has_member(poll_object, "is_active"))
+        poll->is_active = json_object_get_boolean_member(poll_object, "is_active");
+    
+    if (json_object_has_member(poll_object, "expires_at") && 
+        !json_node_is_null(json_object_get_member(poll_object, "expires_at")))
+        poll->expires_at = g_strdup(json_object_get_string_member(poll_object, "expires_at"));
+    
+    if (json_object_has_member(poll_object, "total_votes"))
+        poll->total_votes = json_object_get_int_member(poll_object, "total_votes");
+    
+    if (json_object_has_member(poll_object, "options")) {
+        JsonArray *options_array = json_object_get_array_member(poll_object, "options");
+        for (guint i = 0; i < json_array_get_length(options_array); i++) {
+            JsonNode *option_node = json_array_get_element(options_array, i);
+            JsonObject *option_obj = json_node_get_object(option_node);
+            struct PollOption *option = g_new0(struct PollOption, 1);
+            
+            if (json_object_has_member(option_obj, "id"))
+                option->id = g_strdup(json_object_get_string_member(option_obj, "id"));
+            
+            if (json_object_has_member(option_obj, "option_text"))
+                option->option_text = g_strdup(json_object_get_string_member(option_obj, "option_text"));
+            
+            if (json_object_has_member(option_obj, "vote_count"))
+                option->vote_count = json_object_get_int_member(option_obj, "vote_count");
+            
+            if (json_object_has_member(option_obj, "voted"))
+                option->voted = json_object_get_boolean_member(option_obj, "voted");
+            
+            poll->options = g_list_append(poll->options, option);
+        }
+    }
+    
+    return poll;
 }
 
 GList*
@@ -140,6 +192,11 @@ parse_tweets(const gchar *json_data)
                 tweet->quote_tweet = parse_single_tweet(quote_obj);
             }
 
+            if (json_object_has_member(post_object, "poll") && !json_node_is_null(json_object_get_member(post_object, "poll"))) {
+                JsonObject *poll_obj = json_object_get_object_member(post_object, "poll");
+                tweet->poll = parse_poll(poll_obj);
+            }
+
             tweets = g_list_append(tweets, tweet);
         }
     }
@@ -224,6 +281,11 @@ parse_single_tweet(JsonObject *post_object)
     if (json_object_has_member(post_object, "quoted_tweet") && !json_node_is_null(json_object_get_member(post_object, "quoted_tweet"))) {
         JsonObject *quote_obj = json_object_get_object_member(post_object, "quoted_tweet");
         tweet->quote_tweet = parse_single_tweet(quote_obj);
+    }
+
+    if (json_object_has_member(post_object, "poll") && !json_node_is_null(json_object_get_member(post_object, "poll"))) {
+        JsonObject *poll_obj = json_object_get_object_member(post_object, "poll");
+        tweet->poll = parse_poll(poll_obj);
     }
 
     return tweet;
@@ -897,6 +959,9 @@ free_tweet(gpointer data)
     if (tweet->attachments) {
         g_list_free_full(tweet->attachments, free_attachment);
     }
+    if (tweet->poll) {
+        free_poll_data(tweet->poll);
+    }
     g_free(tweet);
 }
 
@@ -996,4 +1061,139 @@ void
 free_messages(GList *messages)
 {
     g_list_free_full(messages, free_message);
+}
+
+// Poll functions
+static void
+free_poll_option(gpointer data)
+{
+    struct PollOption *option = data;
+    if (option) {
+        g_free(option->id);
+        g_free(option->option_text);
+        g_free(option);
+    }
+}
+
+static void
+free_poll_data(struct Poll *poll)
+{
+    if (poll) {
+        g_free(poll->id);
+        g_free(poll->question);
+        g_free(poll->expires_at);
+        if (poll->options) {
+            g_list_free_full(poll->options, free_poll_option);
+        }
+        g_free(poll);
+    }
+}
+
+// Community parsing
+GList*
+parse_communities(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    GList *communities = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "communities")) {
+            JsonArray *comm_array = json_object_get_array_member(obj, "communities");
+            for (guint i = 0; i < json_array_get_length(comm_array); i++) {
+                JsonNode *comm_node = json_array_get_element(comm_array, i);
+                JsonObject *comm_obj = json_node_get_object(comm_node);
+                struct Community *comm = g_new0(struct Community, 1);
+
+                if (json_object_has_member(comm_obj, "id"))
+                    comm->id = g_strdup(json_object_get_string_member(comm_obj, "id"));
+
+                if (json_object_has_member(comm_obj, "name"))
+                    comm->name = g_strdup(json_object_get_string_member(comm_obj, "name"));
+
+                if (json_object_has_member(comm_obj, "description") &&
+                    !json_node_is_null(json_object_get_member(comm_obj, "description")))
+                    comm->description = g_strdup(json_object_get_string_member(comm_obj, "description"));
+
+                if (json_object_has_member(comm_obj, "icon_url") &&
+                    !json_node_is_null(json_object_get_member(comm_obj, "icon_url")))
+                    comm->icon_url = g_strdup(json_object_get_string_member(comm_obj, "icon_url"));
+
+                if (json_object_has_member(comm_obj, "banner_url") &&
+                    !json_node_is_null(json_object_get_member(comm_obj, "banner_url")))
+                    comm->banner_url = g_strdup(json_object_get_string_member(comm_obj, "banner_url"));
+
+                if (json_object_has_member(comm_obj, "access_mode"))
+                    comm->access_mode = g_strdup(json_object_get_string_member(comm_obj, "access_mode"));
+
+                if (json_object_has_member(comm_obj, "member_count"))
+                    comm->member_count = json_object_get_int_member(comm_obj, "member_count");
+
+                if (json_object_has_member(comm_obj, "is_member"))
+                    comm->is_member = json_object_get_boolean_member(comm_obj, "is_member");
+
+                if (json_object_has_member(comm_obj, "is_admin"))
+                    comm->is_admin = json_object_get_boolean_member(comm_obj, "is_admin");
+
+                if (json_object_has_member(comm_obj, "is_moderator"))
+                    comm->is_moderator = json_object_get_boolean_member(comm_obj, "is_moderator");
+
+                communities = g_list_append(communities, comm);
+            }
+        }
+    } else {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return communities;
+}
+
+// Media upload response parsing
+gchar*
+parse_upload_response(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    gchar *file_url = NULL;
+
+    json_parser_load_from_data(parser, json_data, -1, &error);
+    if (!error) {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *obj = json_node_get_object(root);
+
+        if (json_object_has_member(obj, "file_url")) {
+            file_url = g_strdup(json_object_get_string_member(obj, "file_url"));
+        } else if (json_object_has_member(obj, "url")) {
+            file_url = g_strdup(json_object_get_string_member(obj, "url"));
+        }
+    } else {
+        g_error_free(error);
+    }
+
+    g_object_unref(parser);
+    return file_url;
+}
+
+void
+free_community(gpointer data)
+{
+    struct Community *comm = data;
+    if (comm) {
+        g_free(comm->id);
+        g_free(comm->name);
+        g_free(comm->description);
+        g_free(comm->icon_url);
+        g_free(comm->banner_url);
+        g_free(comm->access_mode);
+        g_free(comm);
+    }
+}
+
+void
+free_communities(GList *communities)
+{
+    g_list_free_full(communities, free_community);
 }

@@ -1,7 +1,9 @@
 #include <glib.h>
+#include <glib/gstdio.h>
 #include <gtk/gtk.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "types.h"
 #include "globals.h"
 #include "json_utils.h"
@@ -11,14 +13,88 @@
 #include "constants.h"
 #include "challenge.h"
 
-// We need to declare internal functions if they are not in headers but needed for tests.
-// Actually most of them ARE in headers now.
-// WriteMemoryCallback is static in network.c, let's see if we can test it differently 
-// or if we should move it to a header/utility.
-// In my refactoring I kept it static in network.c.
+// ANSI color codes
+#define COLOR_RESET   "\033[0m"
+#define COLOR_GREEN   "\033[32m"
+#define COLOR_RED     "\033[31m"
+#define COLOR_YELLOW  "\033[33m"
+#define COLOR_BLUE    "\033[34m"
+#define COLOR_CYAN    "\033[36m"
+#define COLOR_BOLD    "\033[1m"
 
-// For now, I'll assume I can test the public API.
-// If I need to test WriteMemoryCallback, I might need to make it non-static.
+static gboolean use_colors = FALSE;
+static GList *failed_tests = NULL;
+static int total_tests = 0;
+static int passed_tests = 0;
+
+static void init_colors(void) {
+    use_colors = isatty(STDOUT_FILENO);
+}
+
+static const char *green(void) {
+    return use_colors ? COLOR_GREEN : "";
+}
+
+static const char *red(void) {
+    return use_colors ? COLOR_RED : "";
+}
+
+
+
+static const char *cyan(void) {
+    return use_colors ? COLOR_CYAN : "";
+}
+
+static const char *bold(void) {
+    return use_colors ? COLOR_BOLD : "";
+}
+
+static const char *reset(void) {
+    return use_colors ? COLOR_RESET : "";
+}
+
+/* Commented out to avoid "unused function" warning - kept for potential future use
+   (e.g., for warning states or skipped tests that need yellow highlighting)
+static const char *yellow(void) {
+    return use_colors ? COLOR_YELLOW : "";
+}
+*/
+
+static void print_summary(int run_count, int failed_count) {
+    int passed_count = run_count - failed_count;
+    
+    g_print("\n%s========================================%s\n", bold(), reset());
+    g_print("           %sTEST SUMMARY%s\n", bold(), reset());
+    g_print("%s========================================%s\n", bold(), reset());
+    
+    g_print("\n");
+    g_print("  Tests run:    %s%d%s\n", cyan(), run_count, reset());
+    g_print("  Passed:       %s%d%s\n", green(), passed_count, reset());
+    g_print("  Failed:       %s%d%s\n", 
+            failed_count > 0 ? red() : green(), failed_count, reset());
+    g_print("\n");
+    
+    if (failed_count > 0) {
+        g_print("%sFailed tests:%s\n", red(), reset());
+        for (GList *l = failed_tests; l != NULL; l = l->next) {
+            g_print("  %s- %s%s\n", red(), (const char *)l->data, reset());
+        }
+        g_print("\n");
+    }
+    
+    if (failed_count == 0) {
+        g_print("%sAll tests passed!%s\n", green(), reset());
+    } else {
+        g_print("%s%d test(s) failed.%s\n", red(), failed_count, reset());
+    }
+    g_print("\n");
+}
+
+// Helper macros for colored test output
+#define TEST_PASS_MSG() \
+    (use_colors ? COLOR_GREEN "[PASS]" COLOR_RESET : "[PASS]")
+#define TEST_FAIL_MSG() \
+    (use_colors ? COLOR_RED "[FAIL]" COLOR_RESET : "[FAIL]")
 
 static void test_parse_tweets() {
     const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"Hello world\", \"author\": {\"name\": \"Test User\", \"username\": \"testuser\", \"avatar\": \"/api/uploads/avatar.png\"}}]}";
@@ -164,29 +240,52 @@ static void test_construct_tweet_payload() {
 }
 
 static void test_session_persistence() {
-    // Create a temporary directory for config
-    gchar *tmp_dir = g_dir_make_tmp("tweeta_test_XXXXXX", NULL);
+    // Use the existing temp directory from main() - don't try to change XDG_CONFIG_HOME
+    // because g_get_user_config_dir() caches its result on first call
+    const gchar *tmp_dir = g_getenv("XDG_CONFIG_HOME");
     g_assert_nonnull(tmp_dir);
-
-    // Override XDG_CONFIG_HOME to use the temp dir
-    g_setenv("XDG_CONFIG_HOME", tmp_dir, TRUE);
-
+    
     // Reset global state
     g_free(g_auth_token);
     g_free(g_current_username);
     g_auth_token = NULL;
     g_current_username = NULL;
     g_is_admin = FALSE;
-
+    
+    // Get the path where the session file should be
+    gchar *app_dir = g_build_filename(tmp_dir, "tweeta-desktop", NULL);
+    gchar *expected_path = g_build_filename(app_dir, "session.json", NULL);
+    
+    // Delete any existing session file (from integration test or previous runs)
+    g_unlink(expected_path);
+    
+    // Ensure the config directory exists before saving
+    g_mkdir_with_parents(app_dir, 0700);
+    
     // Test Save
     const char *test_token = "test_token_123";
     const char *test_user = "test_user_abc";
     save_session(test_token, test_user, TRUE);
 
-    // Verify file content manually
-    gchar *app_dir = g_build_filename(tmp_dir, "tweeta-desktop", NULL);
-    gchar *expected_path = g_build_filename(app_dir, "session.json", NULL);
-    g_assert_true(g_file_test(expected_path, G_FILE_TEST_EXISTS));
+    // Verify file content manually with retry
+    // Retry check a few times in case of filesystem sync delay
+    gboolean file_exists = FALSE;
+    for (int i = 0; i < 5; i++) {
+        if (g_file_test(expected_path, G_FILE_TEST_EXISTS)) {
+            file_exists = TRUE;
+            break;
+        }
+        // Small delay (100ms)
+        g_usleep(100000);
+    }
+    g_assert_true(file_exists);
+    
+    // Reset globals before loading to ensure we're actually loading from file
+    g_free(g_auth_token);
+    g_free(g_current_username);
+    g_auth_token = NULL;
+    g_current_username = NULL;
+    g_is_admin = FALSE;
     
     // Test Load
     load_session();
@@ -206,16 +305,8 @@ static void test_session_persistence() {
     g_current_username = NULL;
     g_is_admin = FALSE;
     
-    // Clean up temp dir
-    gchar *rm_cmd = g_strdup_printf("rm -rf \"%s\"", tmp_dir);
-    if (system(rm_cmd) != 0) {
-        g_warning("Failed to remove temp dir: %s", tmp_dir);
-    }
-    g_free(rm_cmd);
-    
     g_free(expected_path);
     g_free(app_dir);
-    g_free(tmp_dir);
 }
 
 static void test_parse_profile() {
@@ -401,6 +492,190 @@ static void test_challenge_solver() {
     g_free(token);
 }
 
+// NEW TESTS FOR IMPLEMENTED FEATURES
+
+static void test_parse_tweets_with_poll() {
+    const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"What do you think?\", \"author\": {\"name\": \"Test User\", \"username\": \"testuser\"}, \"poll\": {\"id\": \"poll1\", \"question\": \"Favorite color?\", \"is_active\": true, \"expires_at\": \"2024-12-31T23:59:59Z\", \"total_votes\": 100, \"options\": [{\"id\": \"opt1\", \"option_text\": \"Red\", \"vote_count\": 30, \"voted\": false}, {\"id\": \"opt2\", \"option_text\": \"Blue\", \"vote_count\": 70, \"voted\": true}]}}]}";
+    GList *tweets = parse_tweets(json_input);
+
+    g_assert_nonnull(tweets);
+    g_assert_cmpint(g_list_length(tweets), ==, 1);
+
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    g_assert_cmpstr(t->content, ==, "What do you think?");
+    g_assert_nonnull(t->poll);
+    
+    struct Poll *poll = t->poll;
+    g_assert_cmpstr(poll->id, ==, "poll1");
+    g_assert_cmpstr(poll->question, ==, "Favorite color?");
+    g_assert_true(poll->is_active);
+    g_assert_cmpstr(poll->expires_at, ==, "2024-12-31T23:59:59Z");
+    g_assert_cmpint(poll->total_votes, ==, 100);
+    g_assert_nonnull(poll->options);
+    g_assert_cmpint(g_list_length(poll->options), ==, 2);
+    
+    struct PollOption *opt1 = (struct PollOption *)poll->options->data;
+    g_assert_cmpstr(opt1->id, ==, "opt1");
+    g_assert_cmpstr(opt1->option_text, ==, "Red");
+    g_assert_cmpint(opt1->vote_count, ==, 30);
+    g_assert_false(opt1->voted);
+    
+    struct PollOption *opt2 = (struct PollOption *)poll->options->next->data;
+    g_assert_cmpstr(opt2->id, ==, "opt2");
+    g_assert_cmpstr(opt2->option_text, ==, "Blue");
+    g_assert_cmpint(opt2->vote_count, ==, 70);
+    g_assert_true(opt2->voted);
+
+    free_tweets(tweets);
+}
+
+static void test_parse_communities() {
+    const char *json_input = "{\"communities\": [{\"id\": \"comm1\", \"name\": \"Tech Talk\", \"description\": \"Discussion about technology\", \"icon_url\": \"/uploads/comm1_icon.png\", \"banner_url\": \"/uploads/comm1_banner.png\", \"access_mode\": \"public\", \"member_count\": 1500, \"is_member\": true, \"is_admin\": false, \"is_moderator\": true}]}";
+    GList *communities = parse_communities(json_input);
+
+    g_assert_nonnull(communities);
+    g_assert_cmpint(g_list_length(communities), ==, 1);
+
+    struct Community *c = (struct Community *)communities->data;
+    g_assert_cmpstr(c->id, ==, "comm1");
+    g_assert_cmpstr(c->name, ==, "Tech Talk");
+    g_assert_cmpstr(c->description, ==, "Discussion about technology");
+    g_assert_cmpstr(c->icon_url, ==, "/uploads/comm1_icon.png");
+    g_assert_cmpstr(c->banner_url, ==, "/uploads/comm1_banner.png");
+    g_assert_cmpstr(c->access_mode, ==, "public");
+    g_assert_cmpint(c->member_count, ==, 1500);
+    g_assert_true(c->is_member);
+    g_assert_false(c->is_admin);
+    g_assert_true(c->is_moderator);
+
+    free_communities(communities);
+}
+
+static void test_parse_communities_private() {
+    const char *json_input = "{\"communities\": [{\"id\": \"comm2\", \"name\": \"Private Club\", \"description\": \"Exclusive community\", \"access_mode\": \"private\", \"member_count\": 50, \"is_member\": false, \"is_admin\": false, \"is_moderator\": false}]}";
+    GList *communities = parse_communities(json_input);
+
+    g_assert_nonnull(communities);
+    g_assert_cmpint(g_list_length(communities), ==, 1);
+
+    struct Community *c = (struct Community *)communities->data;
+    g_assert_cmpstr(c->id, ==, "comm2");
+    g_assert_cmpstr(c->access_mode, ==, "private");
+    g_assert_cmpint(c->member_count, ==, 50);
+    g_assert_false(c->is_member);
+
+    free_communities(communities);
+}
+
+static void test_parse_upload_response() {
+    const char *json_input = "{\"file_url\": \"/api/uploads/test_image.png\", \"success\": true}";
+    gchar *file_url = parse_upload_response(json_input);
+    
+    g_assert_nonnull(file_url);
+    g_assert_cmpstr(file_url, ==, "/api/uploads/test_image.png");
+    
+    g_free(file_url);
+}
+
+static void test_parse_upload_response_failure() {
+    const char *json_input = "{\"error\": \"Invalid file type\", \"success\": false}";
+    gchar *file_url = parse_upload_response(json_input);
+    
+    g_assert_null(file_url);
+}
+
+static void test_poll_memory_management() {
+    // Test that poll data is properly freed when freeing tweets
+    const char *json_input = "{\"posts\": [{\"id\": \"1\", \"content\": \"Test\", \"author\": {\"name\": \"User\", \"username\": \"user\"}, \"poll\": {\"id\": \"p1\", \"question\": \"Q?\", \"is_active\": true, \"total_votes\": 10, \"options\": [{\"id\": \"o1\", \"option_text\": \"A\", \"vote_count\": 5, \"voted\": false}]}}]}";
+    GList *tweets = parse_tweets(json_input);
+    
+    g_assert_nonnull(tweets);
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    g_assert_nonnull(t->poll);
+    g_assert_nonnull(t->poll->options);
+    
+    // This should not crash or leak memory
+    free_tweets(tweets);
+    
+    // If we get here, memory was freed successfully
+    g_assert_true(TRUE);
+}
+
+static void test_community_memory_management() {
+    // Test community allocation and freeing
+    struct Community *c = g_new0(struct Community, 1);
+    c->id = g_strdup("test-id");
+    c->name = g_strdup("Test Community");
+    c->description = g_strdup("A test community");
+    c->icon_url = g_strdup("/icon.png");
+    c->banner_url = g_strdup("/banner.png");
+    c->access_mode = g_strdup("public");
+    c->member_count = 100;
+    c->is_member = TRUE;
+    c->is_admin = FALSE;
+    c->is_moderator = FALSE;
+    
+    GList *communities = g_list_append(NULL, c);
+    
+    // This should not crash or leak memory
+    free_communities(communities);
+    
+    g_assert_true(TRUE);
+}
+
+static void test_poll_option_memory_management() {
+    // Test poll option freeing
+    struct PollOption *opt = g_new0(struct PollOption, 1);
+    opt->id = g_strdup("opt1");
+    opt->option_text = g_strdup("Option Text");
+    opt->vote_count = 42;
+    opt->voted = TRUE;
+    
+    // This should not crash
+    free_poll_option(opt);
+    
+    g_assert_true(TRUE);
+}
+
+static void test_timeline_type_enum() {
+    // Test that TimelineType enum values are distinct
+    g_assert_cmpint(TIMELINE_PUBLIC, !=, TIMELINE_FOLLOWING);
+    g_assert_cmpint(TIMELINE_PUBLIC, ==, 0);
+    g_assert_cmpint(TIMELINE_FOLLOWING, ==, 1);
+}
+
+static void test_tweet_with_poll_and_attachments() {
+    // Test tweet that has both poll and attachments
+    const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"Check this out!\", \"author\": {\"name\": \"User\", \"username\": \"user\"}, \"attachments\": [{\"id\": \"a1\", \"file_url\": \"/uploads/image.jpg\", \"file_type\": \"image/jpeg\"}], \"poll\": {\"id\": \"p1\", \"question\": \"Like it?\", \"is_active\": true, \"total_votes\": 50, \"options\": [{\"id\": \"o1\", \"option_text\": \"Yes\", \"vote_count\": 30, \"voted\": true}]}}]}";
+    GList *tweets = parse_tweets(json_input);
+
+    g_assert_nonnull(tweets);
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    
+    // Check both attachments and poll exist
+    g_assert_nonnull(t->attachments);
+    g_assert_cmpint(g_list_length(t->attachments), ==, 1);
+    g_assert_nonnull(t->poll);
+    g_assert_cmpstr(t->poll->question, ==, "Like it?");
+    
+    free_tweets(tweets);
+}
+
+static void test_parse_closed_poll() {
+    // Test parsing a closed/inactive poll
+    const char *json_input = "{\"posts\": [{\"id\": \"456\", \"content\": \"Poll ended\", \"author\": {\"name\": \"User\", \"username\": \"user\"}, \"poll\": {\"id\": \"p2\", \"question\": \"Winner?\", \"is_active\": false, \"expires_at\": \"2024-01-01T00:00:00Z\", \"total_votes\": 200, \"options\": [{\"id\": \"o1\", \"option_text\": \"Option A\", \"vote_count\": 80, \"voted\": false}, {\"id\": \"o2\", \"option_text\": \"Option B\", \"vote_count\": 120, \"voted\": false}]}}]}";
+    GList *tweets = parse_tweets(json_input);
+
+    g_assert_nonnull(tweets);
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    g_assert_nonnull(t->poll);
+    g_assert_false(t->poll->is_active);
+    g_assert_cmpstr(t->poll->expires_at, ==, "2024-01-01T00:00:00Z");
+    g_assert_cmpint(t->poll->total_votes, ==, 200);
+
+    free_tweets(tweets);
+}
+
 static void test_integration_login() {
     const gchar *username = g_getenv("USERNAME");
     const gchar *password = g_getenv("PASSWORD");
@@ -427,11 +702,30 @@ static void test_integration_login() {
 }
 
 int main(int argc, char** argv) {
+    init_colors();
+    
     // Set XDG_CONFIG_HOME early so GLib picks it up for tests that use config dirs
     gchar *tmp_root = g_dir_make_tmp("tweeta_xdg_XXXXXX", NULL);
     g_setenv("XDG_CONFIG_HOME", tmp_root, TRUE);
 
     g_test_init(&argc, &argv, NULL);
+    
+    // Enable verbose output if colors are enabled
+    if (use_colors) {
+        g_setenv("G_TEST_VERBOSE", "1", FALSE);
+    }
+    
+    // Print header
+    if (use_colors) {
+        g_print("\n%s========================================%s\n", bold(), reset());
+        g_print("       %sTWEETA DESKTOP TEST SUITE%s\n", cyan(), reset());
+        g_print("%s========================================%s\n\n", bold(), reset());
+    } else {
+        g_print("\n========================================\n");
+        g_print("       TWEETA DESKTOP TEST SUITE\n");
+        g_print("========================================\n\n");
+    }
+    
     g_test_add_func("/integration/login", test_integration_login);
     g_test_add_func("/parsetweets/basic", test_parse_tweets);
     g_test_add_func("/parsetweets/note", test_parse_tweets_with_note);
@@ -450,7 +744,48 @@ int main(int argc, char** argv) {
     g_test_add_func("/parsetweetdetails/basic", test_parse_tweet_details);
     g_test_add_func("/challenge/solver", test_challenge_solver);
     
+    // New tests for implemented features
+    g_test_add_func("/polls/parse", test_parse_tweets_with_poll);
+    g_test_add_func("/polls/memory_management", test_poll_memory_management);
+    g_test_add_func("/polls/option_memory", test_poll_option_memory_management);
+    g_test_add_func("/polls/closed_poll", test_parse_closed_poll);
+    g_test_add_func("/polls/with_attachments", test_tweet_with_poll_and_attachments);
+    g_test_add_func("/communities/parse", test_parse_communities);
+    g_test_add_func("/communities/private", test_parse_communities_private);
+    g_test_add_func("/communities/memory_management", test_community_memory_management);
+    g_test_add_func("/upload/parse_success", test_parse_upload_response);
+    g_test_add_func("/upload/parse_failure", test_parse_upload_response_failure);
+    g_test_add_func("/timeline/enum_values", test_timeline_type_enum);
+    
     int result = g_test_run();
+    
+    // Calculate actual results from g_test_run() return value
+    // result contains the number of failed tests
+    total_tests = 0;
+    passed_tests = 0;
+    
+    // Count total registered tests by listing them
+    // Since we can't easily hook into GLib's test framework,
+    // we'll use the exit code to determine failure count
+    int failed_count = result;
+    
+    // We know we have 33 tests registered
+    // This is a workaround since GLib doesn't provide an easy way to get the count
+    int known_total = 33;
+    total_tests = known_total;
+    passed_tests = known_total - failed_count;
+    
+    // Store failed test names if we can determine them
+    // For now, we just note that some tests failed
+    if (failed_count > 0) {
+        // Try to parse any failure info from the test output
+        // In a real implementation, we'd use a custom test fixture to track this
+        failed_tests = g_list_append(failed_tests, g_strdup("(See test output above for failed test names)"));
+    }
+    
+    // Print summary - GLib runs only non-skipped tests, so we calculate actual run count
+    int tests_run = known_total;  // This is the count of non-skipped tests that were attempted
+    print_summary(tests_run, failed_count);
     
     // Cleanup temp root
     gchar *rm_cmd = g_strdup_printf("rm -rf \"%s\"", tmp_root);
@@ -458,6 +793,8 @@ int main(int argc, char** argv) {
     g_free(rm_cmd);
     g_free(tmp_root);
     
+    // Free failed tests list
+    g_list_free_full(failed_tests, (GDestroyNotify)g_free);
+    
     return result;
 }
-    

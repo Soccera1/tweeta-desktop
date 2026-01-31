@@ -18,4 +18,11 @@ void populate_conversation_list(GtkListBox *list_box, GList *conversations);
 GtkWidget* create_message_widget(struct DirectMessage *msg);
 void populate_message_list(GtkListBox *list_box, GList *messages);
 
+// Poll widget
+GtkWidget* create_poll_widget(struct Poll *poll, const gchar *tweet_id);
+
+// Community widgets
+GtkWidget* create_community_widget(struct Community *community);
+void populate_community_list(GtkListBox *list_box, GList *communities);
+
 #endif // UI_COMPONENTS_H

@@ -12,5 +12,8 @@ GtkWidget* create_dm_messages_view();
 GtkWidget* create_conversation_view();
 GtkWidget* create_settings_view();
 GtkWidget* create_admin_view();
+GtkWidget* create_bookmarks_view();
+GtkWidget* create_communities_view();
+GtkWidget* create_community_tweets_view();
 
 #endif // VIEWS_H

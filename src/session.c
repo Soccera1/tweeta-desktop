@@ -1,4 +1,5 @@
 #include <json-glib/json-glib.h>
+#include <errno.h>
 #include <glib/gstdio.h>
 #include "session.h"
 #include "globals.h"
@@ -10,7 +11,7 @@ get_config_path()
     gchar *app_dir = g_build_filename(config_dir, "tweeta-desktop", NULL);
     
     if (g_mkdir_with_parents(app_dir, 0700) == -1) {
-        g_warning("Failed to create config directory: %s", app_dir);
+        g_warning("Failed to create config directory: %s (errno: %d)", app_dir, errno);
     }
 
     gchar *config_path = g_build_filename(app_dir, "session.json", NULL);

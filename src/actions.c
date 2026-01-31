@@ -332,11 +332,20 @@ static gpointer fetch_tweets_thread(gpointer data)
         } else {
             url = g_strdup_printf("%s/profile/%s/replies", API_BASE_URL, async_data->username);
         }
-    } else {
+    } else if (g_strcmp0(feed_type, "community") == 0 && g_community_id) {
+        gchar *community_url = g_strdup_printf(COMMUNITY_TWEETS_URL, g_community_id);
         if (async_data->before_id) {
-            url = g_strdup_printf("%s?before=%s", PUBLIC_TWEETS_URL, async_data->before_id);
+            url = g_strdup_printf("%s?before=%s", community_url, async_data->before_id);
+            g_free(community_url);
         } else {
-            url = g_strdup(PUBLIC_TWEETS_URL);
+            url = community_url;
+        }
+    } else {
+        const gchar *timeline_url = (g_current_timeline_type == TIMELINE_FOLLOWING) ? FOLLOWING_TIMELINE_URL : PUBLIC_TWEETS_URL;
+        if (async_data->before_id) {
+            url = g_strdup_printf("%s?before=%s", timeline_url, async_data->before_id);
+        } else {
+            url = g_strdup(timeline_url);
         }
     }
 
@@ -1636,5 +1645,621 @@ void on_note_button_clicked(GtkWidget *widget, gpointer user_data)
 
     gtk_widget_show_all(menu);
     gtk_menu_popup_at_widget(GTK_MENU(menu), widget, GDK_GRAVITY_SOUTH_WEST, GDK_GRAVITY_NORTH_WEST, NULL);
+}
+
+// Follow/Unfollow implementation
+gboolean perform_follow(const gchar *username, gboolean follow)
+{
+    if (!g_auth_token || !username) return FALSE;
+
+    gchar *url = g_strdup_printf(PROFILE_FOLLOW_URL, username);
+    const gchar *method = follow ? "POST" : "DELETE";
+
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+
+    if (fetch_url(url, &chunk, "{}", method)) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(url);
+    return success;
+}
+
+static gboolean on_followers_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+
+    if (async_data->success && async_data->users) {
+        populate_user_list(GTK_LIST_BOX(g_followers_list), async_data->users);
+        free_users(async_data->users);
+    } else {
+        GList *children = gtk_container_get_children(GTK_CONTAINER(g_followers_list));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+
+        GtkWidget *error_label = gtk_label_new("Failed to load followers.");
+        gtk_widget_show(error_label);
+        gtk_list_box_insert(GTK_LIST_BOX(g_followers_list), error_label, -1);
+    }
+
+    g_free(async_data->username);
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer fetch_followers_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+    gchar *url = g_strdup_printf(PROFILE_FOLLOWERS_URL, async_data->username);
+
+    if (fetch_url(url, &chunk, NULL, "GET")) {
+        async_data->users = parse_users(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+
+    g_free(url);
+    g_idle_add(on_followers_loaded, async_data);
+    return NULL;
+}
+
+void start_loading_followers(const gchar *username)
+{
+    GList *children = gtk_container_get_children(GTK_CONTAINER(g_followers_list));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    GtkWidget *loading = gtk_label_new("Loading followers...");
+    gtk_widget_show(loading);
+    gtk_list_box_insert(GTK_LIST_BOX(g_followers_list), loading, -1);
+
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->username = g_strdup(username);
+    g_thread_new("followers-loader", fetch_followers_thread, data);
+}
+
+static gboolean on_following_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+
+    if (async_data->success && async_data->users) {
+        populate_user_list(GTK_LIST_BOX(g_following_list), async_data->users);
+        free_users(async_data->users);
+    } else {
+        GList *children = gtk_container_get_children(GTK_CONTAINER(g_following_list));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+
+        GtkWidget *error_label = gtk_label_new("Failed to load following.");
+        gtk_widget_show(error_label);
+        gtk_list_box_insert(GTK_LIST_BOX(g_following_list), error_label, -1);
+    }
+
+    g_free(async_data->username);
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer fetch_following_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+    gchar *url = g_strdup_printf(PROFILE_FOLLOWING_URL, async_data->username);
+
+    if (fetch_url(url, &chunk, NULL, "GET")) {
+        async_data->users = parse_users(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+
+    g_free(url);
+    g_idle_add(on_following_loaded, async_data);
+    return NULL;
+}
+
+void start_loading_following(const gchar *username)
+{
+    GList *children = gtk_container_get_children(GTK_CONTAINER(g_following_list));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    GtkWidget *loading = gtk_label_new("Loading following...");
+    gtk_widget_show(loading);
+    gtk_list_box_insert(GTK_LIST_BOX(g_following_list), loading, -1);
+
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->username = g_strdup(username);
+    g_thread_new("following-loader", fetch_following_thread, data);
+}
+
+// Bookmarks implementation
+static gboolean on_bookmarks_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+
+    if (async_data->success && async_data->tweets) {
+        populate_tweet_list(async_data->list_box, async_data->tweets);
+        free_tweets(async_data->tweets);
+    } else {
+        GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+
+        GtkWidget *error_label = gtk_label_new(async_data->success ? "No bookmarks yet." : "Failed to load bookmarks.");
+        gtk_widget_show(error_label);
+        gtk_list_box_insert(async_data->list_box, error_label, -1);
+    }
+
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer fetch_bookmarks_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+
+    if (fetch_url(BOOKMARKS_LIST_URL, &chunk, NULL, "GET")) {
+        // Bookmarks API returns posts similar to regular tweets
+        async_data->tweets = parse_tweets(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+
+    g_idle_add(on_bookmarks_loaded, async_data);
+    return NULL;
+}
+
+void start_loading_bookmarks(GtkListBox *list_box)
+{
+    if (!g_auth_token) return;
+
+    GList *children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    GtkWidget *loading = gtk_label_new("Loading bookmarks...");
+    gtk_widget_show(loading);
+    gtk_list_box_insert(list_box, loading, -1);
+
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->list_box = list_box;
+    g_thread_new("bookmarks-loader", fetch_bookmarks_thread, data);
+}
+
+// Block/Mute implementation
+gboolean perform_block(const gchar *username, gboolean block)
+{
+    if (!g_auth_token || !username) return FALSE;
+
+    const gchar *url = block ? BLOCK_USER_URL : UNBLOCK_USER_URL;
+
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "username");
+    json_builder_add_string_value(builder, username);
+    json_builder_end_object(builder);
+
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, json_builder_get_root(builder));
+    gchar *post_data = json_generator_to_data(gen, NULL);
+
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+
+    if (fetch_url(url, &chunk, post_data, "POST")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(post_data);
+    g_object_unref(gen);
+    g_object_unref(builder);
+    return success;
+}
+
+gboolean perform_mute(const gchar *username, gboolean mute)
+{
+    if (!g_auth_token || !username) return FALSE;
+
+    const gchar *url = mute ? MUTE_USER_URL : UNMUTE_USER_URL;
+
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "username");
+    json_builder_add_string_value(builder, username);
+    json_builder_end_object(builder);
+
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, json_builder_get_root(builder));
+    gchar *post_data = json_generator_to_data(gen, NULL);
+
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+
+    if (fetch_url(url, &chunk, post_data, "POST")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(post_data);
+    g_object_unref(gen);
+    g_object_unref(builder);
+    return success;
+}
+
+gboolean check_user_blocked(const gchar *username)
+{
+    if (!g_auth_token || !username) return FALSE;
+
+    gchar *url = g_strdup_printf(CHECK_BLOCK_URL, username);
+    struct MemoryStruct chunk;
+    gboolean blocked = FALSE;
+
+    if (fetch_url(url, &chunk, NULL, "GET")) {
+        JsonParser *parser = json_parser_new();
+        GError *error = NULL;
+        json_parser_load_from_data(parser, chunk.memory, -1, &error);
+        if (!error) {
+            JsonNode *root = json_parser_get_root(parser);
+            JsonObject *obj = json_node_get_object(root);
+            if (json_object_has_member(obj, "blocked")) {
+                blocked = json_object_get_boolean_member(obj, "blocked");
+            }
+        } else {
+            g_error_free(error);
+        }
+        g_object_unref(parser);
+        free(chunk.memory);
+    }
+
+    g_free(url);
+    return blocked;
+}
+
+gboolean check_user_muted(const gchar *username)
+{
+    if (!g_auth_token || !username) return FALSE;
+
+    gchar *url = g_strdup_printf(CHECK_MUTE_URL, username);
+    struct MemoryStruct chunk;
+    gboolean muted = FALSE;
+
+    if (fetch_url(url, &chunk, NULL, "GET")) {
+        JsonParser *parser = json_parser_new();
+        GError *error = NULL;
+        json_parser_load_from_data(parser, chunk.memory, -1, &error);
+        if (!error) {
+            JsonNode *root = json_parser_get_root(parser);
+            JsonObject *obj = json_node_get_object(root);
+            if (json_object_has_member(obj, "muted")) {
+                muted = json_object_get_boolean_member(obj, "muted");
+            }
+        } else {
+            g_error_free(error);
+        }
+        g_object_unref(parser);
+        free(chunk.memory);
+    }
+
+    g_free(url);
+    return muted;
+}
+
+// Timeline implementation
+void set_timeline_type(TimelineType type)
+{
+    g_current_timeline_type = type;
+}
+
+TimelineType get_current_timeline_type(void)
+{
+    return g_current_timeline_type;
+}
+
+void start_loading_timeline(GtkListBox *list_box)
+{
+    // Reset request tracking
+    g_mutex_lock(&load_tweets_mutex);
+    active_tweets_request_id++;
+    g_mutex_unlock(&load_tweets_mutex);
+
+    // Clear the list and show loading indicator
+    GList *children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    g_object_set_data(G_OBJECT(list_box), "last_id", NULL);
+
+    GtkWidget *loading_label = gtk_label_new("Loading timeline...");
+    gtk_widget_show(loading_label);
+    gtk_list_box_insert(list_box, loading_label, -1);
+
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->list_box = list_box;
+    data->request_id = active_tweets_request_id;
+    data->is_append = FALSE;
+
+    g_thread_new("timeline-loader", fetch_tweets_thread, data);
+}
+
+// Poll functions
+gboolean perform_poll_vote(const gchar *tweet_id, const gchar *option_id)
+{
+    if (!g_auth_token || !tweet_id || !option_id) return FALSE;
+
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+    gchar *url = g_strdup_printf(POLL_VOTE_URL, tweet_id);
+
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "option_id");
+    json_builder_add_string_value(builder, option_id);
+    json_builder_end_object(builder);
+
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, json_builder_get_root(builder));
+    gchar *post_data = json_generator_to_data(gen, NULL);
+
+    if (fetch_url(url, &chunk, post_data, "POST")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(post_data);
+    g_object_unref(gen);
+    g_object_unref(builder);
+    g_free(url);
+
+    return success;
+}
+
+void free_poll(struct Poll *poll)
+{
+    if (!poll) return;
+
+    g_free(poll->id);
+    g_free(poll->question);
+    g_free(poll->expires_at);
+
+    if (poll->options) {
+        g_list_free_full(poll->options, free_poll_option);
+    }
+
+    g_free(poll);
+}
+
+void free_poll_option(gpointer data)
+{
+    struct PollOption *option = (struct PollOption *)data;
+    if (!option) return;
+
+    g_free(option->id);
+    g_free(option->option_text);
+    g_free(option);
+}
+
+// Profile editing functions
+gboolean perform_update_profile(const gchar *username, const gchar *name, const gchar *bio)
+{
+    if (!g_auth_token || !username) return FALSE;
+
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+    gchar *url = g_strdup_printf(UPDATE_PROFILE_URL, username);
+
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+
+    if (name) {
+        json_builder_set_member_name(builder, "name");
+        json_builder_add_string_value(builder, name);
+    }
+
+    if (bio) {
+        json_builder_set_member_name(builder, "bio");
+        json_builder_add_string_value(builder, bio);
+    }
+
+    json_builder_end_object(builder);
+
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, json_builder_get_root(builder));
+    gchar *post_data = json_generator_to_data(gen, NULL);
+
+    if (fetch_url(url, &chunk, post_data, "PATCH")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(post_data);
+    g_object_unref(gen);
+    g_object_unref(builder);
+    g_free(url);
+
+    return success;
+}
+
+gboolean perform_upload_avatar(const gchar *username, const gchar *file_path)
+{
+    if (!g_auth_token || !username || !file_path) return FALSE;
+
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+    gchar *url = g_strdup_printf(UPDATE_AVATAR_URL, username);
+
+    if (fetch_url_with_file(url, &chunk, file_path, "image")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(url);
+    return success;
+}
+
+gboolean perform_upload_banner(const gchar *username, const gchar *file_path)
+{
+    if (!g_auth_token || !username || !file_path) return FALSE;
+
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+    gchar *url = g_strdup_printf(UPDATE_BANNER_URL, username);
+
+    if (fetch_url_with_file(url, &chunk, file_path, "image")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(url);
+    return success;
+}
+
+// Media upload
+gchar* perform_media_upload(const gchar *file_path)
+{
+    if (!g_auth_token || !file_path) return NULL;
+
+    struct MemoryStruct chunk;
+    gchar *file_url = NULL;
+
+    if (fetch_url_with_file(UPLOAD_URL, &chunk, file_path, "file")) {
+        // Parse the response to get the file URL
+        JsonParser *parser = json_parser_new();
+        GError *error = NULL;
+        json_parser_load_from_data(parser, chunk.memory, -1, &error);
+
+        if (!error) {
+            JsonNode *root = json_parser_get_root(parser);
+            JsonObject *obj = json_node_get_object(root);
+
+            if (json_object_has_member(obj, "file_url")) {
+                file_url = g_strdup(json_object_get_string_member(obj, "file_url"));
+            } else if (json_object_has_member(obj, "url")) {
+                file_url = g_strdup(json_object_get_string_member(obj, "url"));
+            }
+        } else {
+            g_error_free(error);
+        }
+
+        g_object_unref(parser);
+        free(chunk.memory);
+    }
+
+    return file_url;
+}
+
+// Communities functions
+gboolean perform_join_community(const gchar *community_id)
+{
+    if (!g_auth_token || !community_id) return FALSE;
+
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+    gchar *url = g_strdup_printf(COMMUNITY_JOIN_URL, community_id);
+
+    if (fetch_url(url, &chunk, "{}", "POST")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(url);
+    return success;
+}
+
+gboolean perform_leave_community(const gchar *community_id)
+{
+    if (!g_auth_token || !community_id) return FALSE;
+
+    struct MemoryStruct chunk;
+    gboolean success = FALSE;
+    gchar *url = g_strdup_printf(COMMUNITY_LEAVE_URL, community_id);
+
+    if (fetch_url(url, &chunk, "{}", "POST")) {
+        success = TRUE;
+        free(chunk.memory);
+    }
+
+    g_free(url);
+    return success;
+}
+
+static gboolean on_communities_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+
+    GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    if (async_data->success) {
+        populate_community_list(async_data->list_box, async_data->communities);
+        free_communities(async_data->communities);
+    } else {
+        GtkWidget *error_label = gtk_label_new("Failed to load communities");
+        gtk_list_box_insert(async_data->list_box, error_label, -1);
+    }
+
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer fetch_communities_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+
+    if (fetch_url(COMMUNITIES_LIST_URL, &chunk, NULL, "GET")) {
+        async_data->communities = parse_communities(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+
+    g_idle_add(on_communities_loaded, async_data);
+    return NULL;
+}
+
+void start_loading_communities(GtkListBox *list_box)
+{
+    if (!g_auth_token) return;
+
+    GList *children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+
+    GtkWidget *loading = gtk_label_new("Loading communities...");
+    gtk_widget_show(loading);
+    gtk_list_box_insert(list_box, loading, -1);
+
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->list_box = list_box;
+    g_thread_new("communities-loader", fetch_communities_thread, data);
+}
+
+void start_loading_community_tweets(GtkListBox *list_box, const gchar *community_id)
+{
+    (void)list_box;
+    (void)community_id;
+    g_warning("start_loading_community_tweets not yet implemented");
 }
 

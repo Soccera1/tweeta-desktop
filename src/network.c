@@ -217,3 +217,74 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
 
     return TRUE;
 }
+
+gboolean
+fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *file_path, const gchar *field_name)
+{
+    CURL *curl_handle;
+    CURLcode res;
+    struct curl_slist *headers = NULL;
+    curl_mime *mime = NULL;
+    curl_mimepart *part = NULL;
+
+    if (chunk->memory) {
+        g_free(chunk->memory);
+    }
+    chunk->memory = g_malloc(1);
+    chunk->size = 0;
+    chunk->memory[0] = '\0';
+
+    curl_handle = curl_easy_init();
+    if (!curl_handle) {
+        g_critical("curl_easy_init() failed");
+        g_free(chunk->memory);
+        chunk->memory = NULL;
+        return FALSE;
+    }
+
+    // Create MIME structure for multipart form
+    mime = curl_mime_init(curl_handle);
+    if (!mime) {
+        g_critical("curl_mime_init() failed");
+        g_free(chunk->memory);
+        chunk->memory = NULL;
+        curl_easy_cleanup(curl_handle);
+        return FALSE;
+    }
+
+    // Add the file to the form
+    part = curl_mime_addpart(mime);
+    curl_mime_name(part, field_name ? field_name : "file");
+    curl_mime_filedata(part, file_path);
+
+    curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)chunk);
+    curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+    curl_easy_setopt(curl_handle, CURLOPT_MIMEPOST, mime);
+
+    // Don't set Content-Type header - curl will set it with the boundary for multipart
+    if (g_auth_token) {
+        gchar *auth_header = g_strdup_printf("Authorization: Bearer %s", g_auth_token);
+        headers = curl_slist_append(headers, auth_header);
+        g_free(auth_header);
+    }
+    curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
+
+    res = curl_easy_perform(curl_handle);
+
+    curl_slist_free_all(headers);
+    curl_mime_free(mime);
+
+    if (res != CURLE_OK) {
+        g_critical("curl_easy_perform() failed: %s", curl_easy_strerror(res));
+        g_free(chunk->memory);
+        chunk->memory = NULL;
+        chunk->size = 0;
+        curl_easy_cleanup(curl_handle);
+        return FALSE;
+    }
+
+    curl_easy_cleanup(curl_handle);
+    return TRUE;
+}
