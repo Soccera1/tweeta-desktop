@@ -26,7 +26,7 @@ static guint active_conversations_request_id = 0;
 static GMutex load_messages_mutex;
 static guint active_messages_request_id = 0;
 
-void update_login_ui()
+void update_login_ui(void)
 {
     if (g_current_username) {
         gchar *label_text = g_strdup_printf("Logged in as @%s", g_current_username);
@@ -47,7 +47,7 @@ void update_login_ui()
     }
 }
 
-void perform_logout()
+void perform_logout(void)
 {
     clear_session();
     g_free(g_auth_token);
@@ -1083,7 +1083,7 @@ fetch_admin_stats_thread(gpointer data)
     return NULL;
 }
 
-void start_loading_admin_stats()
+void start_loading_admin_stats(void)
 {
     if (!g_auth_token || !g_is_admin) return;
     gtk_label_set_text(GTK_LABEL(g_admin_stats_label), "Loading admin statistics...");
