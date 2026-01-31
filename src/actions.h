@@ -82,4 +82,15 @@ gboolean get_cached_liked(const gchar *tweet_id);
 gboolean get_cached_retweeted(const gchar *tweet_id);
 gboolean get_cached_bookmarked(const gchar *tweet_id);
 
+void on_theme_changed(GtkComboBox *combo, gpointer user_data);
+void on_compact_mode_toggled(GtkSwitch *switch_widget, gboolean state, gpointer user_data);
+void on_notifications_enabled_toggled(GtkSwitch *switch_widget, gboolean state, gpointer user_data);
+void on_clear_cache_clicked(GtkWidget *widget, gpointer user_data);
+void on_clear_history_clicked(GtkWidget *widget, gpointer user_data);
+void on_change_password_clicked(GtkWidget *widget, gpointer user_data);
+void on_logout_clicked(GtkWidget *widget, gpointer user_data);
+
+void update_settings_username_display(void);
+void refresh_cache_size_display(void);
+
 #endif /* ACTIONS_H */

@@ -315,7 +315,7 @@ create_dm_messages_view(void)
 GtkWidget*
 create_settings_view(void)
 {
-    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_set_border_width(GTK_CONTAINER(box), 20);
 
     GtkWidget *title = gtk_label_new("Settings");
@@ -324,11 +324,146 @@ create_settings_view(void)
     pango_attr_list_insert(attrs, pango_attr_scale_new(1.5));
     gtk_label_set_attributes(GTK_LABEL(title), attrs);
     pango_attr_list_unref(attrs);
+    gtk_widget_set_halign(title, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(box), title, FALSE, FALSE, 0);
 
-    GtkWidget *placeholder_label = gtk_label_new("Settings are currently under development.\nCheck back soon for theme, notification, and account options!");
-    gtk_label_set_justify(GTK_LABEL(placeholder_label), GTK_JUSTIFY_CENTER);
-    gtk_box_pack_start(GTK_BOX(box), placeholder_label, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 10);
+
+    GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+
+    GtkWidget *content_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
+    gtk_container_set_border_width(GTK_CONTAINER(content_box), 10);
+
+    // Appearance Section
+    GtkWidget *appearance_frame = gtk_frame_new("Appearance");
+    GtkWidget *appearance_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(appearance_box), 10);
+
+    GtkWidget *theme_label = gtk_label_new("Theme:");
+    gtk_widget_set_halign(theme_label, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(appearance_box), theme_label, FALSE, FALSE, 0);
+
+    g_theme_combo = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(g_theme_combo), "Light");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(g_theme_combo), "Dark");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(g_theme_combo), "System Default");
+    gtk_combo_box_set_active(GTK_COMBO_BOX(g_theme_combo), 2);
+    g_signal_connect(g_theme_combo, "changed", G_CALLBACK(on_theme_changed), NULL);
+    gtk_box_pack_start(GTK_BOX(appearance_box), g_theme_combo, FALSE, FALSE, 0);
+
+    g_compact_mode_switch = gtk_switch_new();
+    GtkWidget *compact_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    GtkWidget *compact_label = gtk_label_new("Compact mode");
+    gtk_box_pack_start(GTK_BOX(compact_row), compact_label, TRUE, TRUE, 0);
+    gtk_box_pack_end(GTK_BOX(compact_row), g_compact_mode_switch, FALSE, FALSE, 0);
+    g_signal_connect(g_compact_mode_switch, "state-set", G_CALLBACK(on_compact_mode_toggled), NULL);
+    gtk_box_pack_start(GTK_BOX(appearance_box), compact_row, FALSE, FALSE, 0);
+
+    gtk_container_add(GTK_CONTAINER(appearance_frame), appearance_box);
+    gtk_box_pack_start(GTK_BOX(content_box), appearance_frame, FALSE, FALSE, 0);
+
+    // Notifications Section
+    GtkWidget *notifications_frame = gtk_frame_new("Notifications");
+    GtkWidget *notifications_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(notifications_box), 10);
+
+    g_enable_notifications_switch = gtk_switch_new();
+    gtk_switch_set_active(GTK_SWITCH(g_enable_notifications_switch), TRUE);
+    GtkWidget *enable_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    GtkWidget *enable_label = gtk_label_new("Enable notifications");
+    gtk_box_pack_start(GTK_BOX(enable_row), enable_label, TRUE, TRUE, 0);
+    gtk_box_pack_end(GTK_BOX(enable_row), g_enable_notifications_switch, FALSE, FALSE, 0);
+    g_signal_connect(g_enable_notifications_switch, "state-set", G_CALLBACK(on_notifications_enabled_toggled), NULL);
+    gtk_box_pack_start(GTK_BOX(notifications_box), enable_row, FALSE, FALSE, 0);
+
+    g_sound_notifications_switch = gtk_switch_new();
+    gtk_switch_set_active(GTK_SWITCH(g_sound_notifications_switch), TRUE);
+    GtkWidget *sound_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    GtkWidget *sound_label = gtk_label_new("Sound effects");
+    gtk_box_pack_start(GTK_BOX(sound_row), sound_label, TRUE, TRUE, 0);
+    gtk_box_pack_end(GTK_BOX(sound_row), g_sound_notifications_switch, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(notifications_box), sound_row, FALSE, FALSE, 0);
+
+    g_dm_notifications_switch = gtk_switch_new();
+    gtk_switch_set_active(GTK_SWITCH(g_dm_notifications_switch), TRUE);
+    GtkWidget *dm_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+    GtkWidget *dm_label = gtk_label_new("Direct message notifications");
+    gtk_box_pack_start(GTK_BOX(dm_row), dm_label, TRUE, TRUE, 0);
+    gtk_box_pack_end(GTK_BOX(dm_row), g_dm_notifications_switch, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(notifications_box), dm_row, FALSE, FALSE, 0);
+
+    gtk_container_add(GTK_CONTAINER(notifications_frame), notifications_box);
+    gtk_box_pack_start(GTK_BOX(content_box), notifications_frame, FALSE, FALSE, 0);
+
+    // Data & Cache Section
+    GtkWidget *data_frame = gtk_frame_new("Data & Cache");
+    GtkWidget *data_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(data_box), 10);
+
+    GtkWidget *cache_size_label = gtk_label_new("Cache size: Calculating...");
+    gtk_widget_set_halign(cache_size_label, GTK_ALIGN_START);
+    g_cache_size_label = cache_size_label;
+    gtk_box_pack_start(GTK_BOX(data_box), cache_size_label, FALSE, FALSE, 0);
+
+    GtkWidget *clear_cache_btn = gtk_button_new_with_label("Clear Cache");
+    g_signal_connect(clear_cache_btn, "clicked", G_CALLBACK(on_clear_cache_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(data_box), clear_cache_btn, FALSE, FALSE, 0);
+
+    GtkWidget *clear_history_btn = gtk_button_new_with_label("Clear Search History");
+    g_signal_connect(clear_history_btn, "clicked", G_CALLBACK(on_clear_history_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(data_box), clear_history_btn, FALSE, FALSE, 0);
+
+    gtk_container_add(GTK_CONTAINER(data_frame), data_box);
+    gtk_box_pack_start(GTK_BOX(content_box), data_frame, FALSE, FALSE, 0);
+
+    // Account Section
+    GtkWidget *account_frame = gtk_frame_new("Account");
+    GtkWidget *account_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(account_box), 10);
+
+    g_settings_username_label = gtk_label_new("Not logged in");
+    gtk_widget_set_halign(g_settings_username_label, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(account_box), g_settings_username_label, FALSE, FALSE, 0);
+
+    GtkWidget *change_pw_btn = gtk_button_new_with_label("Change Password");
+    g_signal_connect(change_pw_btn, "clicked", G_CALLBACK(on_change_password_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(account_box), change_pw_btn, FALSE, FALSE, 0);
+
+    GtkWidget *logout_btn = gtk_button_new_with_label("Logout");
+    gtk_widget_set_name(logout_btn, "logout_button");
+    g_signal_connect(logout_btn, "clicked", G_CALLBACK(on_logout_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(account_box), logout_btn, FALSE, FALSE, 0);
+
+    gtk_container_add(GTK_CONTAINER(account_frame), account_box);
+    gtk_box_pack_start(GTK_BOX(content_box), account_frame, FALSE, FALSE, 0);
+
+    // About Section
+    GtkWidget *about_frame = gtk_frame_new("About");
+    GtkWidget *about_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_set_border_width(GTK_CONTAINER(about_box), 10);
+
+    GtkWidget *app_name = gtk_label_new("Tweeta Desktop");
+    PangoAttrList *app_attrs = pango_attr_list_new();
+    pango_attr_list_insert(app_attrs, pango_attr_weight_new(PANGO_WEIGHT_BOLD));
+    gtk_label_set_attributes(GTK_LABEL(app_name), app_attrs);
+    pango_attr_list_unref(app_attrs);
+    gtk_widget_set_halign(app_name, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(about_box), app_name, FALSE, FALSE, 0);
+
+    GtkWidget *version_label = gtk_label_new("Version 1.0.0");
+    gtk_widget_set_halign(version_label, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(about_box), version_label, FALSE, FALSE, 0);
+
+    GtkWidget *agpl_label = gtk_label_new("Licensed under AGPLv3");
+    gtk_widget_set_halign(agpl_label, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(about_box), agpl_label, FALSE, FALSE, 0);
+
+    gtk_container_add(GTK_CONTAINER(about_frame), about_box);
+    gtk_box_pack_start(GTK_BOX(content_box), about_frame, FALSE, FALSE, 0);
+
+    gtk_container_add(GTK_CONTAINER(scroll), content_box);
+    gtk_box_pack_start(GTK_BOX(box), scroll, TRUE, TRUE, 0);
 
     return box;
 }
@@ -591,11 +726,6 @@ create_window(void)
     gtk_widget_hide(g_admin_button);
     g_signal_connect(g_admin_button, "clicked", G_CALLBACK(on_admin_clicked), NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), g_admin_button);
-
-    // Login Button (Right)
-    g_login_button = gtk_button_new_with_label("Login");
-    g_signal_connect(g_login_button, "clicked", G_CALLBACK(on_login_clicked), window);
-    gtk_header_bar_pack_end(GTK_HEADER_BAR(header), g_login_button);
 
     // User Label
     g_user_label = gtk_label_new("Not logged in");

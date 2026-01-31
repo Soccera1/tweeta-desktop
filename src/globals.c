@@ -5,7 +5,6 @@ gchar *g_current_username = NULL;
 gboolean g_is_admin = FALSE;
 GMutex g_globals_mutex;
 GHashTable *g_interaction_cache = NULL;
-GtkWidget *g_login_button = NULL;
 GtkWidget *g_compose_button = NULL;
 GtkWidget *g_user_label = NULL;
 GtkWidget *g_main_list_box = NULL;
@@ -46,3 +45,17 @@ TimelineType g_current_timeline_type = TIMELINE_PUBLIC;
 GtkWidget *g_communities_list = NULL;
 GtkWidget *g_community_tweets_list = NULL;
 gchar *g_community_id = NULL;
+
+GtkWidget *g_theme_combo = NULL;
+GtkWidget *g_compact_mode_switch = NULL;
+GtkWidget *g_enable_notifications_switch = NULL;
+GtkWidget *g_sound_notifications_switch = NULL;
+GtkWidget *g_dm_notifications_switch = NULL;
+GtkWidget *g_cache_size_label = NULL;
+GtkWidget *g_settings_username_label = NULL;
+
+gboolean g_notifications_enabled = TRUE;
+gboolean g_sound_enabled = TRUE;
+gboolean g_dm_notifications_enabled = TRUE;
+gboolean g_compact_mode_enabled = FALSE;
+int g_theme_preference = 2;

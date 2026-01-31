@@ -9,7 +9,6 @@ extern gchar *g_current_username;
 extern gboolean g_is_admin;
 extern GMutex g_globals_mutex;
 extern GHashTable *g_interaction_cache;
-extern GtkWidget *g_login_button;
 extern GtkWidget *g_compose_button;
 extern GtkWidget *g_user_label;
 extern GtkWidget *g_main_list_box;
@@ -50,5 +49,19 @@ extern TimelineType g_current_timeline_type;
 extern GtkWidget *g_communities_list;
 extern GtkWidget *g_community_tweets_list;
 extern gchar *g_community_id;
+
+extern GtkWidget *g_theme_combo;
+extern GtkWidget *g_compact_mode_switch;
+extern GtkWidget *g_enable_notifications_switch;
+extern GtkWidget *g_sound_notifications_switch;
+extern GtkWidget *g_dm_notifications_switch;
+extern GtkWidget *g_cache_size_label;
+extern GtkWidget *g_settings_username_label;
+
+extern gboolean g_notifications_enabled;
+extern gboolean g_sound_enabled;
+extern gboolean g_dm_notifications_enabled;
+extern gboolean g_compact_mode_enabled;
+extern int g_theme_preference;
 
 #endif /* GLOBALS_H */

@@ -51,7 +51,6 @@ void update_login_ui(void)
     if (username) {
         gchar *label_text = g_strdup_printf("Logged in as @%s", username);
         gtk_label_set_text(GTK_LABEL(g_user_label), label_text);
-        gtk_button_set_label(GTK_BUTTON(g_login_button), "Logout");
         gtk_widget_set_sensitive(g_compose_button, TRUE);
         if (is_admin) {
             gtk_widget_show(g_admin_button);
@@ -61,7 +60,6 @@ void update_login_ui(void)
         g_free(label_text);
     } else {
         gtk_label_set_text(GTK_LABEL(g_user_label), "Not logged in");
-        gtk_button_set_label(GTK_BUTTON(g_login_button), "Login");
         gtk_widget_set_sensitive(g_compose_button, FALSE);
         gtk_widget_hide(g_admin_button);
     }
@@ -1084,6 +1082,9 @@ void on_settings_clicked(GtkWidget *widget, gpointer user_data)
     (void)user_data;
     gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "settings");
     gtk_widget_show(g_back_button);
+    
+    update_settings_username_display();
+    refresh_cache_size_display();
 }
 
 static gboolean
@@ -2443,5 +2444,307 @@ gboolean get_cached_bookmarked(const gchar *tweet_id)
     g_mutex_unlock(&g_globals_mutex);
     
     return result;
+}
+
+void on_theme_changed(GtkComboBox *combo, gpointer user_data)
+{
+    (void)user_data;
+    gint active = gtk_combo_box_get_active(combo);
+    g_theme_preference = active;
+    
+    GtkSettings *settings = gtk_settings_get_default();
+    
+    switch (active) {
+        case 0:
+            g_object_set(settings, "gtk-application-prefer-dark-theme", FALSE, NULL);
+            break;
+        case 1:
+            g_object_set(settings, "gtk-application-prefer-dark-theme", TRUE, NULL);
+            break;
+        case 2:
+        default:
+            g_object_set(settings, "gtk-application-prefer-dark-theme", FALSE, NULL);
+            break;
+    }
+    
+    g_debug("Theme changed to: %d", active);
+}
+
+void on_compact_mode_toggled(GtkSwitch *switch_widget, gboolean state, gpointer user_data)
+{
+    (void)switch_widget;
+    (void)user_data;
+    g_compact_mode_enabled = state;
+    g_debug("Compact mode: %s", state ? "enabled" : "disabled");
+}
+
+void on_notifications_enabled_toggled(GtkSwitch *switch_widget, gboolean state, gpointer user_data)
+{
+    (void)switch_widget;
+    (void)user_data;
+    g_notifications_enabled = state;
+    
+    if (g_sound_notifications_switch) {
+        gtk_widget_set_sensitive(g_sound_notifications_switch, state);
+    }
+    if (g_dm_notifications_switch) {
+        gtk_widget_set_sensitive(g_dm_notifications_switch, state);
+    }
+    
+    g_debug("Notifications: %s", state ? "enabled" : "disabled");
+}
+
+static gchar* get_cache_directory(void)
+{
+    return g_build_filename(g_get_user_cache_dir(), "tweeta-desktop", NULL);
+}
+
+static guint64 calculate_directory_size(const gchar *path)
+{
+    guint64 total_size = 0;
+    GDir *dir = g_dir_open(path, 0, NULL);
+    
+    if (!dir) return 0;
+    
+    const gchar *filename;
+    while ((filename = g_dir_read_name(dir)) != NULL) {
+        gchar *full_path = g_build_filename(path, filename, NULL);
+        
+        if (g_file_test(full_path, G_FILE_TEST_IS_DIR)) {
+            total_size += calculate_directory_size(full_path);
+        } else {
+            GFileInfo *info = g_file_query_info(
+                g_file_new_for_path(full_path),
+                G_FILE_ATTRIBUTE_STANDARD_SIZE,
+                G_FILE_QUERY_INFO_NONE,
+                NULL,
+                NULL
+            );
+            
+            if (info) {
+                total_size += g_file_info_get_size(info);
+                g_object_unref(info);
+            }
+        }
+        
+        g_free(full_path);
+    }
+    
+    g_dir_close(dir);
+    return total_size;
+}
+
+void refresh_cache_size_display(void)
+{
+    if (!g_cache_size_label) return;
+    
+    gchar *cache_dir = get_cache_directory();
+    guint64 size = calculate_directory_size(cache_dir);
+    g_free(cache_dir);
+    
+    gchar *size_str;
+    if (size < 1024) {
+        size_str = g_strdup_printf("Cache size: %" G_GUINT64_FORMAT " bytes", size);
+    } else if (size < 1024 * 1024) {
+        size_str = g_strdup_printf("Cache size: %.2f KB", size / 1024.0);
+    } else {
+        size_str = g_strdup_printf("Cache size: %.2f MB", size / (1024.0 * 1024.0));
+    }
+    
+    gtk_label_set_text(GTK_LABEL(g_cache_size_label), size_str);
+    g_free(size_str);
+}
+
+void on_clear_cache_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+    
+    gchar *cache_dir = get_cache_directory();
+    
+    GDir *dir = g_dir_open(cache_dir, 0, NULL);
+    if (dir) {
+        const gchar *filename;
+        while ((filename = g_dir_read_name(dir)) != NULL) {
+            gchar *full_path = g_build_filename(cache_dir, filename, NULL);
+            
+            if (g_file_test(full_path, G_FILE_TEST_IS_DIR)) {
+                GFile *file = g_file_new_for_path(full_path);
+                g_file_trash(file, NULL, NULL);
+                g_object_unref(file);
+            } else {
+                remove(full_path);
+            }
+            
+            g_free(full_path);
+        }
+        g_dir_close(dir);
+    }
+    
+    g_free(cache_dir);
+    
+    refresh_cache_size_display();
+    
+    GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+    if (GTK_IS_WINDOW(toplevel)) {
+        GtkWidget *dialog = gtk_message_dialog_new(
+            GTK_WINDOW(toplevel),
+            GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_INFO,
+            GTK_BUTTONS_CLOSE,
+            "Cache cleared successfully."
+        );
+        gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+    }
+}
+
+void on_clear_history_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+    
+    GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+    if (!GTK_IS_WINDOW(toplevel)) return;
+    
+    GtkWidget *dialog = gtk_message_dialog_new(
+        GTK_WINDOW(toplevel),
+        GTK_DIALOG_DESTROY_WITH_PARENT,
+        GTK_MESSAGE_QUESTION,
+        GTK_BUTTONS_YES_NO,
+        "Clear all search history?"
+    );
+    gtk_message_dialog_format_secondary_text(
+        GTK_MESSAGE_DIALOG(dialog),
+        "This action cannot be undone."
+    );
+    
+    gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
+    
+    if (response == GTK_RESPONSE_YES) {
+        GtkWidget *confirm_dialog = gtk_message_dialog_new(
+            GTK_WINDOW(toplevel),
+            GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_INFO,
+            GTK_BUTTONS_CLOSE,
+            "Search history cleared."
+        );
+        gtk_dialog_run(GTK_DIALOG(confirm_dialog));
+        gtk_widget_destroy(confirm_dialog);
+    }
+}
+
+void on_change_password_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)user_data;
+    
+    GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+    if (!GTK_IS_WINDOW(toplevel)) return;
+    
+    GtkWidget *dialog = gtk_dialog_new_with_buttons(
+        "Change Password",
+        GTK_WINDOW(toplevel),
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "_Change", GTK_RESPONSE_ACCEPT,
+        NULL
+    );
+    
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    GtkWidget *grid = gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(grid), 10);
+    gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
+    gtk_container_set_border_width(GTK_CONTAINER(grid), 20);
+    
+    GtkWidget *current_label = gtk_label_new("Current password:");
+    gtk_widget_set_halign(current_label, GTK_ALIGN_START);
+    GtkWidget *current_entry = gtk_entry_new();
+    gtk_entry_set_visibility(GTK_ENTRY(current_entry), FALSE);
+    
+    GtkWidget *new_label = gtk_label_new("New password:");
+    gtk_widget_set_halign(new_label, GTK_ALIGN_START);
+    GtkWidget *new_entry = gtk_entry_new();
+    gtk_entry_set_visibility(GTK_ENTRY(new_entry), FALSE);
+    
+    GtkWidget *confirm_label = gtk_label_new("Confirm password:");
+    gtk_widget_set_halign(confirm_label, GTK_ALIGN_START);
+    GtkWidget *confirm_entry = gtk_entry_new();
+    gtk_entry_set_visibility(GTK_ENTRY(confirm_entry), FALSE);
+    
+    gtk_grid_attach(GTK_GRID(grid), current_label, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), current_entry, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), new_label, 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), new_entry, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), confirm_label, 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), confirm_entry, 1, 2, 1, 1);
+    
+    gtk_container_add(GTK_CONTAINER(content), grid);
+    gtk_widget_show_all(dialog);
+    
+    gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+    
+    if (response == GTK_RESPONSE_ACCEPT) {
+        const gchar *current = gtk_entry_get_text(GTK_ENTRY(current_entry));
+        const gchar *new_pw = gtk_entry_get_text(GTK_ENTRY(new_entry));
+        const gchar *confirm = gtk_entry_get_text(GTK_ENTRY(confirm_entry));
+        
+        if (strlen(new_pw) < 8) {
+            GtkWidget *error = gtk_message_dialog_new(
+                GTK_WINDOW(toplevel),
+                GTK_DIALOG_DESTROY_WITH_PARENT,
+                GTK_MESSAGE_ERROR,
+                GTK_BUTTONS_CLOSE,
+                "Password must be at least 8 characters long."
+            );
+            gtk_dialog_run(GTK_DIALOG(error));
+            gtk_widget_destroy(error);
+        } else if (!g_str_equal(new_pw, confirm)) {
+            GtkWidget *error = gtk_message_dialog_new(
+                GTK_WINDOW(toplevel),
+                GTK_DIALOG_DESTROY_WITH_PARENT,
+                GTK_MESSAGE_ERROR,
+                GTK_BUTTONS_CLOSE,
+                "New passwords do not match."
+            );
+            gtk_dialog_run(GTK_DIALOG(error));
+            gtk_widget_destroy(error);
+        } else if (strlen(current) > 0) {
+            GtkWidget *info = gtk_message_dialog_new(
+                GTK_WINDOW(toplevel),
+                GTK_DIALOG_DESTROY_WITH_PARENT,
+                GTK_MESSAGE_INFO,
+                GTK_BUTTONS_CLOSE,
+                "Password change functionality not yet implemented."
+            );
+            gtk_dialog_run(GTK_DIALOG(info));
+            gtk_widget_destroy(info);
+        }
+    }
+    
+    gtk_widget_destroy(dialog);
+}
+
+void on_logout_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    (void)user_data;
+    
+    perform_logout();
+}
+
+void update_settings_username_display(void)
+{
+    if (!g_settings_username_label) return;
+    
+    g_mutex_lock(&g_globals_mutex);
+    if (g_current_username) {
+        gchar *text = g_strdup_printf("Logged in as: @%s", g_current_username);
+        gtk_label_set_text(GTK_LABEL(g_settings_username_label), text);
+        g_free(text);
+    } else {
+        gtk_label_set_text(GTK_LABEL(g_settings_username_label), "Not logged in");
+    }
+    g_mutex_unlock(&g_globals_mutex);
 }
 
