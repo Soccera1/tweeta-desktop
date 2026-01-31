@@ -96,7 +96,7 @@ static void print_summary(int run_count, int failed_count) {
 #define TEST_FAIL_MSG() \
     (use_colors ? COLOR_RED "[FAIL]" COLOR_RESET : "[FAIL]")
 
-static void test_parse_tweets() {
+static void test_parse_tweets(void) {
     const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"Hello world\", \"author\": {\"name\": \"Test User\", \"username\": \"testuser\", \"avatar\": \"/api/uploads/avatar.png\"}}]}";
     GList *tweets = parse_tweets(json_input);
 
@@ -113,7 +113,7 @@ static void test_parse_tweets() {
     free_tweets(tweets);
 }
 
-static void test_parse_tweets_with_note() {
+static void test_parse_tweets_with_note(void) {
     const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"Fake news\", \"author\": {\"name\": \"User\", \"username\": \"u\"}, \"fact_check\": {\"note\": \"This is false.\", \"severity\": \"warning\"}}]}";
     GList *tweets = parse_tweets(json_input);
 
@@ -127,7 +127,7 @@ static void test_parse_tweets_with_note() {
     free_tweets(tweets);
 }
 
-static void test_parse_tweets_with_danger_note() {
+static void test_parse_tweets_with_danger_note(void) {
     const char *json_input = "{\"posts\": [{\"id\": \"124\", \"content\": \"Very fake news\", \"author\": {\"name\": \"User\", \"username\": \"u\"}, \"fact_check\": {\"note\": \"Danger!\", \"severity\": \"danger\"}}]}";
     GList *tweets = parse_tweets(json_input);
 
@@ -138,7 +138,7 @@ static void test_parse_tweets_with_danger_note() {
     free_tweets(tweets);
 }
 
-static void test_parse_tweets_with_info_note() {
+static void test_parse_tweets_with_info_note(void) {
     const char *json_input = "{\"posts\": [{\"id\": \"125\", \"content\": \"Context needed\", \"author\": {\"name\": \"User\", \"username\": \"u\"}, \"fact_check\": {\"note\": \"Some info.\", \"severity\": \"info\"}}]}";
     GList *tweets = parse_tweets(json_input);
 
@@ -149,7 +149,7 @@ static void test_parse_tweets_with_info_note() {
     free_tweets(tweets);
 }
 
-static void test_parse_login_response() {
+static void test_parse_login_response(void) {
     gchar *token = NULL;
     gchar *username = NULL;
     gboolean is_admin = FALSE;
@@ -204,7 +204,7 @@ static void test_parse_login_response() {
     g_assert_false(success);
 }
 
-static void test_construct_tweet_payload() {
+static void test_construct_tweet_payload(void) {
     // Test without reply
     gchar *payload = construct_tweet_payload("Hello world", NULL);
     g_assert_nonnull(payload);
@@ -239,7 +239,7 @@ static void test_construct_tweet_payload() {
     g_free(payload);
 }
 
-static void test_session_persistence() {
+static void test_session_persistence(void) {
     // Use the existing temp directory from main() - don't try to change XDG_CONFIG_HOME
     // because g_get_user_config_dir() caches its result on first call
     const gchar *tmp_dir = g_getenv("XDG_CONFIG_HOME");
@@ -309,7 +309,7 @@ static void test_session_persistence() {
     g_free(app_dir);
 }
 
-static void test_parse_profile() {
+static void test_parse_profile(void) {
     const char *json_input = "{\"profile\": {\"name\": \"Test User\", \"username\": \"testuser\", \"bio\": \"This is a test bio\", \"avatar\": \"/api/uploads/profile.png\", \"follower_count\": 100, \"following_count\": 50, \"post_count\": 10}}";
     struct Profile *p = parse_profile(json_input);
 
@@ -329,7 +329,7 @@ static void test_parse_profile() {
     g_free(p);
 }
 
-static void test_parse_profile_replies() {
+static void test_parse_profile_replies(void) {
     const char *json_input = "{\"replies\": [{\"id\": \"456\", \"content\": \"Test reply\", \"author\": {\"name\": \"Replier\", \"username\": \"replier\", \"avatar\": \"/api/uploads/reply.png\"}}]}";
     GList *tweets = parse_profile_replies(json_input);
 
@@ -346,7 +346,7 @@ static void test_parse_profile_replies() {
     free_tweets(tweets);
 }
 
-static void test_parse_users() {
+static void test_parse_users(void) {
     const char *json_input = "{\"users\": [{\"username\": \"testuser\", \"name\": \"Test User\", \"bio\": \"Test Bio\", \"avatar\": \"/api/uploads/user.png\", \"follower_count\": 123}]}";
     GList *users = parse_users(json_input);
 
@@ -363,7 +363,7 @@ static void test_parse_users() {
     free_users(users);
 }
 
-static void test_parse_notifications() {
+static void test_parse_notifications(void) {
     const char *json_input = "{\"notifications\": [{\"id\": \"n1\", \"type\": \"like\", \"content\": \"liked your tweet\", \"related_id\": \"t1\", \"actor_id\": \"u1\", \"actor_username\": \"actor\", \"actor_name\": \"Actor Name\", \"actor_avatar\": \"/api/uploads/avatar.png\", \"read\": false, \"created_at\": \"2023-10-27T10:00:00Z\"}]}";
     GList *notifications = parse_notifications(json_input);
 
@@ -385,7 +385,7 @@ static void test_parse_notifications() {
     free_notifications(notifications);
 }
 
-static void test_parse_tweets_with_attachments() {
+static void test_parse_tweets_with_attachments(void) {
     const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"Hello with media\", \"author\": {\"name\": \"Test User\", \"username\": \"testuser\", \"avatar\": \"/api/uploads/avatar.png\"}, \"attachments\": [{\"id\": \"a1\", \"file_url\": \"/api/uploads/image.jpg\", \"file_type\": \"image/jpeg\"}, {\"id\": \"v1\", \"file_url\": \"/api/uploads/video.mp4\", \"file_type\": \"video/mp4\"}]}]}";
     GList *tweets = parse_tweets(json_input);
 
@@ -411,7 +411,7 @@ static void test_parse_tweets_with_attachments() {
     free_tweets(tweets);
 }
 
-static void test_parse_conversations() {
+static void test_parse_conversations(void) {
     const char *json_input = "{\"conversations\": [{\"id\": \"c1\", \"type\": \"direct\", \"displayName\": \"Test User\", \"displayAvatar\": \"/avatar.png\", \"last_message_content\": \"Hello\", \"last_message_time\": \"2023-10-27T10:00:00Z\", \"unread_count\": 1}]}";
     GList *convs = parse_conversations(json_input);
 
@@ -429,7 +429,7 @@ static void test_parse_conversations() {
     free_conversations(convs);
 }
 
-static void test_parse_messages() {
+static void test_parse_messages(void) {
     const char *json_input = "{\"messages\": [{\"id\": \"m1\", \"conversation_id\": \"c1\", \"sender_id\": \"u1\", \"content\": \"Hello\", \"username\": \"testuser\", \"name\": \"Test User\", \"avatar\": \"/avatar.png\", \"created_at\": \"2023-10-27T10:00:00Z\"}]}";
     GList *msgs = parse_messages(json_input);
 
@@ -444,7 +444,7 @@ static void test_parse_messages() {
     free_messages(msgs);
 }
 
-static void test_parse_tweet_details() {
+static void test_parse_tweet_details(void) {
     const char *json_input = "{"
         "\"tweet\": {\"id\": \"main\", \"content\": \"Main tweet\", \"author\": {\"name\": \"User\", \"username\": \"user\"}},"
         "\"threadPosts\": [{\"id\": \"parent\", \"content\": \"Parent tweet\", \"author\": {\"name\": \"Parent\", \"username\": \"parent\"}}],"
@@ -467,7 +467,7 @@ static void test_parse_tweet_details() {
     free_tweets(tweets);
 }
 
-static void test_challenge_solver() {
+static void test_challenge_solver(void) {
     // A simple challenge: 1 challenge, salt length 8, difficulty 2 (1 byte match)
     const char *challenge_json = "{\"c\": 1, \"s\": 8, \"d\": 2}";
     
@@ -494,7 +494,7 @@ static void test_challenge_solver() {
 
 // NEW TESTS FOR IMPLEMENTED FEATURES
 
-static void test_parse_tweets_with_poll() {
+static void test_parse_tweets_with_poll(void) {
     const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"What do you think?\", \"author\": {\"name\": \"Test User\", \"username\": \"testuser\"}, \"poll\": {\"id\": \"poll1\", \"question\": \"Favorite color?\", \"is_active\": true, \"expires_at\": \"2024-12-31T23:59:59Z\", \"total_votes\": 100, \"options\": [{\"id\": \"opt1\", \"option_text\": \"Red\", \"vote_count\": 30, \"voted\": false}, {\"id\": \"opt2\", \"option_text\": \"Blue\", \"vote_count\": 70, \"voted\": true}]}}]}";
     GList *tweets = parse_tweets(json_input);
 
@@ -529,7 +529,7 @@ static void test_parse_tweets_with_poll() {
     free_tweets(tweets);
 }
 
-static void test_parse_communities() {
+static void test_parse_communities(void) {
     const char *json_input = "{\"communities\": [{\"id\": \"comm1\", \"name\": \"Tech Talk\", \"description\": \"Discussion about technology\", \"icon_url\": \"/uploads/comm1_icon.png\", \"banner_url\": \"/uploads/comm1_banner.png\", \"access_mode\": \"public\", \"member_count\": 1500, \"is_member\": true, \"is_admin\": false, \"is_moderator\": true}]}";
     GList *communities = parse_communities(json_input);
 
@@ -551,7 +551,7 @@ static void test_parse_communities() {
     free_communities(communities);
 }
 
-static void test_parse_communities_private() {
+static void test_parse_communities_private(void) {
     const char *json_input = "{\"communities\": [{\"id\": \"comm2\", \"name\": \"Private Club\", \"description\": \"Exclusive community\", \"access_mode\": \"private\", \"member_count\": 50, \"is_member\": false, \"is_admin\": false, \"is_moderator\": false}]}";
     GList *communities = parse_communities(json_input);
 
@@ -567,7 +567,7 @@ static void test_parse_communities_private() {
     free_communities(communities);
 }
 
-static void test_parse_upload_response() {
+static void test_parse_upload_response(void) {
     const char *json_input = "{\"file_url\": \"/api/uploads/test_image.png\", \"success\": true}";
     gchar *file_url = parse_upload_response(json_input);
     
@@ -577,14 +577,14 @@ static void test_parse_upload_response() {
     g_free(file_url);
 }
 
-static void test_parse_upload_response_failure() {
+static void test_parse_upload_response_failure(void) {
     const char *json_input = "{\"error\": \"Invalid file type\", \"success\": false}";
     gchar *file_url = parse_upload_response(json_input);
     
     g_assert_null(file_url);
 }
 
-static void test_poll_memory_management() {
+static void test_poll_memory_management(void) {
     // Test that poll data is properly freed when freeing tweets
     const char *json_input = "{\"posts\": [{\"id\": \"1\", \"content\": \"Test\", \"author\": {\"name\": \"User\", \"username\": \"user\"}, \"poll\": {\"id\": \"p1\", \"question\": \"Q?\", \"is_active\": true, \"total_votes\": 10, \"options\": [{\"id\": \"o1\", \"option_text\": \"A\", \"vote_count\": 5, \"voted\": false}]}}]}";
     GList *tweets = parse_tweets(json_input);
@@ -601,7 +601,7 @@ static void test_poll_memory_management() {
     g_assert_true(TRUE);
 }
 
-static void test_community_memory_management() {
+static void test_community_memory_management(void) {
     // Test community allocation and freeing
     struct Community *c = g_new0(struct Community, 1);
     c->id = g_strdup("test-id");
@@ -623,7 +623,7 @@ static void test_community_memory_management() {
     g_assert_true(TRUE);
 }
 
-static void test_poll_option_memory_management() {
+static void test_poll_option_memory_management(void) {
     // Test poll option freeing
     struct PollOption *opt = g_new0(struct PollOption, 1);
     opt->id = g_strdup("opt1");
@@ -637,14 +637,14 @@ static void test_poll_option_memory_management() {
     g_assert_true(TRUE);
 }
 
-static void test_timeline_type_enum() {
+static void test_timeline_type_enum(void) {
     // Test that TimelineType enum values are distinct
     g_assert_cmpint(TIMELINE_PUBLIC, !=, TIMELINE_FOLLOWING);
     g_assert_cmpint(TIMELINE_PUBLIC, ==, 0);
     g_assert_cmpint(TIMELINE_FOLLOWING, ==, 1);
 }
 
-static void test_tweet_with_poll_and_attachments() {
+static void test_tweet_with_poll_and_attachments(void) {
     // Test tweet that has both poll and attachments
     const char *json_input = "{\"posts\": [{\"id\": \"123\", \"content\": \"Check this out!\", \"author\": {\"name\": \"User\", \"username\": \"user\"}, \"attachments\": [{\"id\": \"a1\", \"file_url\": \"/uploads/image.jpg\", \"file_type\": \"image/jpeg\"}], \"poll\": {\"id\": \"p1\", \"question\": \"Like it?\", \"is_active\": true, \"total_votes\": 50, \"options\": [{\"id\": \"o1\", \"option_text\": \"Yes\", \"vote_count\": 30, \"voted\": true}]}}]}";
     GList *tweets = parse_tweets(json_input);
@@ -661,7 +661,7 @@ static void test_tweet_with_poll_and_attachments() {
     free_tweets(tweets);
 }
 
-static void test_parse_closed_poll() {
+static void test_parse_closed_poll(void) {
     // Test parsing a closed/inactive poll
     const char *json_input = "{\"posts\": [{\"id\": \"456\", \"content\": \"Poll ended\", \"author\": {\"name\": \"User\", \"username\": \"user\"}, \"poll\": {\"id\": \"p2\", \"question\": \"Winner?\", \"is_active\": false, \"expires_at\": \"2024-01-01T00:00:00Z\", \"total_votes\": 200, \"options\": [{\"id\": \"o1\", \"option_text\": \"Option A\", \"vote_count\": 80, \"voted\": false}, {\"id\": \"o2\", \"option_text\": \"Option B\", \"vote_count\": 120, \"voted\": false}]}}]}";
     GList *tweets = parse_tweets(json_input);
@@ -676,7 +676,7 @@ static void test_parse_closed_poll() {
     free_tweets(tweets);
 }
 
-static void test_integration_login() {
+static void test_integration_login(void) {
     const gchar *username = g_getenv("USERNAME");
     const gchar *password = g_getenv("PASSWORD");
 

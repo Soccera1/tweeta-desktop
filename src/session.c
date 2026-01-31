@@ -5,7 +5,7 @@
 #include "globals.h"
 
 gchar*
-get_config_path()
+get_config_path(void)
 {
     const gchar *config_dir = g_get_user_config_dir();
     gchar *app_dir = g_build_filename(config_dir, "tweeta-desktop", NULL);
@@ -50,7 +50,7 @@ save_session(const gchar *token, const gchar *username, gboolean is_admin)
 }
 
 void
-clear_session()
+clear_session(void)
 {
     gchar *path = get_config_path();
     g_unlink(path);
@@ -58,7 +58,7 @@ clear_session()
 }
 
 void
-load_session()
+load_session(void)
 {
     gchar *path = get_config_path();
     gchar *data = NULL;
