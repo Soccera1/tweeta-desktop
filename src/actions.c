@@ -25,14 +25,35 @@ static guint active_conversations_request_id = 0;
 static GMutex load_messages_mutex;
 static guint active_messages_request_id = 0;
 
+static inline gchar* get_auth_token_safe(void) {
+    g_mutex_lock(&g_globals_mutex);
+    gchar *token = g_auth_token ? g_strdup(g_auth_token) : NULL;
+    g_mutex_unlock(&g_globals_mutex);
+    return token;
+}
+
+static inline gchar* get_username_safe(void) {
+    g_mutex_lock(&g_globals_mutex);
+    gchar *username = g_current_username ? g_strdup(g_current_username) : NULL;
+    g_mutex_unlock(&g_globals_mutex);
+    return username;
+}
+
 void update_login_ui(void)
 {
-    if (g_current_username) {
-        gchar *label_text = g_strdup_printf("Logged in as @%s", g_current_username);
+    gchar *username = get_username_safe();
+    gboolean is_admin;
+    
+    g_mutex_lock(&g_globals_mutex);
+    is_admin = g_is_admin;
+    g_mutex_unlock(&g_globals_mutex);
+    
+    if (username) {
+        gchar *label_text = g_strdup_printf("Logged in as @%s", username);
         gtk_label_set_text(GTK_LABEL(g_user_label), label_text);
         gtk_button_set_label(GTK_BUTTON(g_login_button), "Logout");
         gtk_widget_set_sensitive(g_compose_button, TRUE);
-        if (g_is_admin) {
+        if (is_admin) {
             gtk_widget_show(g_admin_button);
         } else {
             gtk_widget_hide(g_admin_button);
@@ -44,15 +65,20 @@ void update_login_ui(void)
         gtk_widget_set_sensitive(g_compose_button, FALSE);
         gtk_widget_hide(g_admin_button);
     }
+    
+    g_free(username);
 }
 
 void perform_logout(void)
 {
     clear_session();
+    g_mutex_lock(&g_globals_mutex);
     g_free(g_auth_token);
     g_auth_token = NULL;
     g_free(g_current_username);
     g_current_username = NULL;
+    g_is_admin = FALSE;
+    g_mutex_unlock(&g_globals_mutex);
     update_login_ui();
 }
 
@@ -76,16 +102,26 @@ gboolean perform_login(const gchar *username, const gchar *password)
     if (fetch_url(LOGIN_URL, &chunk, post_data, "POST")) {
         gchar *token = NULL;
         gchar *uname = NULL;
-        if (parse_login_response(chunk.memory, &token, &uname, &g_is_admin)) {
+        gboolean is_admin = FALSE;
+        g_debug("perform_login: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
+        if (parse_login_response(chunk.memory, &token, &uname, &is_admin)) {
+            g_debug("perform_login: parsed successfully, token=%s (len=%d)", token ? token : "(null)", token ? (int)strlen(token) : 0);
+            g_mutex_lock(&g_globals_mutex);
             g_free(g_auth_token);
             g_auth_token = token;
             g_free(g_current_username);
             g_current_username = uname;
+            g_is_admin = is_admin;
+            g_mutex_unlock(&g_globals_mutex);
+            g_debug("perform_login: token set to g_auth_token");
             
             // The basic-login endpoint doesn't return admin status, so we fetch /auth/me
             struct MemoryStruct me_chunk;
             if (fetch_url(AUTH_ME_URL, &me_chunk, NULL, "GET")) {
-                parse_user_me_response(me_chunk.memory, &g_is_admin);
+                parse_user_me_response(me_chunk.memory, &is_admin);
+                g_mutex_lock(&g_globals_mutex);
+                g_is_admin = is_admin;
+                g_mutex_unlock(&g_globals_mutex);
                 free(me_chunk.memory);
             }
 
@@ -324,13 +360,23 @@ static gpointer fetch_tweets_thread(gpointer data)
         } else {
             url = g_strdup_printf("%s/profile/%s/replies", API_BASE_URL, async_data->username);
         }
-    } else if (g_strcmp0(feed_type, "community") == 0 && g_community_id) {
-        gchar *community_url = g_strdup_printf(COMMUNITY_TWEETS_URL, g_community_id);
-        if (async_data->before_id) {
-            url = g_strdup_printf("%s?before=%s", community_url, async_data->before_id);
-            g_free(community_url);
+    } else if (g_strcmp0(feed_type, "community") == 0) {
+        gchar *community_id;
+        g_mutex_lock(&g_globals_mutex);
+        community_id = g_community_id ? g_strdup(g_community_id) : NULL;
+        g_mutex_unlock(&g_globals_mutex);
+        
+        if (community_id) {
+            gchar *community_url = g_strdup_printf(COMMUNITY_TWEETS_URL, community_id);
+            if (async_data->before_id) {
+                url = g_strdup_printf("%s?before=%s", community_url, async_data->before_id);
+                g_free(community_url);
+            } else {
+                url = community_url;
+            }
+            g_free(community_id);
         } else {
-            url = community_url;
+            url = NULL;
         }
     } else {
         const gchar *timeline_url = (g_current_timeline_type == TIMELINE_FOLLOWING) ? FOLLOWING_TIMELINE_URL : PUBLIC_TWEETS_URL;
@@ -1365,9 +1411,17 @@ gboolean perform_like(const gchar *tweet_id)
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(LIKE_TWEET_URL, tweet_id);
 
+    g_debug("perform_like: tweet_id=%s, url=%s", tweet_id, url);
     if (fetch_url(url, &chunk, "{}", "POST")) {
-        success = TRUE;
+        g_debug("perform_like: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
+        if (chunk.memory && strstr(chunk.memory, "\"error\"") == NULL) {
+            success = TRUE;
+        } else if (chunk.memory) {
+            g_warning("perform_like: API returned error: %s", chunk.memory);
+        }
         free(chunk.memory);
+    } else {
+        g_debug("perform_like: fetch_url failed");
     }
 
     g_free(url);
@@ -1380,9 +1434,17 @@ gboolean perform_retweet(const gchar *tweet_id)
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(RETWEET_URL, tweet_id);
 
+    g_debug("perform_retweet: tweet_id=%s, url=%s", tweet_id, url);
     if (fetch_url(url, &chunk, "{}", "POST")) {
-        success = TRUE;
+        g_debug("perform_retweet: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
+        if (chunk.memory && strstr(chunk.memory, "\"error\"") == NULL) {
+            success = TRUE;
+        } else if (chunk.memory) {
+            g_warning("perform_retweet: API returned error: %s", chunk.memory);
+        }
         free(chunk.memory);
+    } else {
+        g_debug("perform_retweet: fetch_url failed");
     }
 
     g_free(url);
@@ -1405,9 +1467,17 @@ gboolean perform_bookmark(const gchar *tweet_id, gboolean add)
     json_generator_set_root(gen, json_builder_get_root(builder));
     gchar *post_data = json_generator_to_data(gen, NULL);
 
+    g_debug("perform_bookmark: tweet_id=%s, add=%d, url=%s", tweet_id, add, url);
     if (fetch_url(url, &chunk, post_data, "POST")) {
-        success = TRUE;
+        g_debug("perform_bookmark: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
+        if (chunk.memory && strstr(chunk.memory, "\"error\"") == NULL) {
+            success = TRUE;
+        } else if (chunk.memory) {
+            g_warning("perform_bookmark: API returned error: %s", chunk.memory);
+        }
         free(chunk.memory);
+    } else {
+        g_debug("perform_bookmark: fetch_url failed");
     }
 
     g_free(post_data);
@@ -1432,9 +1502,17 @@ gboolean perform_reaction(const gchar *tweet_id, const gchar *emoji)
     json_generator_set_root(gen, json_builder_get_root(builder));
     gchar *post_data = json_generator_to_data(gen, NULL);
 
+    g_debug("perform_reaction: tweet_id=%s, emoji=%s, url=%s", tweet_id, emoji, url);
     if (fetch_url(url, &chunk, post_data, "POST")) {
-        success = TRUE;
+        g_debug("perform_reaction: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
+        if (chunk.memory && strstr(chunk.memory, "\"error\"") == NULL) {
+            success = TRUE;
+        } else if (chunk.memory) {
+            g_warning("perform_reaction: API returned error: %s", chunk.memory);
+        }
         free(chunk.memory);
+    } else {
+        g_debug("perform_reaction: fetch_url failed");
     }
 
     g_free(post_data);
@@ -1607,7 +1685,12 @@ static void on_note_menu_item_activated(GtkMenuItem *menuitem, gpointer user_dat
 void on_note_button_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)user_data;
-    if (!g_auth_token) return;
+    gchar *token = get_auth_token_safe();
+    if (!token) {
+        g_free(token);
+        return;
+    }
+    g_free(token);
 
     GtkWidget *menu = gtk_menu_new();
 
@@ -1635,6 +1718,11 @@ void on_note_button_clicked(GtkWidget *widget, gpointer user_data)
 gboolean perform_follow(const gchar *username, gboolean follow)
 {
     if (!g_auth_token || !username) return FALSE;
+    
+    if (!is_valid_username(username)) {
+        g_warning("Invalid username format: %s", username);
+        return FALSE;
+    }
 
     gchar *url = g_strdup_printf(PROFILE_FOLLOW_URL, username);
     const gchar *method = follow ? "POST" : "DELETE";
@@ -2232,10 +2320,128 @@ void start_loading_communities(GtkListBox *list_box)
     g_thread_new("communities-loader", fetch_communities_thread, data);
 }
 
+static gboolean on_community_tweets_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    
+    if (async_data->success && async_data->tweets) {
+        populate_tweet_list(async_data->list_box, async_data->tweets);
+        free_tweets(async_data->tweets);
+    } else {
+        GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+        for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+            gtk_widget_destroy(GTK_WIDGET(iter->data));
+        g_list_free(children);
+        
+        GtkWidget *error_label = gtk_label_new("Failed to load community tweets.");
+        gtk_widget_show(error_label);
+        gtk_list_box_insert(async_data->list_box, error_label, -1);
+    }
+    
+    g_free(async_data->community_id);
+    g_free(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer fetch_community_tweets_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    struct MemoryStruct chunk;
+    
+    gchar *url = g_strdup_printf(COMMUNITY_TWEETS_URL, async_data->community_id);
+    
+    if (fetch_url(url, &chunk, NULL, "GET")) {
+        async_data->tweets = parse_tweets(chunk.memory);
+        async_data->success = TRUE;
+        free(chunk.memory);
+    } else {
+        async_data->success = FALSE;
+    }
+    
+    g_free(url);
+    g_idle_add(on_community_tweets_loaded, async_data);
+    return NULL;
+}
+
 void start_loading_community_tweets(GtkListBox *list_box, const gchar *community_id)
 {
-    (void)list_box;
-    (void)community_id;
-    g_warning("start_loading_community_tweets not yet implemented");
+    if (!g_auth_token || !community_id) return;
+    
+    GList *children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    g_list_free(children);
+    
+    GtkWidget *loading = gtk_label_new("Loading community tweets...");
+    gtk_widget_show(loading);
+    gtk_list_box_insert(list_box, loading, -1);
+    
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->list_box = list_box;
+    data->community_id = g_strdup(community_id);
+    g_thread_new("community-tweets-loader", fetch_community_tweets_thread, data);
+}
+
+void update_interaction_cache(const gchar *tweet_id, gboolean liked, gboolean retweeted, gboolean bookmarked)
+{
+    if (!tweet_id) return;
+    
+    g_mutex_lock(&g_globals_mutex);
+    
+    struct InteractionState *cached = NULL;
+    
+    if (g_interaction_cache) {
+        cached = g_hash_table_lookup(g_interaction_cache, tweet_id);
+    }
+    
+    if (cached == NULL) {
+        cached = g_malloc(sizeof(struct InteractionState));
+        cached->liked = FALSE;
+        cached->retweeted = FALSE;
+        cached->bookmarked = FALSE;
+        g_hash_table_insert(g_interaction_cache, g_strdup(tweet_id), cached);
+    } else {
+        if (liked >= 0) cached->liked = liked;
+        if (retweeted >= 0) cached->retweeted = retweeted;
+        if (bookmarked >= 0) cached->bookmarked = bookmarked;
+    }
+    
+    g_mutex_unlock(&g_globals_mutex);
+}
+
+gboolean get_cached_liked(const gchar *tweet_id)
+{
+    if (!tweet_id || !g_interaction_cache) return FALSE;
+    
+    g_mutex_lock(&g_globals_mutex);
+    struct InteractionState *cached = g_hash_table_lookup(g_interaction_cache, tweet_id);
+    gboolean result = cached ? cached->liked : FALSE;
+    g_mutex_unlock(&g_globals_mutex);
+    
+    return result;
+}
+
+gboolean get_cached_retweeted(const gchar *tweet_id)
+{
+    if (!tweet_id || !g_interaction_cache) return FALSE;
+    
+    g_mutex_lock(&g_globals_mutex);
+    struct InteractionState *cached = g_hash_table_lookup(g_interaction_cache, tweet_id);
+    gboolean result = cached ? cached->retweeted : FALSE;
+    g_mutex_unlock(&g_globals_mutex);
+    
+    return result;
+}
+
+gboolean get_cached_bookmarked(const gchar *tweet_id)
+{
+    if (!tweet_id || !g_interaction_cache) return FALSE;
+    
+    g_mutex_lock(&g_globals_mutex);
+    struct InteractionState *cached = g_hash_table_lookup(g_interaction_cache, tweet_id);
+    gboolean result = cached ? cached->bookmarked : FALSE;
+    g_mutex_unlock(&g_globals_mutex);
+    
+    return result;
 }
 

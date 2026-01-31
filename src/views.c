@@ -6,6 +6,13 @@
 #include "ui_components.h"
 #include "views.h"
 
+static inline gchar* get_username_safe(void) {
+    g_mutex_lock(&g_globals_mutex);
+    gchar *username = g_current_username ? g_strdup(g_current_username) : NULL;
+    g_mutex_unlock(&g_globals_mutex);
+    return username;
+}
+
 static void on_profile_edit_response(GtkDialog *dialog, gint response_id, gpointer user_data)
 {
     if (response_id == GTK_RESPONSE_ACCEPT) {
@@ -13,8 +20,9 @@ static void on_profile_edit_response(GtkDialog *dialog, gint response_id, gpoint
         const gchar *name = gtk_entry_get_text(GTK_ENTRY(entries[0]));
         const gchar *bio = gtk_entry_get_text(GTK_ENTRY(entries[1]));
 
-        if (g_current_username && perform_update_profile(g_current_username, name, bio)) {
-            show_profile(g_current_username);
+        gchar *username = get_username_safe();
+        if (username && perform_update_profile(username, name, bio)) {
+            show_profile(username);
         } else {
             GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
                                      GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -34,7 +42,12 @@ static void on_edit_profile_clicked(GtkWidget *widget, gpointer user_data)
     (void)widget;
     (void)user_data;
 
-    if (!g_current_username) return;
+    gchar *username = get_username_safe();
+    if (!username) {
+        g_free(username);
+        return;
+    }
+    g_free(username);
 
     GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
     GtkWindow *window = GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL;
@@ -568,7 +581,7 @@ create_window(void)
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), refresh_button);
 
     // Communities Button (Left)
-    GtkWidget *communities_button = gtk_button_new_from_icon_name("users-symbolic", GTK_ICON_SIZE_BUTTON);
+    GtkWidget *communities_button = gtk_button_new_from_icon_name("system-users-symbolic", GTK_ICON_SIZE_BUTTON);
     g_signal_connect(communities_button, "clicked", G_CALLBACK(on_communities_clicked), NULL);
     gtk_header_bar_pack_start(GTK_HEADER_BAR(header), communities_button);
 

@@ -7,6 +7,8 @@
 extern gchar *g_auth_token;
 extern gchar *g_current_username;
 extern gboolean g_is_admin;
+extern GMutex g_globals_mutex;
+extern GHashTable *g_interaction_cache;
 extern GtkWidget *g_login_button;
 extern GtkWidget *g_compose_button;
 extern GtkWidget *g_user_label;

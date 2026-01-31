@@ -7,5 +7,6 @@ gchar* get_config_path(void);
 void save_session(const gchar *token, const gchar *username, gboolean is_admin);
 void clear_session(void);
 void load_session(void);
+gboolean is_valid_username(const gchar *username);
 
 #endif /* SESSION_H */

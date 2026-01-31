@@ -7,6 +7,14 @@
 #include "globals.h"
 #include "network.h"
 
+static inline gchar* get_auth_token_safe(void) {
+    g_mutex_lock(&g_globals_mutex);
+    gchar *token = g_auth_token ? g_strdup(g_auth_token) : NULL;
+    g_debug("get_auth_token_safe: token=%s (length=%d)", token ? token : "(null)", token ? (int)strlen(token) : 0);
+    g_mutex_unlock(&g_globals_mutex);
+    return token;
+}
+
 static size_t
 WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
 {
@@ -34,11 +42,20 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
     CURLcode res;
     struct curl_slist *headers = NULL;
 
+    if (!url) {
+        g_critical("fetch_url_internal: URL is NULL");
+        return FALSE;
+    }
+
     if (chunk->memory) {
         free(chunk->memory);
     }
     chunk->memory = malloc(1);
     chunk->size = 0;
+    if (!chunk->memory) {
+        g_critical("fetch_url_internal: malloc failed");
+        return FALSE;
+    }
     chunk->memory[0] = '\0';
 
     curl_handle = curl_easy_init();
@@ -53,13 +70,21 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)chunk);
     curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+    curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYHOST, 2L);
+    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
 
     headers = curl_slist_append(headers, "Content-Type: application/json");
-    if (g_auth_token) {
-        gchar *auth_header = g_strdup_printf("Authorization: Bearer %s", g_auth_token);
+    gchar *auth_token = get_auth_token_safe();
+    g_debug("fetch_url_internal: url=%s, method=%s, has_auth_token=%d", url, method, auth_token != NULL);
+    if (auth_token) {
+        gchar *auth_header = g_strdup_printf("Authorization: Bearer %s", auth_token);
         headers = curl_slist_append(headers, auth_header);
         g_free(auth_header);
     }
+    g_free(auth_token);
     curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
 
     if (method) {
@@ -106,7 +131,6 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
         g_message("Challenge detected and solved. Retrying request with capToken.");
         gchar *new_post_data = NULL;
         if (post_data) {
-            // Add capToken to existing JSON post_data
             JsonParser *parser = json_parser_new();
             if (json_parser_load_from_data(parser, post_data, -1, NULL)) {
                 JsonNode *root = json_parser_get_root(parser);
@@ -121,7 +145,6 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
             }
             g_object_unref(parser);
         } else {
-            // Create new JSON with capToken
             JsonBuilder *builder = json_builder_new();
             json_builder_begin_object(builder);
             json_builder_set_member_name(builder, "capToken");
@@ -171,7 +194,6 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
                 if (cap_token) {
                     g_message("Fetched and solved new challenge. Retrying original request.");
                     
-                    // If it was a ratelimit, we might need to call rate-limit-bypass first
                     if (response_code == 429) {
                         struct MemoryStruct bypass_chunk;
                         bypass_chunk.memory = NULL;
@@ -197,10 +219,6 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
                             }
                         }
                         g_object_unref(parser2);
-                    } else {
-                         // Even for GET, if it's ratelimited, we might need to pass capToken
-                         // but standard practice is POST for these.
-                         // For now, let's just try adding it if we can.
                     }
 
                     gboolean success = fetch_url_internal(url, chunk, new_post_data, method, &response_code);
@@ -223,17 +241,26 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
     curl_mime *mime = NULL;
     curl_mimepart *part = NULL;
 
-    if (chunk->memory) {
-        g_free(chunk->memory);
+    if (!url || !file_path) {
+        g_critical("fetch_url_with_file: URL or file_path is NULL");
+        return FALSE;
     }
-    chunk->memory = g_malloc(1);
+
+    if (chunk->memory) {
+        free(chunk->memory);
+    }
+    chunk->memory = malloc(1);
     chunk->size = 0;
+    if (!chunk->memory) {
+        g_critical("fetch_url_with_file: malloc failed");
+        return FALSE;
+    }
     chunk->memory[0] = '\0';
 
     curl_handle = curl_easy_init();
     if (!curl_handle) {
         g_critical("curl_easy_init() failed");
-        g_free(chunk->memory);
+        free(chunk->memory);
         chunk->memory = NULL;
         return FALSE;
     }
@@ -241,7 +268,7 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
     mime = curl_mime_init(curl_handle);
     if (!mime) {
         g_critical("curl_mime_init() failed");
-        g_free(chunk->memory);
+        free(chunk->memory);
         chunk->memory = NULL;
         curl_easy_cleanup(curl_handle);
         return FALSE;
@@ -255,13 +282,20 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)chunk);
     curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+    curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYHOST, 2L);
+    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 60L);
+    curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 10L);
+    curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl_handle, CURLOPT_MIMEPOST, mime);
 
-    if (g_auth_token) {
-        gchar *auth_header = g_strdup_printf("Authorization: Bearer %s", g_auth_token);
+    gchar *auth_token = get_auth_token_safe();
+    if (auth_token) {
+        gchar *auth_header = g_strdup_printf("Authorization: Bearer %s", auth_token);
         headers = curl_slist_append(headers, auth_header);
         g_free(auth_header);
     }
+    g_free(auth_token);
     curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
 
     res = curl_easy_perform(curl_handle);
@@ -271,7 +305,7 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
 
     if (res != CURLE_OK) {
         g_critical("curl_easy_perform() failed: %s", curl_easy_strerror(res));
-        g_free(chunk->memory);
+        free(chunk->memory);
         chunk->memory = NULL;
         chunk->size = 0;
         curl_easy_cleanup(curl_handle);

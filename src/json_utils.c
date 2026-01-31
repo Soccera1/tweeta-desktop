@@ -1,6 +1,10 @@
 #include <json-glib/json-glib.h>
 #include "json_utils.h"
 
+extern gboolean get_cached_liked(const gchar *tweet_id);
+extern gboolean get_cached_retweeted(const gchar *tweet_id);
+extern gboolean get_cached_bookmarked(const gchar *tweet_id);
+
 static struct Tweet* parse_single_tweet(JsonObject *post_object);
 static struct Poll* parse_poll(JsonObject *poll_object);
 static void free_poll_data(struct Poll *poll);
@@ -145,8 +149,15 @@ parse_tweets(const gchar *json_data)
                 tweet->liked = json_object_get_boolean_member(post_object, "liked");
             } else if (json_object_has_member(post_object, "is_liked")) {
                 tweet->liked = json_object_get_boolean_member(post_object, "is_liked");
-            } else if (json_object_has_member(post_object, "user_liked")) {
+            } else             if (json_object_has_member(post_object, "user_liked")) {
                 tweet->liked = json_object_get_boolean_member(post_object, "user_liked");
+            }
+
+            if (!json_object_has_member(post_object, "liked_by_user") &&
+                !json_object_has_member(post_object, "liked") &&
+                !json_object_has_member(post_object, "is_liked") &&
+                !json_object_has_member(post_object, "user_liked")) {
+                tweet->liked = get_cached_liked(tweet->id);
             }
 
             tweet->retweeted = FALSE;
@@ -156,23 +167,15 @@ parse_tweets(const gchar *json_data)
                     if (json_node_get_value_type(node) == G_TYPE_BOOLEAN)
                         tweet->retweeted = json_node_get_boolean(node);
                     else if (json_node_get_value_type(node) == G_TYPE_INT64)
-                        tweet->retweeted = json_node_get_int(node) != 0;
+                tweet->retweeted = json_node_get_int(node) != 0;
                 }
-            } else if (json_object_has_member(post_object, "retweeted")) {
-                tweet->retweeted = json_object_get_boolean_member(post_object, "retweeted");
-            } else if (json_object_has_member(post_object, "is_retweeted")) {
-                tweet->retweeted = json_object_get_boolean_member(post_object, "is_retweeted");
-            } else if (json_object_has_member(post_object, "user_retweeted")) {
-                tweet->retweeted = json_object_get_boolean_member(post_object, "user_retweeted");
             }
 
-            tweet->bookmarked = FALSE;
-            if (json_object_has_member(post_object, "bookmarked")) {
-                tweet->bookmarked = json_object_get_boolean_member(post_object, "bookmarked");
-            } else if (json_object_has_member(post_object, "is_bookmarked")) {
-                tweet->bookmarked = json_object_get_boolean_member(post_object, "is_bookmarked");
-            } else if (json_object_has_member(post_object, "user_bookmarked")) {
-                tweet->bookmarked = json_object_get_boolean_member(post_object, "user_bookmarked");
+            if (!json_object_has_member(post_object, "retweeted_by_user") &&
+                !json_object_has_member(post_object, "retweeted") &&
+                !json_object_has_member(post_object, "is_retweeted") &&
+                !json_object_has_member(post_object, "user_retweeted")) {
+                tweet->retweeted = get_cached_retweeted(tweet->id);
             }
 
             if (json_object_has_member(post_object, "likes")) {
@@ -197,6 +200,8 @@ parse_tweets(const gchar *json_data)
                 tweet->poll = parse_poll(poll_obj);
             }
 
+            g_debug("parse_tweets: parsed tweet id=%s, liked=%d, retweeted=%d, bookmarked=%d",
+                tweet->id ? tweet->id : "(null)", tweet->liked, tweet->retweeted, tweet->bookmarked);
             tweets = g_list_append(tweets, tweet);
         }
     }

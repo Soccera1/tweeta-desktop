@@ -10,11 +10,13 @@ set_image_pixbuf(gpointer data)
     GdkPixbuf *pixbuf = (GdkPixbuf *)((gpointer *)data)[0];
     GtkWidget *image = (GtkWidget *)((gpointer *)data)[1];
 
-    if (GTK_IS_IMAGE(image)) {
+    if (GTK_IS_IMAGE(image) && pixbuf) {
         gtk_image_set_from_pixbuf(GTK_IMAGE(image), pixbuf);
     }
 
-    g_object_unref(pixbuf);
+    if (pixbuf) {
+        g_object_unref(pixbuf);
+    }
     if (G_IS_OBJECT(image)) {
         g_object_unref(image);
     }
@@ -58,7 +60,7 @@ fetch_avatar_thread(gpointer data)
 void
 load_avatar(GtkWidget *image, const gchar *url, int size)
 {
-    if (!url || strlen(url) == 0) return;
+    if (!image || !url || strlen(url) == 0) return;
 
     struct AvatarData *data = g_new(struct AvatarData, 1);
     data->image = image;
@@ -73,5 +75,7 @@ on_author_clicked(GtkButton *button, gpointer user_data)
 {
     (void)user_data;
     const gchar *username = g_object_get_data(G_OBJECT(button), "username");
-    show_profile(username);
+    if (username) {
+        show_profile(username);
+    }
 }

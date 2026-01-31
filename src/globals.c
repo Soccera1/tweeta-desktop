@@ -3,6 +3,8 @@
 gchar *g_auth_token = NULL;
 gchar *g_current_username = NULL;
 gboolean g_is_admin = FALSE;
+GMutex g_globals_mutex;
+GHashTable *g_interaction_cache = NULL;
 GtkWidget *g_login_button = NULL;
 GtkWidget *g_compose_button = NULL;
 GtkWidget *g_user_label = NULL;

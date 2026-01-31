@@ -1,4 +1,5 @@
 #include <string.h>
+#include <json-glib/json-glib.h>
 #include "actions.h"
 #include "constants.h"
 #include "globals.h"
@@ -10,46 +11,155 @@
 static void on_join_community_clicked(GtkButton *button, gpointer user_data);
 static void on_community_clicked(GtkListBoxRow *row, gpointer user_data);
 
+static inline gboolean is_logged_in(void) {
+    g_mutex_lock(&g_globals_mutex);
+    gboolean logged_in = (g_auth_token != NULL);
+    g_mutex_unlock(&g_globals_mutex);
+    return logged_in;
+}
+
+static inline gboolean is_admin_user(void) {
+    g_mutex_lock(&g_globals_mutex);
+    gboolean admin = g_is_admin;
+    g_mutex_unlock(&g_globals_mutex);
+    return admin;
+}
+
+static inline gchar* get_community_id_safe(void) {
+    g_mutex_lock(&g_globals_mutex);
+    gchar *id = g_community_id ? g_strdup(g_community_id) : NULL;
+    g_mutex_unlock(&g_globals_mutex);
+    return id;
+}
+
 static void
 on_like_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)user_data;
-    if (!g_auth_token) {
+    g_debug("on_like_clicked called");
+    if (!is_logged_in()) {
+        g_debug("on_like_clicked: User not logged in");
         return;
     }
 
     const gchar *tweet_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
     gboolean *liked = g_object_get_data(G_OBJECT(widget), "liked_state");
 
-    if (perform_like(tweet_id)) {
-        *liked = !(*liked);
-        if (*liked) {
-            gtk_button_set_label(GTK_BUTTON(widget), "♥ Liked");
-        } else {
-            gtk_button_set_label(GTK_BUTTON(widget), "♡ Like");
+    g_debug("on_like_clicked: tweet_id=%s, current_liked=%d", tweet_id, *liked);
+    struct MemoryStruct chunk;
+    gchar *url = g_strdup_printf(LIKE_TWEET_URL, tweet_id);
+
+    if (fetch_url(url, &chunk, "{}", "POST")) {
+        g_debug("on_like_clicked: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
+        if (chunk.memory && strstr(chunk.memory, "\"error\"") == NULL) {
+            JsonParser *parser = json_parser_new();
+            GError *error = NULL;
+            if (json_parser_load_from_data(parser, chunk.memory, -1, &error)) {
+                JsonNode *root = json_parser_get_root(parser);
+                JsonObject *obj = json_node_get_object(root);
+                if (json_object_has_member(obj, "liked")) {
+                    gboolean new_liked = json_object_get_boolean_member(obj, "liked");
+                    *liked = new_liked;
+                    update_interaction_cache(tweet_id, new_liked, -1, -1);
+                    g_debug("on_like_clicked: API returned liked=%d", new_liked);
+                    if (new_liked) {
+                        gtk_button_set_label(GTK_BUTTON(widget), "♥ Liked");
+                    } else {
+                        gtk_button_set_label(GTK_BUTTON(widget), "♡ Like");
+                    }
+                } else {
+                    *liked = !(*liked);
+                    update_interaction_cache(tweet_id, *liked, -1, -1);
+                    if (*liked) {
+                        gtk_button_set_label(GTK_BUTTON(widget), "♥ Liked");
+                    } else {
+                        gtk_button_set_label(GTK_BUTTON(widget), "♡ Like");
+                    }
+                }
+                g_object_unref(parser);
+            } else {
+                if (error) g_error_free(error);
+                *liked = !(*liked);
+                if (*liked) {
+                    gtk_button_set_label(GTK_BUTTON(widget), "♥ Liked");
+                } else {
+                    gtk_button_set_label(GTK_BUTTON(widget), "♡ Like");
+                }
+            }
+        } else if (chunk.memory) {
+            g_warning("on_like_clicked: API returned error: %s", chunk.memory);
         }
+        free(chunk.memory);
+    } else {
+        g_debug("on_like_clicked: fetch_url failed");
     }
+
+    g_free(url);
 }
 
 static void
 on_retweet_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)user_data;
-    if (!g_auth_token) {
+    g_debug("on_retweet_clicked called");
+    if (!is_logged_in()) {
+        g_debug("on_retweet_clicked: User not logged in");
         return;
     }
 
     const gchar *tweet_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
     gboolean *retweeted = g_object_get_data(G_OBJECT(widget), "retweeted_state");
 
-    if (perform_retweet(tweet_id)) {
-        *retweeted = !(*retweeted);
-        if (*retweeted) {
-            gtk_button_set_label(GTK_BUTTON(widget), "↻ Retweeted");
-        } else {
-            gtk_button_set_label(GTK_BUTTON(widget), "↻ Retweet");
+    g_debug("on_retweet_clicked: tweet_id=%s, current_retweeted=%d", tweet_id, *retweeted);
+    struct MemoryStruct chunk;
+    gchar *url = g_strdup_printf(RETWEET_URL, tweet_id);
+
+    if (fetch_url(url, &chunk, "{}", "POST")) {
+        g_debug("on_retweet_clicked: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
+        if (chunk.memory && strstr(chunk.memory, "\"error\"") == NULL) {
+            JsonParser *parser = json_parser_new();
+            GError *error = NULL;
+            if (json_parser_load_from_data(parser, chunk.memory, -1, &error)) {
+                JsonNode *root = json_parser_get_root(parser);
+                JsonObject *obj = json_node_get_object(root);
+                if (json_object_has_member(obj, "retweeted")) {
+                    gboolean new_retweeted = json_object_get_boolean_member(obj, "retweeted");
+                    *retweeted = new_retweeted;
+                    g_debug("on_retweet_clicked: API returned retweeted=%d", new_retweeted);
+                    update_interaction_cache(tweet_id, -1, new_retweeted, -1);
+                    if (new_retweeted) {
+                        gtk_button_set_label(GTK_BUTTON(widget), "↻ Retweeted");
+                    } else {
+                        gtk_button_set_label(GTK_BUTTON(widget), "↻ Retweet");
+                    }
+                } else {
+                    *retweeted = !(*retweeted);
+                    update_interaction_cache(tweet_id, -1, *retweeted, -1);
+                    if (*retweeted) {
+                        gtk_button_set_label(GTK_BUTTON(widget), "↻ Retweeted");
+                    } else {
+                        gtk_button_set_label(GTK_BUTTON(widget), "↻ Retweet");
+                    }
+                }
+                g_object_unref(parser);
+            } else {
+                if (error) g_error_free(error);
+                *retweeted = !(*retweeted);
+                if (*retweeted) {
+                    gtk_button_set_label(GTK_BUTTON(widget), "↻ Retweeted");
+                } else {
+                    gtk_button_set_label(GTK_BUTTON(widget), "↻ Retweet");
+                }
+            }
+        } else if (chunk.memory) {
+            g_warning("on_retweet_clicked: API returned error: %s", chunk.memory);
         }
+        free(chunk.memory);
+    } else {
+        g_debug("on_retweet_clicked: fetch_url failed");
     }
+
+    g_free(url);
 }
 
 static void
@@ -100,7 +210,7 @@ static void
 on_quote_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)user_data;
-    if (!g_auth_token) {
+    if (!is_logged_in()) {
         return;
     }
 
@@ -151,7 +261,7 @@ static void
 on_retweet_button_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)user_data;
-    if (!g_auth_token) {
+    if (!is_logged_in()) {
         return;
     }
 
@@ -174,21 +284,79 @@ static void
 on_bookmark_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)user_data;
-    if (!g_auth_token) {
+    g_debug("on_bookmark_clicked called");
+    if (!is_logged_in()) {
+        g_debug("on_bookmark_clicked: User not logged in");
         return;
     }
 
     const gchar *tweet_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
     gboolean *bookmarked = g_object_get_data(G_OBJECT(widget), "bookmarked_state");
 
-    if (perform_bookmark(tweet_id, !(*bookmarked))) {
-        *bookmarked = !(*bookmarked);
-        if (*bookmarked) {
-            gtk_button_set_label(GTK_BUTTON(widget), "★ Saved");
-        } else {
-            gtk_button_set_label(GTK_BUTTON(widget), "☆ Bookmark");
+    g_debug("on_bookmark_clicked: tweet_id=%s, current_bookmarked=%d", tweet_id, *bookmarked);
+    gboolean add = !(*bookmarked);
+    const gchar *url = add ? BOOKMARK_ADD_URL : BOOKMARK_REMOVE_URL;
+
+    JsonBuilder *builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "postId");
+    json_builder_add_string_value(builder, tweet_id);
+    json_builder_end_object(builder);
+
+    JsonGenerator *gen = json_generator_new();
+    json_generator_set_root(gen, json_builder_get_root(builder));
+    gchar *post_data = json_generator_to_data(gen, NULL);
+
+    struct MemoryStruct chunk;
+
+    if (fetch_url(url, &chunk, post_data, "POST")) {
+        g_debug("on_bookmark_clicked: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
+        if (chunk.memory && strstr(chunk.memory, "\"error\"") == NULL) {
+            JsonParser *parser = json_parser_new();
+            GError *error = NULL;
+            if (json_parser_load_from_data(parser, chunk.memory, -1, &error)) {
+                JsonNode *root = json_parser_get_root(parser);
+                JsonObject *obj = json_node_get_object(root);
+                if (json_object_has_member(obj, "bookmarked")) {
+                    gboolean new_bookmarked = json_object_get_boolean_member(obj, "bookmarked");
+                    *bookmarked = new_bookmarked;
+                    g_debug("on_bookmark_clicked: API returned bookmarked=%d", new_bookmarked);
+                    update_interaction_cache(tweet_id, -1, -1, new_bookmarked);
+                    if (new_bookmarked) {
+                        gtk_button_set_label(GTK_BUTTON(widget), "★ Saved");
+                    } else {
+                        gtk_button_set_label(GTK_BUTTON(widget), "☆ Bookmark");
+                    }
+                } else {
+                    *bookmarked = !(*bookmarked);
+                    update_interaction_cache(tweet_id, -1, -1, *bookmarked);
+                    if (*bookmarked) {
+                        gtk_button_set_label(GTK_BUTTON(widget), "★ Saved");
+                    } else {
+                        gtk_button_set_label(GTK_BUTTON(widget), "☆ Bookmark");
+                    }
+                }
+                g_object_unref(parser);
+            } else {
+                if (error) g_error_free(error);
+                *bookmarked = !(*bookmarked);
+                if (*bookmarked) {
+                    gtk_button_set_label(GTK_BUTTON(widget), "★ Saved");
+                } else {
+                    gtk_button_set_label(GTK_BUTTON(widget), "☆ Bookmark");
+                }
+            }
+        } else if (chunk.memory) {
+            g_warning("on_bookmark_clicked: API returned error: %s", chunk.memory);
         }
+        free(chunk.memory);
+    } else {
+        g_debug("on_bookmark_clicked: fetch_url failed");
     }
+
+    g_free(post_data);
+    g_object_unref(gen);
+    g_object_unref(builder);
 }
 
 static void
@@ -208,6 +376,7 @@ on_emoji_selected(GtkFlowBoxChild *child, gpointer user_data)
     struct ReactionContext *ctx = g_object_get_data(G_OBJECT(dialog), "reaction_context");
     const gchar *emoji_name = g_object_get_data(G_OBJECT(child), "emoji_name");
 
+    g_debug("on_emoji_selected: tweet_id=%s, emoji=%s", ctx ? ctx->tweet_id : "NULL", emoji_name);
     if (emoji_name && ctx && ctx->tweet_id) {
         perform_reaction(ctx->tweet_id, emoji_name);
     }
@@ -219,7 +388,7 @@ static void
 on_reaction_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)user_data;
-    if (!g_auth_token) {
+    if (!is_logged_in()) {
         return;
     }
 
@@ -364,7 +533,7 @@ static void
 on_reply_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)user_data;
-    if (!g_auth_token) {
+    if (!is_logged_in()) {
         GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
         GtkWindow *window = GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL;
         GtkWidget *error_dialog = gtk_message_dialog_new(window,
@@ -435,7 +604,7 @@ on_poll_option_clicked(GtkWidget *widget, gpointer user_data)
     (void)widget;
     struct PollVoteData *vote_data = (struct PollVoteData *)user_data;
 
-    if (!g_auth_token) {
+    if (!is_logged_in()) {
         return;
     }
 
@@ -842,8 +1011,8 @@ create_tweet_widget_full(struct Tweet *tweet, const gchar *op_username)
     
     gtk_container_add(GTK_CONTAINER(event_box), hbox);
     g_object_set_data_full(G_OBJECT(event_box), "tweet_id", g_strdup(tweet->id), g_free);
-
-    if (g_is_admin) {
+    
+    if (is_admin_user()) {
         g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_admin_post_button_press), NULL);
     }
     g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_tweet_clicked), NULL);
@@ -895,7 +1064,7 @@ create_tweet_widget_full(struct Tweet *tweet, const gchar *op_username)
     gtk_box_pack_start(GTK_BOX(button_box), bookmark_btn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(button_box), reaction_btn, FALSE, FALSE, 0);
 
-    if (g_is_admin) {
+    if (is_admin_user()) {
         GtkWidget *note_btn = gtk_button_new_with_label("✎ Note");
         gtk_button_set_relief(GTK_BUTTON(note_btn), GTK_RELIEF_NONE);
         g_object_set_data_full(G_OBJECT(note_btn), "tweet_id", g_strdup(tweet->id), g_free);
@@ -971,7 +1140,7 @@ create_user_widget(struct Profile *user)
     gtk_container_add(GTK_CONTAINER(event_box), hbox);
     g_object_set_data_full(G_OBJECT(event_box), "username", g_strdup(user->username), g_free);
     
-    if (g_is_admin) {
+    if (is_admin_user()) {
         g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_admin_user_button_press), NULL);
     }
 
@@ -1398,10 +1567,14 @@ static void on_community_clicked(GtkListBoxRow *row, gpointer user_data)
     (void)user_data;
     const gchar *community_id = g_object_get_data(G_OBJECT(row), "community_id");
     if (!community_id) return;
-
-    // Set current community ID
+    
+    // Set current community ID (thread-safe)
+    gchar *old_id = get_community_id_safe();
+    g_mutex_lock(&g_globals_mutex);
     g_free(g_community_id);
     g_community_id = g_strdup(community_id);
+    g_mutex_unlock(&g_globals_mutex);
+    g_free(old_id);
 
     // Show community tweets
     gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "community");

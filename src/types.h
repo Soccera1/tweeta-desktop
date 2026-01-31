@@ -173,6 +173,12 @@ struct Poll {
     int total_votes;
 };
 
+struct InteractionState {
+    gboolean liked;
+    gboolean retweeted;
+    gboolean bookmarked;
+};
+
 struct Community {
     gchar *id;
     gchar *name;

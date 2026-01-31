@@ -5,12 +5,16 @@
 #include "session.h"
 #include "actions.h"
 #include "views.h"
+#include "types.h"
 
 int main(int argc, char *argv[]) {
     GtkWidget *window;
 
     gtk_init(&argc, &argv);
     curl_global_init(CURL_GLOBAL_ALL);
+
+    g_mutex_init(&g_globals_mutex);
+    g_interaction_cache = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
     GtkCssProvider *provider = gtk_css_provider_new();
     gtk_css_provider_load_from_data(provider,
@@ -38,6 +42,9 @@ int main(int argc, char *argv[]) {
     gtk_main();
 
     curl_global_cleanup();
+    if (g_interaction_cache) {
+        g_hash_table_unref(g_interaction_cache);
+    }
     g_free(g_auth_token);
     g_free(g_current_username);
 

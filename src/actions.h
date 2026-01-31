@@ -77,4 +77,9 @@ gboolean perform_leave_community(const gchar *community_id);
 void free_community(gpointer data);
 void free_communities(GList *communities);
 
+void update_interaction_cache(const gchar *tweet_id, gboolean liked, gboolean retweeted, gboolean bookmarked);
+gboolean get_cached_liked(const gchar *tweet_id);
+gboolean get_cached_retweeted(const gchar *tweet_id);
+gboolean get_cached_bookmarked(const gchar *tweet_id);
+
 #endif /* ACTIONS_H */

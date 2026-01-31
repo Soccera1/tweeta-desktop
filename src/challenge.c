@@ -42,7 +42,9 @@ static guint64 solve_pow(const gchar *salt, const gchar *target_hex) {
     }
 
     guint64 nonce = 0;
-    while (TRUE) {
+    const guint64 MAX_ITERATIONS = 10000000ULL;
+    
+    while (nonce < MAX_ITERATIONS) {
         GChecksum *checksum = g_checksum_new(G_CHECKSUM_SHA256);
         gchar *nonce_str = g_strdup_printf("%llu", (unsigned long long)nonce);
         gchar *combined = g_strconcat(salt, nonce_str, NULL);
@@ -68,6 +70,9 @@ static guint64 solve_pow(const gchar *salt, const gchar *target_hex) {
         if (found) return nonce;
         nonce++;
     }
+    
+    g_warning("solve_pow: Max iterations reached, challenge too difficult");
+    return 0;
 }
 
 JsonArray* solve_challenge_internal(JsonObject *obj, const gchar *token) {
