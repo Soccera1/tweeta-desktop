@@ -89,7 +89,7 @@ static void on_follow_button_clicked(GtkWidget *widget, gpointer user_data)
 }
 
 GtkWidget*
-create_profile_view()
+create_profile_view(void)
 {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_set_border_width(GTK_CONTAINER(box), 10);
@@ -178,7 +178,7 @@ create_profile_view()
 }
 
 GtkWidget*
-create_search_view()
+create_search_view(void)
 {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     GtkWidget *notebook = gtk_notebook_new();
@@ -203,7 +203,7 @@ create_search_view()
 }
 
 GtkWidget*
-create_notifications_view()
+create_notifications_view(void)
 {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     
@@ -226,7 +226,7 @@ create_notifications_view()
 }
 
 GtkWidget*
-create_conversation_view()
+create_conversation_view(void)
 {
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
     g_conversation_list = gtk_list_box_new();
@@ -260,7 +260,7 @@ on_dm_send_clicked(GtkWidget *widget, gpointer user_data)
 }
 
 GtkWidget*
-create_messages_view()
+create_messages_view(void)
 {
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
     g_conversations_list = gtk_list_box_new();
@@ -270,7 +270,7 @@ create_messages_view()
 }
 
 GtkWidget*
-create_dm_messages_view()
+create_dm_messages_view(void)
 {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     
@@ -308,7 +308,7 @@ create_dm_messages_view()
 }
 
 GtkWidget*
-create_settings_view()
+create_settings_view(void)
 {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
     gtk_container_set_border_width(GTK_CONTAINER(box), 20);
@@ -406,7 +406,7 @@ static void on_timeline_toggle_clicked(GtkWidget *widget, gpointer user_data)
 }
 
 GtkWidget*
-create_bookmarks_view()
+create_bookmarks_view(void)
 {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
@@ -423,7 +423,7 @@ create_bookmarks_view()
 }
 
 GtkWidget*
-create_communities_view()
+create_communities_view(void)
 {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
@@ -439,7 +439,7 @@ create_communities_view()
 }
 
 GtkWidget*
-create_community_tweets_view()
+create_community_tweets_view(void)
 {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
@@ -456,7 +456,7 @@ create_community_tweets_view()
 }
 
 GtkWidget*
-create_admin_view()
+create_admin_view(void)
 {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
@@ -514,7 +514,7 @@ create_admin_view()
 }
 
 GtkWidget*
-create_window()
+create_window(void)
 {
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(window), "Tweeta Desktop");
