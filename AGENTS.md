@@ -6,24 +6,26 @@ This file contains guidelines and commands for agentic coding agents working on 
 
 ### Primary Build System (Make)
 ```bash
-# Build the main application
-make
+# Build the main application (use parallel compilation)
+make -j$(nproc)
 
 # Build static binary
-make static
+make -j$(nproc) static
 
 # Clean build artifacts
 make clean
 
 # Run tests
-make test
+make -j$(nproc) test
 
 # Install application
-make install
+make -j$(nproc) install
 
 # Uninstall application
 make uninstall
 ```
+
+**Important:** Always use parallel compilation with `make -j$(nproc)` to significantly speed up build times. If strange errors occur with parallel builds, this should be treated as a **critical bug** and reported immediately.
 
 ### Alternative Build System (Meson/Ninja)
 ```bash
