@@ -3,7 +3,7 @@
 This document provides information for developers who wish to contribute to Tweeta Desktop or run the test suite.
 
 > [!WARNING]
-> **Linux Only:** While Tweeta Desktop may compile on non-Linux systems (such as macOS or Windows), it is **horribly broken and completely unsupported**. Official binaries for macOS and Windows are provided solely for convenience as compiling on those systems requires significant manual patching. Using them or building from source on non-Linux systems is at your own risk.
+> **Linux Only:** While Tweeta Desktop may compile on non-Linux systems (such as macOS or Windows), it is **horribly broken and completely unsupported**. Official binaries for macOS are provided solely for convenience. Compiling on Windows requires significant manual patching. macOS compilation issues will be fixed (CI/CD is in place for building DMGs), but runtime bugs not present on Linux likely won't be fixed unless they are trivial or a patch is submitted by someone with a Mac, as I cannot test beyond compilation on macOS without access to a Mac. Using them or building from source on non-Linux systems is at your own risk.
 
 ## Running Tests
 
