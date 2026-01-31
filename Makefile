@@ -12,7 +12,7 @@ PREFIX  ?= /usr/local
 SRCDIR  = .
 
 # Dependencies (backticks are evaluated by shell in rules)
-GTK_CFLAGS = `pkg-config --cflags gtk+-3.0 json-glib-1.0`
+GTK_CFLAGS = `pkg-config --cflags gtk+-3.0 json-glib-1.0 gpgme`
 GTK_LIBS   = `pkg-config --libs gtk+-3.0 json-glib-1.0 libcurl gpgme`
 
 CFLAGS  = -Wall -Wextra -pedantic-errors -std=c99 -O3 -Isrc

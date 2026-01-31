@@ -86,7 +86,7 @@ jobs:
       - name: Install build dependencies
         run: |
           brew install gtk+3 json-glib pkg-config dylibbundler curl gpgme adwaita-icon-theme hicolor-icon-theme gettext libffi
-          echo "PKG_CONFIG_PATH=$(brew --prefix curl)/lib/pkgconfig:$(brew --prefix libffi)/lib/pkgconfig:$(brew --prefix gettext)/lib/pkgconfig" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$(brew --prefix curl)/lib/pkgconfig:$(brew --prefix libffi)/lib/pkgconfig:$(brew --prefix gettext)/lib/pkgconfig:$(brew --prefix gpgme)/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Build project
         run: |
