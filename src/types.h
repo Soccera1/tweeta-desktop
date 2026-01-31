@@ -3,37 +3,34 @@
 
 #include <gtk/gtk.h>
 
-// Timeline type enum
 typedef enum {
     TIMELINE_PUBLIC,
     TIMELINE_FOLLOWING
 } TimelineType;
 
-// Represents a media attachment
 struct Attachment {
     gchar *id;
     gchar *file_url;
     gchar *file_type;
 };
 
-// Represents a single tweet
 struct Tweet {
-  gchar *content;
-  gchar *author_name;
-  gchar *author_username;
-  gchar *author_avatar;
-  gchar *id;
-  gchar *note;
-  gchar *note_severity;
-  GList *attachments;
-  gboolean liked;
-  gboolean retweeted;
-  gboolean bookmarked;
-  int like_count;
-  int retweet_count;
-  int reply_count;
-  struct Tweet *quote_tweet;
-  struct Poll *poll;  // Optional poll attached to the tweet
+    gchar *content;
+    gchar *author_name;
+    gchar *author_username;
+    gchar *author_avatar;
+    gchar *id;
+    gchar *note;
+    gchar *note_severity;   /* warning, danger, or info */
+    GList *attachments;
+    gboolean liked;
+    gboolean retweeted;
+    gboolean bookmarked;
+    int like_count;
+    int retweet_count;
+    int reply_count;
+    struct Tweet *quote_tweet;
+    struct Poll *poll;
 };
 
 struct Emoji {
@@ -54,9 +51,9 @@ struct Profile {
 
 struct Notification {
     gchar *id;
-    gchar *type;
+    gchar *type;            /* like, retweet, reply, follow, mention, quote, reaction */
     gchar *content;
-    gchar *related_id;
+    gchar *related_id;      /* ID of related tweet or object */
     gchar *actor_id;
     gchar *actor_username;
     gchar *actor_name;
@@ -79,14 +76,14 @@ struct DirectMessage {
 
 struct Conversation {
     gchar *id;
-    gchar *type;
+    gchar *type;            /* direct or group */
     gchar *title;
     gchar *display_name;
     gchar *display_avatar;
     gchar *last_message_content;
     gchar *last_message_time;
     int unread_count;
-    GList *participants; // List of Profile*
+    GList *participants;    /* List of Profile* */
 };
 
 struct AdminStats {
@@ -102,13 +99,11 @@ struct AdminStats {
     gint64 active_suspended;
 };
 
-// Memory buffer for curl
 struct MemoryStruct {
-  char *memory;
-  size_t size;
+    char *memory;
+    size_t size;
 };
 
-// Data to pass between threads
 struct AsyncData {
     GtkListBox *list_box;
     GList *tweets;
@@ -116,16 +111,16 @@ struct AsyncData {
     GList *notifications;
     GList *conversations;
     GList *messages;
-    GList *communities;  // List of Community*
+    GList *communities;
     gboolean success;
     struct Profile *profile;
     gchar *username;
     gchar *query;
     gchar *conversation_id;
     gchar *community_id;
-    guint request_id;  // Track which request instance this is
-    gboolean is_append;
-    gchar *before_id;
+    guint request_id;       /* Used to cancel stale requests */
+    gboolean is_append;     /* TRUE when loading more (infinite scroll) */
+    gchar *before_id;       /* Pagination cursor */
 };
 
 struct AvatarData {
@@ -162,7 +157,6 @@ struct ReactionContext {
     GtkWidget *parent_window;
 };
 
-// Poll structures
 struct PollOption {
     gchar *id;
     gchar *option_text;
@@ -173,27 +167,25 @@ struct PollOption {
 struct Poll {
     gchar *id;
     gchar *question;
-    GList *options;  // List of PollOption*
+    GList *options;         /* List of PollOption* */
     gboolean is_active;
     gchar *expires_at;
     int total_votes;
 };
 
-// Community structures
 struct Community {
     gchar *id;
     gchar *name;
     gchar *description;
     gchar *icon_url;
     gchar *banner_url;
-    gchar *access_mode;  // "public", "private", "restricted"
+    gchar *access_mode;     /* public, private, or restricted */
     int member_count;
     gboolean is_member;
     gboolean is_admin;
     gboolean is_moderator;
 };
 
-// Upload/Attachment context
 struct UploadContext {
     GtkWidget *parent_dialog;
     GtkWidget *file_label;
@@ -201,7 +193,6 @@ struct UploadContext {
     gchar *file_type;
 };
 
-// Profile edit context
 struct ProfileEditContext {
     GtkWidget *name_entry;
     GtkWidget *bio_entry;
@@ -211,4 +202,4 @@ struct ProfileEditContext {
     gchar *new_banner_path;
 };
 
-#endif // TYPES_H
+#endif /* TYPES_H */

@@ -12,7 +12,6 @@ int main(int argc, char *argv[]) {
     gtk_init(&argc, &argv);
     curl_global_init(CURL_GLOBAL_ALL);
 
-    // CSS Provider
     GtkCssProvider *provider = gtk_css_provider_new();
     gtk_css_provider_load_from_data(provider,
         ".unread-notification { background-color: rgba(0, 100, 255, 0.1); }"

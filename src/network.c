@@ -90,7 +90,6 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
     curl_easy_cleanup(curl_handle);
     return TRUE;
 }
-
 gboolean
 fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, const gchar *method)
 {
@@ -102,7 +101,6 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
         return FALSE;
     }
 
-    // Check if the response contains a challenge
     gchar *cap_token = check_and_solve_challenge(chunk->memory);
     if (cap_token) {
         g_message("Challenge detected and solved. Retrying request with capToken.");
@@ -142,7 +140,6 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
         return success;
     }
 
-    // If it was a 429 or 403 with "Challenge token is required", we should explicitly get a challenge
     if (response_code == 429 || response_code == 403 || response_code == 400) {
         gboolean needs_cap = FALSE;
         JsonParser *parser = json_parser_new();
@@ -217,7 +214,6 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
 
     return TRUE;
 }
-
 gboolean
 fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *file_path, const gchar *field_name)
 {
@@ -242,7 +238,6 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
         return FALSE;
     }
 
-    // Create MIME structure for multipart form
     mime = curl_mime_init(curl_handle);
     if (!mime) {
         g_critical("curl_mime_init() failed");
@@ -252,7 +247,6 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
         return FALSE;
     }
 
-    // Add the file to the form
     part = curl_mime_addpart(mime);
     curl_mime_name(part, field_name ? field_name : "file");
     curl_mime_filedata(part, file_path);
@@ -263,7 +257,6 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
     curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
     curl_easy_setopt(curl_handle, CURLOPT_MIMEPOST, mime);
 
-    // Don't set Content-Type header - curl will set it with the boundary for multipart
     if (g_auth_token) {
         gchar *auth_header = g_strdup_printf("Authorization: Bearer %s", g_auth_token);
         headers = curl_slist_append(headers, auth_header);

@@ -17,19 +17,16 @@ GtkWidget *g_stack = NULL;
 GtkWidget *g_back_button = NULL;
 GtkWidget *g_admin_button = NULL;
 
-// Admin widgets
 GtkWidget *g_admin_stats_label = NULL;
 GtkWidget *g_admin_users_list = NULL;
 GtkWidget *g_admin_posts_list = NULL;
 GtkWidget *g_admin_users_search = NULL;
 GtkWidget *g_admin_posts_search = NULL;
 
-// Search widgets
 GtkWidget *g_search_entry = NULL;
 GtkWidget *g_search_users_list = NULL;
 GtkWidget *g_search_tweets_list = NULL;
 
-// Profile widgets
 GtkWidget *g_profile_name_label = NULL;
 GtkWidget *g_profile_bio_label = NULL;
 GtkWidget *g_profile_stats_label = NULL;
@@ -40,13 +37,10 @@ GtkWidget *g_follow_button = NULL;
 GtkWidget *g_followers_list = NULL;
 GtkWidget *g_following_list = NULL;
 
-// Bookmarks widgets
 GtkWidget *g_bookmarks_list = NULL;
 
-// Timeline type
 TimelineType g_current_timeline_type = TIMELINE_PUBLIC;
 
-// Communities widgets
 GtkWidget *g_communities_list = NULL;
 GtkWidget *g_community_tweets_list = NULL;
 gchar *g_community_id = NULL;

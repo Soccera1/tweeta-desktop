@@ -116,13 +116,11 @@ create_profile_view(void)
     g_profile_stats_label = gtk_label_new("");
     gtk_widget_set_halign(g_profile_stats_label, GTK_ALIGN_START);
 
-    // Follow button
     g_follow_button = gtk_button_new_with_label("Follow");
     gtk_widget_set_no_show_all(g_follow_button, TRUE);
     gtk_widget_hide(g_follow_button);
     g_signal_connect(g_follow_button, "clicked", G_CALLBACK(on_follow_button_clicked), NULL);
 
-    // Edit Profile button (only for own profile)
     GtkWidget *edit_profile_button = gtk_button_new_with_label("Edit Profile");
     gtk_widget_set_no_show_all(edit_profile_button, TRUE);
     gtk_widget_hide(edit_profile_button);
@@ -140,7 +138,6 @@ create_profile_view(void)
 
     GtkWidget *notebook = gtk_notebook_new();
     
-    // Tweets tab
     GtkWidget *tweets_scroll = gtk_scrolled_window_new(NULL, NULL);
     g_profile_tweets_list = gtk_list_box_new();
     g_object_set_data(G_OBJECT(g_profile_tweets_list), "feed_type", "profile_posts");
@@ -149,7 +146,6 @@ create_profile_view(void)
     g_signal_connect(tweets_scroll, "edge-reached", G_CALLBACK(on_scroll_edge_reached), NULL);
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), tweets_scroll, gtk_label_new("Tweets"));
 
-    // Replies tab
     GtkWidget *replies_scroll = gtk_scrolled_window_new(NULL, NULL);
     g_profile_replies_list = gtk_list_box_new();
     g_object_set_data(G_OBJECT(g_profile_replies_list), "feed_type", "profile_replies");
@@ -158,14 +154,12 @@ create_profile_view(void)
     g_signal_connect(replies_scroll, "edge-reached", G_CALLBACK(on_scroll_edge_reached), NULL);
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), replies_scroll, gtk_label_new("Replies"));
 
-    // Followers tab
     GtkWidget *followers_scroll = gtk_scrolled_window_new(NULL, NULL);
     g_followers_list = gtk_list_box_new();
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_followers_list), GTK_SELECTION_NONE);
     gtk_container_add(GTK_CONTAINER(followers_scroll), g_followers_list);
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), followers_scroll, gtk_label_new("Followers"));
 
-    // Following tab
     GtkWidget *following_scroll = gtk_scrolled_window_new(NULL, NULL);
     g_following_list = gtk_list_box_new();
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_following_list), GTK_SELECTION_NONE);
@@ -183,14 +177,12 @@ create_search_view(void)
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     GtkWidget *notebook = gtk_notebook_new();
 
-    // Users tab
     GtkWidget *users_scroll = gtk_scrolled_window_new(NULL, NULL);
     g_search_users_list = gtk_list_box_new();
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_search_users_list), GTK_SELECTION_NONE);
     gtk_container_add(GTK_CONTAINER(users_scroll), g_search_users_list);
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), users_scroll, gtk_label_new("Users"));
 
-    // Tweets tab
     GtkWidget *tweets_scroll = gtk_scrolled_window_new(NULL, NULL);
     g_search_tweets_list = gtk_list_box_new();
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_search_tweets_list), GTK_SELECTION_NONE);
@@ -609,47 +601,36 @@ create_window(void)
     g_signal_connect(timeline_scroll, "edge-reached", G_CALLBACK(on_scroll_edge_reached), NULL);
     gtk_stack_add_named(GTK_STACK(g_stack), timeline_scroll, "timeline");
 
-    // Profile View
     GtkWidget *profile_view = create_profile_view();
     gtk_stack_add_named(GTK_STACK(g_stack), profile_view, "profile");
 
-    // Search View
     GtkWidget *search_view = create_search_view();
     gtk_stack_add_named(GTK_STACK(g_stack), search_view, "search");
 
-    // Notifications View
     GtkWidget *notifications_view = create_notifications_view();
     gtk_stack_add_named(GTK_STACK(g_stack), notifications_view, "notifications");
 
-    // Messages View
     GtkWidget *messages_view = create_messages_view();
     gtk_stack_add_named(GTK_STACK(g_stack), messages_view, "messages");
 
-    // DM Messages View
     GtkWidget *dm_messages_view = create_dm_messages_view();
     gtk_stack_add_named(GTK_STACK(g_stack), dm_messages_view, "dm_messages");
 
-    // Conversation View
     GtkWidget *conversation_view = create_conversation_view();
     gtk_stack_add_named(GTK_STACK(g_stack), conversation_view, "conversation");
 
-    // Settings View
     GtkWidget *settings_view = create_settings_view();
     gtk_stack_add_named(GTK_STACK(g_stack), settings_view, "settings");
 
-    // Admin View
     GtkWidget *admin_view = create_admin_view();
     gtk_stack_add_named(GTK_STACK(g_stack), admin_view, "admin");
 
-    // Bookmarks View
     GtkWidget *bookmarks_view = create_bookmarks_view();
     gtk_stack_add_named(GTK_STACK(g_stack), bookmarks_view, "bookmarks");
 
-    // Communities View
     GtkWidget *communities_view = create_communities_view();
     gtk_stack_add_named(GTK_STACK(g_stack), communities_view, "communities");
 
-    // Community Tweets View
     GtkWidget *community_tweets_view = create_community_tweets_view();
     gtk_stack_add_named(GTK_STACK(g_stack), community_tweets_view, "community_tweets");
 

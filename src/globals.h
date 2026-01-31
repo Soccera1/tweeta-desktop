@@ -21,19 +21,16 @@ extern GtkWidget *g_stack;
 extern GtkWidget *g_back_button;
 extern GtkWidget *g_admin_button;
 
-// Admin widgets
 extern GtkWidget *g_admin_stats_label;
 extern GtkWidget *g_admin_users_list;
 extern GtkWidget *g_admin_posts_list;
 extern GtkWidget *g_admin_users_search;
 extern GtkWidget *g_admin_posts_search;
 
-// Search widgets
 extern GtkWidget *g_search_entry;
 extern GtkWidget *g_search_users_list;
 extern GtkWidget *g_search_tweets_list;
 
-// Profile widgets
 extern GtkWidget *g_profile_name_label;
 extern GtkWidget *g_profile_bio_label;
 extern GtkWidget *g_profile_stats_label;
@@ -44,15 +41,12 @@ extern GtkWidget *g_follow_button;
 extern GtkWidget *g_followers_list;
 extern GtkWidget *g_following_list;
 
-// Bookmarks widgets
 extern GtkWidget *g_bookmarks_list;
 
-// Timeline type
 extern TimelineType g_current_timeline_type;
 
-// Communities widgets
 extern GtkWidget *g_communities_list;
 extern GtkWidget *g_community_tweets_list;
 extern gchar *g_community_id;
 
-#endif // GLOBALS_H
+#endif /* GLOBALS_H */

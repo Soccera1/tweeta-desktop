@@ -309,7 +309,6 @@ parse_tweet_details(const gchar *json_data)
             main_id = g_strdup(json_object_get_string_member(post_obj, "id"));
         }
 
-        // 1. threadPosts (Parents)
         if (json_object_has_member(obj, "threadPosts")) {
             JsonArray *arr = json_object_get_array_member(obj, "threadPosts");
             for (guint i = 0; i < json_array_get_length(arr); i++) {
@@ -321,13 +320,11 @@ parse_tweet_details(const gchar *json_data)
             }
         }
 
-        // 2. The main tweet
         if (json_object_has_member(obj, "tweet")) {
             JsonObject *post_obj = json_object_get_object_member(obj, "tweet");
             tweets = g_list_append(tweets, parse_single_tweet(post_obj));
         }
 
-        // 3. replies
         if (json_object_has_member(obj, "replies")) {
             JsonArray *arr = json_object_get_array_member(obj, "replies");
             for (guint i = 0; i < json_array_get_length(arr); i++) {
@@ -1063,7 +1060,6 @@ free_messages(GList *messages)
     g_list_free_full(messages, free_message);
 }
 
-// Poll functions
 static void
 free_poll_option(gpointer data)
 {
@@ -1089,7 +1085,6 @@ free_poll_data(struct Poll *poll)
     }
 }
 
-// Community parsing
 GList*
 parse_communities(const gchar *json_data)
 {
@@ -1151,7 +1146,6 @@ parse_communities(const gchar *json_data)
     return communities;
 }
 
-// Media upload response parsing
 gchar*
 parse_upload_response(const gchar *json_data)
 {

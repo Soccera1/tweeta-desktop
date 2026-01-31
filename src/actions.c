@@ -13,7 +13,6 @@
 #include "ui_utils.h"
 #include "views.h"
 
-// Request tracking to prevent double-unref and race conditions
 static GMutex load_tweets_mutex;
 static guint active_tweets_request_id = 0;
 
@@ -236,13 +235,11 @@ static gboolean on_tweets_loaded(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
     
-    // Check if this is still the active request
     g_mutex_lock(&load_tweets_mutex);
     gboolean is_active = (async_data->request_id == active_tweets_request_id);
     g_mutex_unlock(&load_tweets_mutex);
     
     if (!is_active) {
-        // This request was superseded, discard it
         if (async_data->tweets) {
             free_tweets(async_data->tweets);
         }
@@ -251,13 +248,11 @@ static gboolean on_tweets_loaded(gpointer data)
         return G_SOURCE_REMOVE;
     }
     
-    // Clear loading state on the list box
     g_object_set_data(G_OBJECT(async_data->list_box), "loading_more", GINT_TO_POINTER(FALSE));
 
     if (async_data->success && async_data->tweets) {
         if (async_data->is_append) {
-            // Remove the "loading more" indicator if it exists
-            GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
+        GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
             GtkWidget *last_child = g_list_last(children)->data;
             if (GTK_IS_LABEL(last_child)) {
                 const gchar *text = gtk_label_get_text(GTK_LABEL(last_child));
@@ -272,13 +267,11 @@ static gboolean on_tweets_loaded(gpointer data)
             populate_tweet_list(async_data->list_box, async_data->tweets);
         }
 
-        // Update last_id for infinite scrolling
         GList *last = g_list_last(async_data->tweets);
         if (last) {
             struct Tweet *last_tweet = (struct Tweet *)last->data;
             g_object_set_data_full(G_OBJECT(async_data->list_box), "last_id", g_strdup(last_tweet->id), g_free);
         } else {
-            // No more tweets, clear last_id to stop infinite scroll attempts
             g_object_set_data(G_OBJECT(async_data->list_box), "last_id", NULL);
         }
 
@@ -294,7 +287,6 @@ static gboolean on_tweets_loaded(gpointer data)
             gtk_widget_show(error_label);
             gtk_list_box_insert(async_data->list_box, error_label, -1);
         } else {
-            // Just remove loading indicator on failure for append
             GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
             GtkWidget *last_child = g_list_last(children)->data;
             if (GTK_IS_LABEL(last_child)) {
@@ -369,7 +361,6 @@ static gpointer fetch_tweets_thread(gpointer data)
 void start_loading_tweets(GtkListBox *list_box)
 {
     g_mutex_lock(&load_tweets_mutex);
-    // Increment request ID to invalidate any pending requests
     active_tweets_request_id++;
     guint current_request_id = active_tweets_request_id;
     g_mutex_unlock(&load_tweets_mutex);
@@ -405,7 +396,6 @@ void load_more_tweets(GtkListBox *list_box, const gchar *before_id)
     guint current_request_id = active_tweets_request_id;
     g_mutex_unlock(&load_tweets_mutex);
 
-    // Show loading more indicator
     GtkWidget *loading_label = gtk_label_new("Loading more...");
     gtk_widget_show(loading_label);
     gtk_list_box_insert(list_box, loading_label, -1);
@@ -439,7 +429,6 @@ void on_scroll_edge_reached(GtkScrolledWindow *scrolled_window, GtkPositionType 
 
     GtkWidget *list_box = child;
 
-    // Allow infinite scroll for main, profile posts and profile replies
     if (list_box != g_main_list_box && 
         list_box != g_profile_tweets_list && 
         list_box != g_profile_replies_list) {
@@ -591,7 +580,6 @@ static gboolean on_tweet_loaded(gpointer data)
             struct Tweet *t = (struct Tweet *)l->data;
             
             if (g_strcmp0(t->id, async_data->query) == 0) {
-                // This is the main tweet
                 if (!main_tweet_reached && l != async_data->tweets) {
                      // Add a separator before the main tweet if there were parents
                      gtk_list_box_insert(GTK_LIST_BOX(g_conversation_list), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), -1);
@@ -602,7 +590,6 @@ static gboolean on_tweet_loaded(gpointer data)
                 if (prev_l) {
                     struct Tweet *prev_t = (struct Tweet *)prev_l->data;
                     if (g_strcmp0(prev_t->id, async_data->query) == 0) {
-                        // Just after the main tweet, add a "Replies" header
                         GtkWidget *header = gtk_label_new("Replies");
                         gtk_widget_set_margin_top(header, 10);
                         gtk_widget_set_margin_bottom(header, 5);
@@ -627,7 +614,6 @@ static gboolean on_tweet_loaded(gpointer data)
 
             GtkWidget *tweet_widget = create_tweet_widget_full(t, current_op);
             
-            // Highlight main tweet
             if (g_strcmp0(t->id, async_data->query) == 0) {
                 GtkStyleContext *context = gtk_widget_get_style_context(tweet_widget);
                 gtk_style_context_add_class(context, "main-tweet");
@@ -1549,7 +1535,6 @@ static void on_note_response(GtkDialog *dialog, gint response_id, gpointer user_
 
         if (note && strlen(note) > 0) {
             if (perform_add_note(ctx->tweet_id, note, ctx->severity)) {
-                // Refresh to show the new note
                 start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
             } else {
                 GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
@@ -1647,7 +1632,6 @@ void on_note_button_clicked(GtkWidget *widget, gpointer user_data)
     gtk_menu_popup_at_widget(GTK_MENU(menu), widget, GDK_GRAVITY_SOUTH_WEST, GDK_GRAVITY_NORTH_WEST, NULL);
 }
 
-// Follow/Unfollow implementation
 gboolean perform_follow(const gchar *username, gboolean follow)
 {
     if (!g_auth_token || !username) return FALSE;
@@ -1783,7 +1767,6 @@ void start_loading_following(const gchar *username)
     g_thread_new("following-loader", fetch_following_thread, data);
 }
 
-// Bookmarks implementation
 static gboolean on_bookmarks_loaded(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
@@ -1842,7 +1825,6 @@ void start_loading_bookmarks(GtkListBox *list_box)
     g_thread_new("bookmarks-loader", fetch_bookmarks_thread, data);
 }
 
-// Block/Mute implementation
 gboolean perform_block(const gchar *username, gboolean block)
 {
     if (!g_auth_token || !username) return FALSE;
@@ -1961,7 +1943,6 @@ gboolean check_user_muted(const gchar *username)
     return muted;
 }
 
-// Timeline implementation
 void set_timeline_type(TimelineType type)
 {
     g_current_timeline_type = type;
@@ -1974,7 +1955,6 @@ TimelineType get_current_timeline_type(void)
 
 void start_loading_timeline(GtkListBox *list_box)
 {
-    // Reset request tracking
     g_mutex_lock(&load_tweets_mutex);
     active_tweets_request_id++;
     g_mutex_unlock(&load_tweets_mutex);
@@ -1999,7 +1979,6 @@ void start_loading_timeline(GtkListBox *list_box)
     g_thread_new("timeline-loader", fetch_tweets_thread, data);
 }
 
-// Poll functions
 gboolean perform_poll_vote(const gchar *tweet_id, const gchar *option_id)
 {
     if (!g_auth_token || !tweet_id || !option_id) return FALSE;
@@ -2056,7 +2035,6 @@ void free_poll_option(gpointer data)
     g_free(option);
 }
 
-// Profile editing functions
 gboolean perform_update_profile(const gchar *username, const gchar *name, const gchar *bio)
 {
     if (!g_auth_token || !username) return FALSE;
@@ -2131,7 +2109,6 @@ gboolean perform_upload_banner(const gchar *username, const gchar *file_path)
     return success;
 }
 
-// Media upload
 gchar* perform_media_upload(const gchar *file_path)
 {
     if (!g_auth_token || !file_path) return NULL;
@@ -2165,7 +2142,6 @@ gchar* perform_media_upload(const gchar *file_path)
     return file_url;
 }
 
-// Communities functions
 gboolean perform_join_community(const gchar *community_id)
 {
     if (!g_auth_token || !community_id) return FALSE;

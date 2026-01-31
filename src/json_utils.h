@@ -31,12 +31,10 @@ void free_conversations(GList *conversations);
 void free_message(gpointer data);
 void free_messages(GList *messages);
 
-// Community parsing
 GList* parse_communities(const gchar *json_data);
 void free_community(gpointer data);
 void free_communities(GList *communities);
 
-// Media upload response parsing
 gchar* parse_upload_response(const gchar *json_data);
 
-#endif // JSON_UTILS_H
+#endif /* JSON_UTILS_H */

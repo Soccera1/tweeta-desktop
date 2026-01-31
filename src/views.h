@@ -16,4 +16,4 @@ GtkWidget* create_bookmarks_view(void);
 GtkWidget* create_communities_view(void);
 GtkWidget* create_community_tweets_view(void);
 
-#endif // VIEWS_H
+#endif /* VIEWS_H */

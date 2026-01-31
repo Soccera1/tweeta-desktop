@@ -8,4 +8,4 @@ void save_session(const gchar *token, const gchar *username, gboolean is_admin);
 void clear_session(void);
 void load_session(void);
 
-#endif // SESSION_H
+#endif /* SESSION_H */

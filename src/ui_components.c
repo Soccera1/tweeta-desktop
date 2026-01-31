@@ -7,7 +7,6 @@
 #include "ui_components.h"
 #include "ui_utils.h"
 
-// Forward declarations for community callbacks
 static void on_join_community_clicked(GtkButton *button, gpointer user_data);
 static void on_community_clicked(GtkListBoxRow *row, gpointer user_data);
 
@@ -414,7 +413,6 @@ on_reply_clicked(GtkWidget *widget, gpointer user_data)
     g_signal_connect(dialog, "response", G_CALLBACK(on_reply_response), ctx);
 }
 
-// Poll vote data structure for callback
 struct PollVoteData {
     gchar *tweet_id;
     gchar *option_id;
@@ -456,7 +454,6 @@ create_poll_widget(struct Poll *poll, const gchar *tweet_id)
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
     gtk_container_set_border_width(GTK_CONTAINER(box), 10);
 
-    // Poll question
     GtkWidget *question_label = gtk_label_new(NULL);
     gchar *question_markup = g_strdup_printf("<b>%s</b>", poll->question);
     gtk_label_set_markup(GTK_LABEL(question_label), question_markup);
@@ -487,7 +484,6 @@ create_poll_widget(struct Poll *poll, const gchar *tweet_id)
         }
 
         if (show_results) {
-            // Results view with progress bar
             GtkWidget *option_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
 
             GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
@@ -696,7 +692,6 @@ create_quoted_tweet_widget(struct Tweet *tweet)
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     gtk_container_set_border_width(GTK_CONTAINER(box), 10);
 
-    // Author info
     GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
     GtkWidget *avatar_image = gtk_image_new();
     gtk_widget_set_size_request(avatar_image, 20, 20);
@@ -712,7 +707,6 @@ create_quoted_tweet_widget(struct Tweet *tweet)
     
     gtk_box_pack_start(GTK_BOX(box), hbox, FALSE, FALSE, 0);
     
-    // Content
     if (tweet->content && strlen(tweet->content) > 0) {
         GtkWidget *content_label = gtk_label_new(tweet->content);
         gtk_label_set_xalign(GTK_LABEL(content_label), 0.0);
@@ -722,7 +716,6 @@ create_quoted_tweet_widget(struct Tweet *tweet)
         gtk_box_pack_start(GTK_BOX(box), content_label, FALSE, FALSE, 0);
     }
     
-    // Attachments
     add_attachments_to_box(GTK_BOX(box), tweet->attachments);
     
     gtk_container_add(GTK_CONTAINER(frame), box);
@@ -1288,7 +1281,6 @@ populate_message_list(GtkListBox *list_box, GList *messages)
     }
 }
 
-// Community widgets
 GtkWidget* create_community_widget(struct Community *community)
 {
     GtkWidget *row = gtk_list_box_row_new();

@@ -13,7 +13,6 @@
 #include "constants.h"
 #include "challenge.h"
 
-// ANSI color codes
 #define COLOR_RESET   "\033[0m"
 #define COLOR_GREEN   "\033[32m"
 #define COLOR_RED     "\033[31m"
@@ -53,8 +52,7 @@ static const char *reset(void) {
     return use_colors ? COLOR_RESET : "";
 }
 
-/* Commented out to avoid "unused function" warning - kept for potential future use
-   (e.g., for warning states or skipped tests that need yellow highlighting)
+/*
 static const char *yellow(void) {
     return use_colors ? COLOR_YELLOW : "";
 }
