@@ -10,6 +10,7 @@
 
 static void on_join_community_clicked(GtkButton *button, gpointer user_data);
 static void on_community_clicked(GtkListBoxRow *row, gpointer user_data);
+static void on_file_selected(GtkFileChooserButton *chooser, gpointer user_data);
 extern gboolean on_p2p_contact_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_data);
 
 static inline gboolean is_logged_in(void) {
@@ -47,7 +48,7 @@ on_like_clicked(GtkWidget *widget, gpointer user_data)
     gboolean *liked = g_object_get_data(G_OBJECT(widget), "liked_state");
 
     g_debug("on_like_clicked: tweet_id=%s, current_liked=%d", tweet_id, *liked);
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *url = g_strdup_printf(LIKE_TWEET_URL, tweet_id);
 
     if (fetch_url(url, &chunk, "{}", "POST")) {
@@ -112,7 +113,7 @@ on_retweet_clicked(GtkWidget *widget, gpointer user_data)
     gboolean *retweeted = g_object_get_data(G_OBJECT(widget), "retweeted_state");
 
     g_debug("on_retweet_clicked: tweet_id=%s, current_retweeted=%d", tweet_id, *retweeted);
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *url = g_strdup_printf(RETWEET_URL, tweet_id);
 
     if (fetch_url(url, &chunk, "{}", "POST")) {
@@ -189,7 +190,7 @@ on_quote_response(GtkDialog *dialog, gint response_id, gpointer user_data)
             json_generator_set_root(gen, json_builder_get_root(builder));
             gchar *post_data = json_generator_to_data(gen, NULL);
 
-            struct MemoryStruct chunk;
+            struct MemoryStruct chunk = {0};
             if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
                 start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
                 free(chunk.memory);
@@ -308,7 +309,7 @@ on_bookmark_clicked(GtkWidget *widget, gpointer user_data)
     json_generator_set_root(gen, json_builder_get_root(builder));
     gchar *post_data = json_generator_to_data(gen, NULL);
 
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
 
     if (fetch_url(url, &chunk, post_data, "POST")) {
         g_debug("on_bookmark_clicked: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
@@ -478,15 +479,17 @@ on_reaction_clicked(GtkWidget *widget, gpointer user_data)
 }
 
 static gboolean
-perform_post_tweet(const gchar *content, const gchar *reply_to_id)
+perform_post_tweet(const gchar *content, const gchar *reply_to_id, GList *attachments)
 {
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
-    gchar *post_data = construct_tweet_payload(content, reply_to_id);
+    gchar *post_data = construct_tweet_payload(content, reply_to_id, attachments);
 
     if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
         success = TRUE;
-        free(chunk.memory);
+        if (chunk.memory) {
+            free(chunk.memory);
+        }
     }
     
     g_free(post_data);
@@ -504,8 +507,32 @@ on_reply_response(GtkDialog *dialog, gint response_id, gpointer user_data)
         gtk_text_buffer_get_bounds(buffer, &start, &end);
         gchar *content = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
 
-        if (content && strlen(content) > 0) {
-             if (perform_post_tweet(content, ctx->reply_to_id)) {
+        gchar *media_url = NULL;
+        gboolean upload_success = TRUE;
+        if (ctx->upload.file_path) {
+            media_url = perform_media_upload(ctx->upload.file_path);
+            if (!media_url) {
+                upload_success = FALSE;
+            }
+        }
+
+        GList *attachments = NULL;
+        if (media_url) {
+            const gchar *file_type = ctx->upload.file_type ? ctx->upload.file_type : "application/octet-stream";
+            attachments = build_attachment_list(media_url, file_type);
+        }
+
+        gboolean has_text = FALSE;
+        if (content) {
+            gchar *trimmed = g_strdup(content);
+            g_strstrip(trimmed);
+            has_text = (trimmed[0] != '\0');
+            g_free(trimmed);
+        }
+        gboolean has_attachment = (attachments != NULL);
+
+        if (upload_success && (has_text || has_attachment)) {
+             if (perform_post_tweet(content ? content : "", ctx->reply_to_id, attachments)) {
                 const gchar *current_view = gtk_stack_get_visible_child_name(GTK_STACK(g_stack));
                 if (g_strcmp0(current_view, "conversation") == 0 && ctx->reply_to_id) {
                     show_tweet(ctx->reply_to_id);
@@ -521,11 +548,26 @@ on_reply_response(GtkDialog *dialog, gint response_id, gpointer user_data)
                 gtk_dialog_run(GTK_DIALOG(error_dialog));
                 gtk_widget_destroy(error_dialog);
              }
+        } else if (!upload_success) {
+            GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
+                                     GTK_DIALOG_DESTROY_WITH_PARENT,
+                                     GTK_MESSAGE_ERROR,
+                                     GTK_BUTTONS_CLOSE,
+                                     "Failed to upload attachment.");
+            gtk_dialog_run(GTK_DIALOG(error_dialog));
+            gtk_widget_destroy(error_dialog);
         }
+
+        if (attachments) {
+            g_list_free_full(attachments, free_attachment_payload);
+        }
+        g_free(media_url);
         g_free(content);
     }
     
     g_free(ctx->reply_to_id);
+    g_free(ctx->upload.file_path);
+    g_free(ctx->upload.file_type);
     g_free(ctx);
     gtk_widget_destroy(GTK_WIDGET(dialog));
 }
@@ -575,11 +617,41 @@ on_reply_clicked(GtkWidget *widget, gpointer user_data)
     gtk_container_set_border_width(GTK_CONTAINER(content_area), 10);
     gtk_box_pack_start(GTK_BOX(content_area), text_view, TRUE, TRUE, 0);
 
-    struct ReplyContext *ctx = g_new(struct ReplyContext, 1);
+    GtkWidget *file_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_widget_set_margin_top(file_box, 10);
+    gtk_box_pack_start(GTK_BOX(content_area), file_box, FALSE, FALSE, 0);
+
+    GtkWidget *file_chooser = gtk_file_chooser_button_new("Attach File", GTK_FILE_CHOOSER_ACTION_OPEN);
+    gtk_file_chooser_button_set_title(GTK_FILE_CHOOSER_BUTTON(file_chooser), "Select Attachment");
+    gtk_box_pack_start(GTK_BOX(file_box), file_chooser, FALSE, FALSE, 0);
+
+    GtkFileFilter *media_filter = gtk_file_filter_new();
+    gtk_file_filter_set_name(media_filter, "Media Files");
+    gtk_file_filter_add_mime_type(media_filter, "image/png");
+    gtk_file_filter_add_mime_type(media_filter, "image/jpeg");
+    gtk_file_filter_add_mime_type(media_filter, "image/gif");
+    gtk_file_filter_add_mime_type(media_filter, "image/webp");
+    gtk_file_filter_add_mime_type(media_filter, "video/mp4");
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(file_chooser), media_filter);
+
+    GtkFileFilter *all_filter = gtk_file_filter_new();
+    gtk_file_filter_set_name(all_filter, "All Files");
+    gtk_file_filter_add_pattern(all_filter, "*");
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(file_chooser), all_filter);
+
+    GtkWidget *file_label = gtk_label_new("No file selected");
+    gtk_widget_set_halign(file_label, GTK_ALIGN_START);
+    gtk_widget_set_opacity(file_label, 0.6);
+    gtk_box_pack_start(GTK_BOX(file_box), file_label, TRUE, TRUE, 0);
+
+    struct ReplyContext *ctx = g_new0(struct ReplyContext, 1);
     ctx->text_view = text_view;
     ctx->reply_to_id = g_strdup(tweet_id);
+    ctx->upload.parent_dialog = dialog;
+    ctx->upload.file_label = file_label;
 
     gtk_widget_show_all(dialog);
+    g_signal_connect(file_chooser, "file-set", G_CALLBACK(on_file_selected), &ctx->upload);
     g_signal_connect(dialog, "response", G_CALLBACK(on_reply_response), ctx);
 }
 
@@ -1312,7 +1384,7 @@ on_conversation_clicked(GtkWidget *widget, gpointer user_data)
 
         // Mark as read
         gchar *url = g_strdup_printf(DM_MARK_READ_URL, conv_id);
-        struct MemoryStruct chunk;
+        struct MemoryStruct chunk = {0};
         if (fetch_url(url, &chunk, "", "PATCH")) {
             free(chunk.memory);
         }
@@ -1679,6 +1751,8 @@ static void on_file_selected(GtkFileChooserButton *chooser, gpointer user_data)
     struct UploadContext *ctx = (struct UploadContext *)user_data;
     gchar *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
 
+    g_debug("on_file_selected: filename=%s", filename ? filename : "(null)");
+
     if (filename) {
         g_free(ctx->file_path);
         ctx->file_path = filename;
@@ -1690,53 +1764,58 @@ static void on_file_selected(GtkFileChooserButton *chooser, gpointer user_data)
         g_free(label_text);
         g_free(basename);
 
-        // Detect file type
-        if (ctx->file_type) g_free(ctx->file_type);
-        if (g_str_has_suffix(filename, ".mp4")) {
-            ctx->file_type = g_strdup("video");
-        } else {
-            ctx->file_type = g_strdup("image");
-        }
+        g_free(ctx->file_type);
+        ctx->file_type = detect_mime_type(filename);
+        g_debug("on_file_selected: detected mime_type=%s for file=%s", ctx->file_type ? ctx->file_type : "(null)", filename);
+    } else {
+        g_debug("on_file_selected: no file selected");
     }
 }
 
-static gboolean perform_post_tweet_with_media(const gchar *content, const gchar *media_url)
+static gboolean perform_post_tweet_with_media(const gchar *content, const gchar *media_url, const gchar *file_type)
 {
-    struct MemoryStruct chunk;
+    g_debug("perform_post_tweet_with_media: content='%s', media_url=%s, file_type=%s", 
+            content ? content : "(null)", media_url ? media_url : "(null)", file_type ? file_type : "(null)");
+    
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
-
-    JsonBuilder *builder = json_builder_new();
-    json_builder_begin_object(builder);
-    json_builder_set_member_name(builder, "content");
-    json_builder_add_string_value(builder, content);
-
-    if (media_url) {
-        json_builder_set_member_name(builder, "attachments");
-        json_builder_begin_array(builder);
-        json_builder_begin_object(builder);
-        json_builder_set_member_name(builder, "file_url");
-        json_builder_add_string_value(builder, media_url);
-        json_builder_set_member_name(builder, "file_type");
-        json_builder_add_string_value(builder, "image");
-        json_builder_end_object(builder);
-        json_builder_end_array(builder);
+    GList *attachments = build_attachment_list(media_url, file_type);
+    
+    // Check if we have valid content or attachments before proceeding
+    gboolean has_text = content && content[0] != '\0';
+    gboolean has_media = media_url && media_url[0] != '\0';
+    
+    g_debug("perform_post_tweet_with_media: has_text=%d, has_media=%d", has_text, has_media);
+    
+    if (!has_text && !has_media) {
+        g_warning("perform_post_tweet_with_media: No content or media to post");
+        if (attachments) {
+            g_list_free_full(attachments, free_attachment_payload);
+        }
+        return FALSE;
     }
+    
+    gchar *post_data = construct_tweet_payload(content, NULL, attachments);
+    g_debug("perform_post_tweet_with_media: constructed payload=%s", post_data ? post_data : "(null)");
 
-    json_builder_end_object(builder);
-
-    JsonGenerator *gen = json_generator_new();
-    json_generator_set_root(gen, json_builder_get_root(builder));
-    gchar *post_data = json_generator_to_data(gen, NULL);
-
+    g_debug("perform_post_tweet_with_media: posting to %s", POST_TWEET_URL);
     if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
         success = TRUE;
-        free(chunk.memory);
+        g_debug("perform_post_tweet_with_media: post succeeded, response=%s", 
+                chunk.memory ? chunk.memory : "(null)");
+        if (chunk.memory) {
+            free(chunk.memory);
+        }
+    } else {
+        g_debug("perform_post_tweet_with_media: post failed");
     }
 
     g_free(post_data);
-    g_object_unref(gen);
-    g_object_unref(builder);
+    if (attachments) {
+        g_list_free_full(attachments, free_attachment_payload);
+    }
 
+    g_debug("perform_post_tweet_with_media: returning success=%d", success);
     return success;
 }
 
@@ -1754,16 +1833,38 @@ void on_compose_with_media_response(GtkDialog *dialog, gint response_id, gpointe
         gchar *media_url = NULL;
         gboolean upload_success = TRUE;
 
+        g_debug("on_compose_with_media_response: ctx->file_path=%s, ctx->file_type=%s", 
+                ctx->file_path ? ctx->file_path : "(null)", 
+                ctx->file_type ? ctx->file_type : "(null)");
+
         // Upload media if selected
         if (ctx->file_path) {
+            g_debug("on_compose_with_media_response: uploading media file");
             media_url = perform_media_upload(ctx->file_path);
             if (!media_url) {
+                g_debug("on_compose_with_media_response: media upload failed");
                 upload_success = FALSE;
+            } else {
+                g_debug("on_compose_with_media_response: media upload succeeded, url=%s", media_url);
             }
+        } else {
+            g_debug("on_compose_with_media_response: no file to upload");
         }
 
-        if (upload_success && content && strlen(content) > 0) {
-            if (perform_post_tweet_with_media(content, media_url)) {
+        gboolean has_text = FALSE;
+        if (content) {
+            gchar *trimmed = g_strdup(content);
+            g_strstrip(trimmed);
+            has_text = (trimmed[0] != '\0');
+            g_free(trimmed);
+            g_debug("on_compose_with_media_response: has_text=%d", has_text);
+        }
+        gboolean has_attachment = (media_url != NULL);
+        g_debug("on_compose_with_media_response: upload_success=%d, has_attachment=%d", upload_success, has_attachment);
+
+        if (upload_success && (has_text || has_attachment)) {
+            const gchar *file_type = ctx->file_type ? ctx->file_type : "application/octet-stream";
+            if (perform_post_tweet_with_media(content ? content : "", media_url, file_type)) {
                 start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
             } else {
                 GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),

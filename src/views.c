@@ -279,7 +279,7 @@ on_dm_send_clicked(GtkWidget *widget, gpointer user_data)
     if (content && strlen(content) > 0 && conv_id) {
         gchar *url = g_strdup_printf(DM_SEND_MESSAGE_URL, conv_id);
         gchar *post_data = construct_dm_payload(content);
-        struct MemoryStruct chunk;
+        struct MemoryStruct chunk = {0};
 
         if (fetch_url(url, &chunk, post_data, "POST")) {
             gtk_entry_set_text(GTK_ENTRY(g_dm_entry), "");

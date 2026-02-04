@@ -129,9 +129,17 @@ struct AvatarData {
     int size;
 };
 
+struct UploadContext {
+    GtkWidget *parent_dialog;
+    GtkWidget *file_label;
+    gchar *file_path;
+    gchar *file_type;
+};
+
 struct ReplyContext {
     GtkWidget *text_view;
     gchar *reply_to_id;
+    struct UploadContext upload;
 };
 
 struct QuoteContext {
@@ -221,13 +229,6 @@ struct P2PSession {
     GHashTable *contacts;      /* username -> P2PContact* */
     GHashTable *conversations; /* username -> GList* of P2PMessage* */
     GMutex session_mutex;
-};
-
-struct UploadContext {
-    GtkWidget *parent_dialog;
-    GtkWidget *file_label;
-    gchar *file_path;
-    gchar *file_type;
 };
 
 struct ProfileEditContext {

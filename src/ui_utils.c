@@ -1,8 +1,10 @@
 #include <stdlib.h>
+#include <gio/gio.h>
 #include "constants.h"
 #include "globals.h"
 #include "network.h"
 #include "ui_utils.h"
+#include "types.h"
 
 static gboolean
 set_image_pixbuf(gpointer data)
@@ -28,7 +30,7 @@ static gpointer
 fetch_avatar_thread(gpointer data)
 {
     struct AvatarData *avatar_data = (struct AvatarData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     
     gchar *full_url;
     if (g_str_has_prefix(avatar_data->url, "http")) {
@@ -78,4 +80,61 @@ on_author_clicked(GtkButton *button, gpointer user_data)
     if (username) {
         show_profile(username);
     }
+}
+
+gchar*
+detect_mime_type(const gchar *file_path)
+{
+    if (!file_path) {
+        return g_strdup("application/octet-stream");
+    }
+
+    gboolean uncertain = FALSE;
+    gchar *content_type = g_content_type_guess(file_path, NULL, 0, &uncertain);
+    if (!content_type) {
+        return g_strdup("application/octet-stream");
+    }
+
+    gchar *mime_type = g_content_type_get_mime_type(content_type);
+    g_free(content_type);
+
+    if (!mime_type) {
+        return g_strdup("application/octet-stream");
+    }
+
+    return mime_type;
+}
+
+void
+free_attachment_payload(gpointer data)
+{
+    struct Attachment *attach = data;
+    if (attach) {
+        g_free(attach->id);
+        g_free(attach->file_url);
+        g_free(attach->file_type);
+        g_free(attach);
+    }
+}
+
+GList*
+build_attachment_list(const gchar *file_url, const gchar *file_type)
+{
+    g_debug("build_attachment_list: file_url=%s, file_type=%s",
+            file_url ? file_url : "(null)", file_type ? file_type : "(null)");
+
+    if (!file_url) {
+        g_debug("build_attachment_list: returning NULL due to NULL file_url");
+        return NULL;
+    }
+
+    struct Attachment *attach = g_new0(struct Attachment, 1);
+    attach->id = NULL;
+    attach->file_url = g_strdup(file_url);
+    attach->file_type = g_strdup(file_type ? file_type : "application/octet-stream");
+
+    g_debug("build_attachment_list: created attachment with file_url=%s, file_type=%s",
+            attach->file_url, attach->file_type);
+
+    return g_list_append(NULL, attach);
 }

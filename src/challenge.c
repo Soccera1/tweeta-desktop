@@ -164,9 +164,7 @@ gchar* check_and_solve_challenge(const gchar *response_json) {
         json_generator_set_root(gen, json_builder_get_root(builder));
         gchar *post_data = json_generator_to_data(gen, NULL);
         
-        struct MemoryStruct chunk;
-        chunk.memory = NULL;
-        chunk.size = 0;
+        struct MemoryStruct chunk = {0};
         long response_code = 0;
         if (fetch_url_internal(CAP_REDEEM_URL, &chunk, post_data, "POST", &response_code)) {
             JsonParser *redeem_parser = json_parser_new();

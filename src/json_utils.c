@@ -85,6 +85,11 @@ parse_tweets(const gchar *json_data)
     GError *error = NULL;
     GList *tweets = NULL;
 
+    if (!json_data) {
+        g_warning("parse_tweets: json_data is NULL");
+        return NULL;
+    }
+
     parser = json_parser_new();
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (error) {
@@ -95,8 +100,21 @@ parse_tweets(const gchar *json_data)
     }
 
     JsonNode *root_node = json_parser_get_root(parser);
+    if (!root_node || !JSON_NODE_HOLDS_OBJECT(root_node)) {
+        g_warning("parse_tweets: invalid JSON structure");
+        g_object_unref(parser);
+        return NULL;
+    }
+
     JsonObject *root_object = json_node_get_object(root_node);
-    
+
+    if (json_object_has_member(root_object, "error")) {
+        const gchar *error_msg = json_object_get_string_member(root_object, "error");
+        g_warning("API returned error: %s", error_msg ? error_msg : "(null)");
+        g_object_unref(parser);
+        return NULL;
+    }
+
     if (json_object_has_member(root_object, "posts")) {
         JsonArray *posts = json_object_get_array_member(root_object, "posts");
 
@@ -205,7 +223,6 @@ parse_tweets(const gchar *json_data)
             tweets = g_list_append(tweets, tweet);
         }
     }
-
     g_object_unref(parser);
     return tweets;
 }
@@ -303,6 +320,11 @@ parse_tweet_details(const gchar *json_data)
     GError *error = NULL;
     GList *tweets = NULL;
 
+    if (!json_data) {
+        g_warning("parse_tweet_details: json_data is NULL");
+        return NULL;
+    }
+
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (!error) {
         JsonNode *root = json_parser_get_root(parser);
@@ -355,6 +377,11 @@ parse_profile(const gchar *json_data)
     GError *error = NULL;
     struct Profile *profile = NULL;
 
+    if (!json_data) {
+        g_warning("parse_profile: json_data is NULL");
+        return NULL;
+    }
+
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (!error) {
         JsonNode *root = json_parser_get_root(parser);
@@ -386,11 +413,36 @@ parse_profile_replies(const gchar *json_data)
     GError *error = NULL;
     GList *tweets = NULL;
 
+    if (!json_data) {
+        g_warning("parse_profile_replies: json_data is NULL");
+        return NULL;
+    }
+
     json_parser_load_from_data(parser, json_data, -1, &error);
-    if (!error) {
-        JsonNode *root = json_parser_get_root(parser);
-        JsonObject *obj = json_node_get_object(root);
-        if (json_object_has_member(obj, "replies")) {
+    if (error) {
+        g_warning("parse_profile_replies: unable to parse json: %s", error->message);
+        g_error_free(error);
+        g_object_unref(parser);
+        return NULL;
+    }
+
+    JsonNode *root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        g_warning("parse_profile_replies: invalid JSON structure");
+        g_object_unref(parser);
+        return NULL;
+    }
+
+    JsonObject *obj = json_node_get_object(root);
+
+    if (json_object_has_member(obj, "error")) {
+        const gchar *error_msg = json_object_get_string_member(obj, "error");
+        g_warning("API returned error: %s", error_msg ? error_msg : "(null)");
+        g_object_unref(parser);
+        return NULL;
+    }
+
+    if (json_object_has_member(obj, "replies")) {
             JsonArray *replies = json_object_get_array_member(obj, "replies");
             for (guint i = 0; i < json_array_get_length(replies); i++) {
                 JsonNode *reply_node = json_array_get_element(replies, i);
@@ -482,9 +534,6 @@ parse_profile_replies(const gchar *json_data)
                 tweets = g_list_append(tweets, tweet);
             }
         }
-    } else {
-        g_error_free(error);
-    }
     g_object_unref(parser);
     return tweets;
 }
@@ -495,6 +544,11 @@ parse_users(const gchar *json_data)
     JsonParser *parser = json_parser_new();
     GError *error = NULL;
     GList *users = NULL;
+
+    if (!json_data) {
+        g_warning("parse_users: json_data is NULL");
+        return NULL;
+    }
 
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (!error) {
@@ -534,6 +588,11 @@ parse_notifications(const gchar *json_data)
     JsonParser *parser = json_parser_new();
     GError *error = NULL;
     GList *notifications = NULL;
+
+    if (!json_data) {
+        g_warning("parse_notifications: json_data is NULL");
+        return NULL;
+    }
 
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (!error) {
@@ -590,6 +649,11 @@ parse_conversations(const gchar *json_data)
     GError *error = NULL;
     GList *conversations = NULL;
 
+    if (!json_data) {
+        g_warning("parse_conversations: json_data is NULL");
+        return NULL;
+    }
+
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (!error) {
         JsonNode *root = json_parser_get_root(parser);
@@ -642,6 +706,11 @@ parse_messages(const gchar *json_data)
     JsonParser *parser = json_parser_new();
     GError *error = NULL;
     GList *messages = NULL;
+
+    if (!json_data) {
+        g_warning("parse_messages: json_data is NULL");
+        return NULL;
+    }
 
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (!error) {
@@ -703,6 +772,11 @@ parse_admin_users(const gchar *json_data)
     GError *error = NULL;
     GList *users = NULL;
 
+    if (!json_data) {
+        g_warning("parse_admin_users: json_data is NULL");
+        return NULL;
+    }
+
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (!error) {
         JsonNode *root = json_parser_get_root(parser);
@@ -735,6 +809,11 @@ parse_admin_posts(const gchar *json_data)
     GError *error = NULL;
     GList *tweets = NULL;
 
+    if (!json_data) {
+        g_warning("parse_admin_posts: json_data is NULL");
+        return NULL;
+    }
+
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (!error) {
         JsonNode *root = json_parser_get_root(parser);
@@ -766,6 +845,11 @@ parse_admin_stats(const gchar *json_data)
     JsonParser *parser = json_parser_new();
     GError *error = NULL;
     gchar *result = NULL;
+
+    if (!json_data) {
+        g_warning("parse_admin_stats: json_data is NULL");
+        return NULL;
+    }
 
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (!error) {
@@ -819,6 +903,11 @@ parse_login_response(const gchar *json_data, gchar **token_out, gchar **username
     GError *error = NULL;
     gboolean success = FALSE;
 
+    if (!json_data) {
+        g_warning("parse_login_response: json_data is NULL");
+        return FALSE;
+    }
+
     json_parser_load_from_data(parser, json_data, -1, &error);
     
     if (!error) {
@@ -865,6 +954,11 @@ parse_user_me_response(const gchar *json_data, gboolean *is_admin_out)
     GError *error = NULL;
     gboolean success = FALSE;
 
+    if (!json_data) {
+        g_warning("parse_user_me_response: json_data is NULL");
+        return FALSE;
+    }
+
     json_parser_load_from_data(parser, json_data, -1, &error);
     
     if (!error) {
@@ -906,7 +1000,7 @@ parse_user_me_response(const gchar *json_data, gboolean *is_admin_out)
 }
 
 gchar*
-construct_tweet_payload(const gchar *content, const gchar *reply_to_id)
+construct_tweet_payload(const gchar *content, const gchar *reply_to_id, GList *attachments)
 {
     JsonBuilder *builder = json_builder_new();
     json_builder_begin_object(builder);
@@ -919,6 +1013,30 @@ construct_tweet_payload(const gchar *content, const gchar *reply_to_id)
     if (reply_to_id) {
         json_builder_set_member_name(builder, "reply_to");
         json_builder_add_string_value(builder, reply_to_id);
+    }
+
+    if (attachments) {
+        json_builder_set_member_name(builder, "files");
+        json_builder_begin_array(builder);
+        for (GList *l = attachments; l != NULL; l = l->next) {
+            struct Attachment *attach = l->data;
+            if (!attach || !attach->file_url) {
+                continue;
+            }
+            json_builder_begin_object(builder);
+            json_builder_set_member_name(builder, "url");
+            json_builder_add_string_value(builder, attach->file_url);
+            json_builder_set_member_name(builder, "type");
+            json_builder_add_string_value(builder, attach->file_type ? attach->file_type : "application/octet-stream");
+            json_builder_set_member_name(builder, "name");
+            json_builder_add_string_value(builder, "");
+            json_builder_set_member_name(builder, "hash");
+            json_builder_add_string_value(builder, "");
+            json_builder_set_member_name(builder, "size");
+            json_builder_add_int_value(builder, 0);
+            json_builder_end_object(builder);
+        }
+        json_builder_end_array(builder);
     }
 
     json_builder_end_object(builder);
@@ -1097,6 +1215,11 @@ parse_communities(const gchar *json_data)
     GError *error = NULL;
     GList *communities = NULL;
 
+    if (!json_data) {
+        g_warning("parse_communities: json_data is NULL");
+        return NULL;
+    }
+
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (!error) {
         JsonNode *root = json_parser_get_root(parser);
@@ -1158,12 +1281,19 @@ parse_upload_response(const gchar *json_data)
     GError *error = NULL;
     gchar *file_url = NULL;
 
+    if (!json_data) {
+        g_warning("parse_upload_response: json_data is NULL");
+        return NULL;
+    }
+
     json_parser_load_from_data(parser, json_data, -1, &error);
     if (!error) {
         JsonNode *root = json_parser_get_root(parser);
         JsonObject *obj = json_node_get_object(root);
 
-        if (json_object_has_member(obj, "file_url")) {
+        if (json_object_has_member(obj, "file") && json_object_has_member(json_object_get_object_member(obj, "file"), "url")) {
+            file_url = g_strdup(json_object_get_string_member(json_object_get_object_member(obj, "file"), "url"));
+        } else if (json_object_has_member(obj, "file_url")) {
             file_url = g_strdup(json_object_get_string_member(obj, "file_url"));
         } else if (json_object_has_member(obj, "url")) {
             file_url = g_strdup(json_object_get_string_member(obj, "url"));

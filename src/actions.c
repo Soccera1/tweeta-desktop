@@ -495,7 +495,7 @@ void perform_logout(void)
 
 gboolean perform_login(const gchar *username, const gchar *password)
 {
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
 
     JsonBuilder *builder = json_builder_new();
@@ -614,32 +614,81 @@ void on_login_clicked(GtkWidget *widget, gpointer window)
     gtk_widget_show(dialog);
 }
 
-static gboolean perform_post_tweet(const gchar *content, const gchar *reply_to_id)
+static gboolean perform_post_tweet(const gchar *content, const gchar *reply_to_id, GList *attachments)
 {
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
-    gchar *post_data = construct_tweet_payload(content, reply_to_id);
+    gchar *post_data = construct_tweet_payload(content, reply_to_id, attachments);
 
     if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
         success = TRUE;
-        free(chunk.memory);
+        if (chunk.memory) {
+            free(chunk.memory);
+        }
     }
     
     g_free(post_data);
     return success;
 }
 
+static void
+on_compose_file_selected(GtkFileChooserButton *chooser, gpointer user_data)
+{
+    struct UploadContext *ctx = (struct UploadContext *)user_data;
+    gchar *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
+
+    if (filename) {
+        g_free(ctx->file_path);
+        ctx->file_path = filename;
+
+        gchar *basename = g_path_get_basename(filename);
+        gchar *label_text = g_strdup_printf("Selected: %s", basename);
+        gtk_label_set_text(GTK_LABEL(ctx->file_label), label_text);
+        g_free(label_text);
+        g_free(basename);
+
+        g_free(ctx->file_type);
+        ctx->file_type = detect_mime_type(filename);
+    }
+}
+
 void on_compose_response(GtkDialog *dialog, gint response_id, gpointer user_data)
 {
+    struct UploadContext *ctx = (struct UploadContext *)user_data;
     if (response_id == GTK_RESPONSE_ACCEPT) {
-        GtkTextView *text_view = GTK_TEXT_VIEW(user_data);
+        GtkWidget *text_view_widget = g_object_get_data(G_OBJECT(dialog), "text_view");
+        GtkTextView *text_view = GTK_TEXT_VIEW(text_view_widget);
         GtkTextBuffer *buffer = gtk_text_view_get_buffer(text_view);
         GtkTextIter start, end;
         gtk_text_buffer_get_bounds(buffer, &start, &end);
         gchar *content = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
 
-        if (content && strlen(content) > 0) {
-             if (perform_post_tweet(content, NULL)) {
+        gchar *media_url = NULL;
+        gboolean upload_success = TRUE;
+        if (ctx->file_path) {
+            media_url = perform_media_upload(ctx->file_path);
+            if (!media_url) {
+                upload_success = FALSE;
+            }
+        }
+
+        GList *attachments = NULL;
+        if (media_url) {
+            const gchar *file_type = ctx->file_type ? ctx->file_type : "application/octet-stream";
+            attachments = build_attachment_list(media_url, file_type);
+        }
+
+        gboolean has_text = FALSE;
+        if (content) {
+            gchar *trimmed = g_strdup(content);
+            g_strstrip(trimmed);
+            has_text = (trimmed[0] != '\0');
+            g_free(trimmed);
+        }
+        gboolean has_attachment = (attachments != NULL);
+
+        if (upload_success && (has_text || has_attachment)) {
+             if (perform_post_tweet(content ? content : "", NULL, attachments)) {
                 start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
              } else {
                 GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
@@ -650,9 +699,25 @@ void on_compose_response(GtkDialog *dialog, gint response_id, gpointer user_data
                 gtk_dialog_run(GTK_DIALOG(error_dialog));
                 gtk_widget_destroy(error_dialog);
              }
+        } else if (!upload_success) {
+            GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
+                                     GTK_DIALOG_DESTROY_WITH_PARENT,
+                                     GTK_MESSAGE_ERROR,
+                                     GTK_BUTTONS_CLOSE,
+                                     "Failed to upload attachment.");
+            gtk_dialog_run(GTK_DIALOG(error_dialog));
+            gtk_widget_destroy(error_dialog);
         }
+
+        if (attachments) {
+            g_list_free_full(attachments, free_attachment_payload);
+        }
+        g_free(media_url);
         g_free(content);
     }
+    g_free(ctx->file_path);
+    g_free(ctx->file_type);
+    g_free(ctx);
     gtk_widget_destroy(GTK_WIDGET(dialog));
 }
 
@@ -673,9 +738,43 @@ void on_compose_clicked(GtkWidget *widget, gpointer window)
     
     gtk_container_set_border_width(GTK_CONTAINER(content_area), 10);
     gtk_box_pack_start(GTK_BOX(content_area), text_view, TRUE, TRUE, 0);
+    g_object_set_data(G_OBJECT(dialog), "text_view", text_view);
+
+    GtkWidget *file_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_widget_set_margin_top(file_box, 10);
+    gtk_box_pack_start(GTK_BOX(content_area), file_box, FALSE, FALSE, 0);
+
+    GtkWidget *file_chooser = gtk_file_chooser_button_new("Attach File", GTK_FILE_CHOOSER_ACTION_OPEN);
+    gtk_file_chooser_button_set_title(GTK_FILE_CHOOSER_BUTTON(file_chooser), "Select Attachment");
+    gtk_box_pack_start(GTK_BOX(file_box), file_chooser, FALSE, FALSE, 0);
+
+    GtkFileFilter *media_filter = gtk_file_filter_new();
+    gtk_file_filter_set_name(media_filter, "Media Files");
+    gtk_file_filter_add_mime_type(media_filter, "image/png");
+    gtk_file_filter_add_mime_type(media_filter, "image/jpeg");
+    gtk_file_filter_add_mime_type(media_filter, "image/gif");
+    gtk_file_filter_add_mime_type(media_filter, "image/webp");
+    gtk_file_filter_add_mime_type(media_filter, "video/mp4");
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(file_chooser), media_filter);
+
+    GtkFileFilter *all_filter = gtk_file_filter_new();
+    gtk_file_filter_set_name(all_filter, "All Files");
+    gtk_file_filter_add_pattern(all_filter, "*");
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(file_chooser), all_filter);
+
+    GtkWidget *file_label = gtk_label_new("No file selected");
+    gtk_widget_set_halign(file_label, GTK_ALIGN_START);
+    gtk_widget_set_opacity(file_label, 0.6);
+    gtk_box_pack_start(GTK_BOX(file_box), file_label, TRUE, TRUE, 0);
+
+    struct UploadContext *ctx = g_new0(struct UploadContext, 1);
+    ctx->parent_dialog = dialog;
+    ctx->file_label = file_label;
+
+    g_signal_connect(file_chooser, "file-set", G_CALLBACK(on_compose_file_selected), ctx);
 
     gtk_widget_show_all(dialog);
-    g_signal_connect(dialog, "response", G_CALLBACK(on_compose_response), text_view);
+    g_signal_connect(dialog, "response", G_CALLBACK(on_compose_response), ctx);
 }
 
 static gboolean on_tweets_loaded(gpointer data)
@@ -754,7 +853,7 @@ static gboolean on_tweets_loaded(gpointer data)
 static gpointer fetch_tweets_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *url = NULL;
 
     const gchar *feed_type = g_object_get_data(G_OBJECT(async_data->list_box), "feed_type");
@@ -978,7 +1077,7 @@ static gboolean on_profile_replies_loaded(gpointer data)
 static gpointer fetch_profile_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *url = g_strdup_printf("%s/profile/%s", API_BASE_URL, async_data->username);
 
     if (fetch_url(url, &chunk, NULL, "GET")) {
@@ -998,7 +1097,7 @@ static gpointer fetch_profile_thread(gpointer data)
 static gpointer fetch_profile_replies_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *url = g_strdup_printf("%s/profile/%s/replies", API_BASE_URL, async_data->username);
 
     if (fetch_url(url, &chunk, NULL, "GET")) {
@@ -1100,7 +1199,7 @@ static gboolean on_tweet_loaded(gpointer data)
 static gpointer fetch_tweet_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *url = g_strdup_printf(TWEET_DETAILS_URL, async_data->query);
 
     if (fetch_url(url, &chunk, NULL, "GET")) {
@@ -1233,7 +1332,7 @@ static gboolean on_notifications_loaded(gpointer data)
 static gpointer fetch_notifications_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
 
     if (fetch_url(NOTIFICATIONS_URL, &chunk, NULL, "GET")) {
         async_data->notifications = parse_notifications(chunk.memory);
@@ -1302,7 +1401,7 @@ void on_mark_all_read_clicked(GtkWidget *widget, gpointer user_data)
     
     if (!g_auth_token) return;
 
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     if (fetch_url(NOTIFICATIONS_MARK_ALL_READ_URL, &chunk, "", "PATCH")) {
         free(chunk.memory);
         start_loading_notifications(GTK_LIST_BOX(g_notifications_list));
@@ -1346,7 +1445,7 @@ static gboolean on_conversations_loaded(gpointer data)
 static gpointer fetch_conversations_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
 
     if (fetch_url(DM_CONVERSATIONS_URL, &chunk, NULL, "GET")) {
         async_data->conversations = parse_conversations(chunk.memory);
@@ -1424,7 +1523,7 @@ static gboolean on_messages_loaded(gpointer data)
 static gpointer fetch_messages_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *url = g_strdup_printf(DM_MESSAGES_URL, async_data->conversation_id);
 
     if (fetch_url(url, &chunk, NULL, "GET")) {
@@ -1517,7 +1616,7 @@ static gpointer
 fetch_admin_stats_thread(gpointer data)
 {
     (void)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *stats_text = NULL;
 
     if (fetch_url(ADMIN_STATS_URL, &chunk, NULL, "GET")) {
@@ -1568,7 +1667,7 @@ static gpointer
 fetch_admin_users_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *url;
     if (async_data->query && strlen(async_data->query) > 0) {
         gchar *escaped = g_uri_escape_string(async_data->query, NULL, FALSE);
@@ -1614,7 +1713,7 @@ static gpointer
 fetch_admin_posts_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *url;
     if (async_data->query && strlen(async_data->query) > 0) {
         gchar *escaped = g_uri_escape_string(async_data->query, NULL, FALSE);
@@ -1648,7 +1747,7 @@ void perform_admin_verify(const gchar *username, gboolean verify)
     if (!g_is_admin) return;
     gchar *url = g_strdup_printf("%s/%s", ADMIN_USERS_URL, username);
     gchar *post_data = g_strdup_printf("{\"verified\": %s}", verify ? "true" : "false");
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     if (fetch_url(url, &chunk, post_data, "PATCH")) {
         free(chunk.memory);
         start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
@@ -1662,7 +1761,7 @@ void perform_admin_suspend(const gchar *username, const gchar *reason)
     if (!g_is_admin) return;
     gchar *url = g_strdup_printf("%s/%s/suspend", ADMIN_USERS_URL, username);
     gchar *post_data = g_strdup_printf("{\"reason\": \"%s\", \"action\": \"suspend\"}", reason);
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     if (fetch_url(url, &chunk, post_data, "POST")) {
         free(chunk.memory);
         start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
@@ -1675,7 +1774,7 @@ void perform_admin_delete_user(const gchar *username)
 {
     if (!g_is_admin) return;
     gchar *url = g_strdup_printf("%s/%s", ADMIN_USERS_URL, username);
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     if (fetch_url(url, &chunk, NULL, "DELETE")) {
         free(chunk.memory);
         start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
@@ -1687,7 +1786,7 @@ void perform_admin_delete_post(const gchar *post_id)
 {
     if (!g_is_admin) return;
     gchar *url = g_strdup_printf("%s/%s", ADMIN_POSTS_URL, post_id);
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     if (fetch_url(url, &chunk, NULL, "DELETE")) {
         free(chunk.memory);
         start_loading_admin_posts(gtk_entry_get_text(GTK_ENTRY(g_admin_posts_search)));
@@ -1744,7 +1843,7 @@ static gboolean on_search_tweets_loaded(gpointer data)
 static gpointer fetch_search_users_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *escaped_query = g_uri_escape_string(async_data->query, NULL, FALSE);
     gchar *url = g_strdup_printf("%s?q=%s", SEARCH_USERS_URL, escaped_query);
     g_free(escaped_query);
@@ -1765,7 +1864,7 @@ static gpointer fetch_search_users_thread(gpointer data)
 static gpointer fetch_search_tweets_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *escaped_query = g_uri_escape_string(async_data->query, NULL, FALSE);
     gchar *url = g_strdup_printf("%s?q=%s", SEARCH_POSTS_URL, escaped_query);
     g_free(escaped_query);
@@ -1821,7 +1920,7 @@ void on_search_activated(GtkEntry *entry, gpointer user_data)
 
 gboolean perform_like(const gchar *tweet_id)
 {
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(LIKE_TWEET_URL, tweet_id);
 
@@ -1844,7 +1943,7 @@ gboolean perform_like(const gchar *tweet_id)
 
 gboolean perform_retweet(const gchar *tweet_id)
 {
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(RETWEET_URL, tweet_id);
 
@@ -1867,7 +1966,7 @@ gboolean perform_retweet(const gchar *tweet_id)
 
 gboolean perform_bookmark(const gchar *tweet_id, gboolean add)
 {
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
     const gchar *url = add ? BOOKMARK_ADD_URL : BOOKMARK_REMOVE_URL;
 
@@ -1902,7 +2001,7 @@ gboolean perform_bookmark(const gchar *tweet_id, gboolean add)
 
 gboolean perform_reaction(const gchar *tweet_id, const gchar *emoji)
 {
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(REACTION_URL, tweet_id);
 
@@ -1954,7 +2053,7 @@ void free_emojis(GList *emojis)
 
 GList* fetch_emojis(void)
 {
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     GList *emojis = NULL;
 
     if (fetch_url(EMOJIS_URL, &chunk, NULL, "GET")) {
@@ -1987,7 +2086,7 @@ GList* fetch_emojis(void)
 
 static gboolean perform_add_note(const gchar *tweet_id, const gchar *note, const gchar *severity)
 {
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
     gchar *url = g_strdup_printf("%s/admin/fact-check/%s", API_BASE_URL, tweet_id);
 
@@ -2141,7 +2240,7 @@ gboolean perform_follow(const gchar *username, gboolean follow)
     gchar *url = g_strdup_printf(PROFILE_FOLLOW_URL, username);
     const gchar *method = follow ? "POST" : "DELETE";
 
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
 
     if (fetch_url(url, &chunk, "{}", method)) {
@@ -2179,7 +2278,7 @@ static gboolean on_followers_loaded(gpointer data)
 static gpointer fetch_followers_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *url = g_strdup_printf(PROFILE_FOLLOWERS_URL, async_data->username);
 
     if (fetch_url(url, &chunk, NULL, "GET")) {
@@ -2237,7 +2336,7 @@ static gboolean on_following_loaded(gpointer data)
 static gpointer fetch_following_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gchar *url = g_strdup_printf(PROFILE_FOLLOWING_URL, async_data->username);
 
     if (fetch_url(url, &chunk, NULL, "GET")) {
@@ -2294,7 +2393,7 @@ static gboolean on_bookmarks_loaded(gpointer data)
 static gpointer fetch_bookmarks_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
 
     if (fetch_url(BOOKMARKS_LIST_URL, &chunk, NULL, "GET")) {
         // Bookmarks API returns posts similar to regular tweets
@@ -2343,7 +2442,7 @@ gboolean perform_block(const gchar *username, gboolean block)
     json_generator_set_root(gen, json_builder_get_root(builder));
     gchar *post_data = json_generator_to_data(gen, NULL);
 
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
 
     if (fetch_url(url, &chunk, post_data, "POST")) {
@@ -2373,7 +2472,7 @@ gboolean perform_mute(const gchar *username, gboolean mute)
     json_generator_set_root(gen, json_builder_get_root(builder));
     gchar *post_data = json_generator_to_data(gen, NULL);
 
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
 
     if (fetch_url(url, &chunk, post_data, "POST")) {
@@ -2392,7 +2491,7 @@ gboolean check_user_blocked(const gchar *username)
     if (!g_auth_token || !username) return FALSE;
 
     gchar *url = g_strdup_printf(CHECK_BLOCK_URL, username);
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean blocked = FALSE;
 
     if (fetch_url(url, &chunk, NULL, "GET")) {
@@ -2421,7 +2520,7 @@ gboolean check_user_muted(const gchar *username)
     if (!g_auth_token || !username) return FALSE;
 
     gchar *url = g_strdup_printf(CHECK_MUTE_URL, username);
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean muted = FALSE;
 
     if (fetch_url(url, &chunk, NULL, "GET")) {
@@ -2485,7 +2584,7 @@ gboolean perform_poll_vote(const gchar *tweet_id, const gchar *option_id)
 {
     if (!g_auth_token || !tweet_id || !option_id) return FALSE;
 
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(POLL_VOTE_URL, tweet_id);
 
@@ -2541,7 +2640,7 @@ gboolean perform_update_profile(const gchar *username, const gchar *name, const 
 {
     if (!g_auth_token || !username) return FALSE;
 
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(UPDATE_PROFILE_URL, username);
 
@@ -2581,7 +2680,7 @@ gboolean perform_upload_avatar(const gchar *username, const gchar *file_path)
 {
     if (!g_auth_token || !username || !file_path) return FALSE;
 
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(UPDATE_AVATAR_URL, username);
 
@@ -2598,7 +2697,7 @@ gboolean perform_upload_banner(const gchar *username, const gchar *file_path)
 {
     if (!g_auth_token || !username || !file_path) return FALSE;
 
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(UPDATE_BANNER_URL, username);
 
@@ -2613,34 +2712,35 @@ gboolean perform_upload_banner(const gchar *username, const gchar *file_path)
 
 gchar* perform_media_upload(const gchar *file_path)
 {
-    if (!g_auth_token || !file_path) return NULL;
-
-    struct MemoryStruct chunk;
-    gchar *file_url = NULL;
-
-    if (fetch_url_with_file(UPLOAD_URL, &chunk, file_path, "file")) {
-        // Parse the response to get the file URL
-        JsonParser *parser = json_parser_new();
-        GError *error = NULL;
-        json_parser_load_from_data(parser, chunk.memory, -1, &error);
-
-        if (!error) {
-            JsonNode *root = json_parser_get_root(parser);
-            JsonObject *obj = json_node_get_object(root);
-
-            if (json_object_has_member(obj, "file_url")) {
-                file_url = g_strdup(json_object_get_string_member(obj, "file_url"));
-            } else if (json_object_has_member(obj, "url")) {
-                file_url = g_strdup(json_object_get_string_member(obj, "url"));
-            }
-        } else {
-            g_error_free(error);
-        }
-
-        g_object_unref(parser);
-        free(chunk.memory);
+    g_debug("perform_media_upload: starting upload for file_path=%s", file_path ? file_path : "(null)");
+    
+    if (!g_auth_token || !file_path) {
+        g_debug("perform_media_upload: failed - auth_token=%s, file_path=%s", 
+                g_auth_token ? "set" : "(null)", file_path ? file_path : "(null)");
+        return NULL;
     }
 
+    struct MemoryStruct chunk = {0};
+    gchar *file_url = NULL;
+
+    g_debug("perform_media_upload: calling fetch_url_with_file for UPLOAD_URL");
+    if (fetch_url_with_file(UPLOAD_URL, &chunk, file_path, "file")) {
+        if (!chunk.memory) {
+            g_critical("fetch_url_with_file succeeded but chunk.memory is NULL");
+            return NULL;
+        }
+        
+        g_debug("perform_media_upload: upload succeeded, response=%s", chunk.memory);
+        
+        file_url = parse_upload_response(chunk.memory);
+        g_debug("perform_media_upload: extracted file_url=%s", file_url ? file_url : "(null)");
+        
+        free(chunk.memory);
+    } else {
+        g_debug("perform_media_upload: fetch_url_with_file failed");
+    }
+
+    g_debug("perform_media_upload: returning file_url=%s", file_url ? file_url : "(null)");
     return file_url;
 }
 
@@ -2648,7 +2748,7 @@ gboolean perform_join_community(const gchar *community_id)
 {
     if (!g_auth_token || !community_id) return FALSE;
 
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(COMMUNITY_JOIN_URL, community_id);
 
@@ -2665,7 +2765,7 @@ gboolean perform_leave_community(const gchar *community_id)
 {
     if (!g_auth_token || !community_id) return FALSE;
 
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
     gchar *url = g_strdup_printf(COMMUNITY_LEAVE_URL, community_id);
 
@@ -2702,7 +2802,7 @@ static gboolean on_communities_loaded(gpointer data)
 static gpointer fetch_communities_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
 
     if (fetch_url(COMMUNITIES_LIST_URL, &chunk, NULL, "GET")) {
         async_data->communities = parse_communities(chunk.memory);
@@ -2760,7 +2860,7 @@ static gboolean on_community_tweets_loaded(gpointer data)
 static gpointer fetch_community_tweets_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk;
+    struct MemoryStruct chunk = {0};
     
     gchar *url = g_strdup_printf(COMMUNITY_TWEETS_URL, async_data->community_id);
     
@@ -3160,4 +3260,3 @@ void update_settings_username_display(void)
     }
     g_mutex_unlock(&g_globals_mutex);
 }
-

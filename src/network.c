@@ -241,6 +241,9 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
     curl_mime *mime = NULL;
     curl_mimepart *part = NULL;
 
+    g_debug("fetch_url_with_file: url=%s, file_path=%s, field_name=%s", 
+            url ? url : "(null)", file_path ? file_path : "(null)", field_name ? field_name : "(null)");
+
     if (!url || !file_path) {
         g_critical("fetch_url_with_file: URL or file_path is NULL");
         return FALSE;
@@ -277,6 +280,8 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
     part = curl_mime_addpart(mime);
     curl_mime_name(part, field_name ? field_name : "file");
     curl_mime_filedata(part, file_path);
+    
+    g_debug("fetch_url_with_file: added mime part for file=%s", file_path);
 
     curl_easy_setopt(curl_handle, CURLOPT_URL, url);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
@@ -298,7 +303,9 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
     g_free(auth_token);
     curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
 
+    g_debug("fetch_url_with_file: performing curl request");
     res = curl_easy_perform(curl_handle);
+    g_debug("fetch_url_with_file: curl perform result=%d (%s)", res, curl_easy_strerror(res));
 
     curl_slist_free_all(headers);
     curl_mime_free(mime);
@@ -310,6 +317,11 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
         chunk->size = 0;
         curl_easy_cleanup(curl_handle);
         return FALSE;
+    }
+
+    g_debug("fetch_url_with_file: request succeeded, response_size=%zu", chunk->size);
+    if (chunk->memory && chunk->size > 0) {
+        g_debug("fetch_url_with_file: response=%s", chunk->memory);
     }
 
     curl_easy_cleanup(curl_handle);

@@ -12,6 +12,7 @@
 #include "actions.h"
 #include "constants.h"
 #include "challenge.h"
+#include "ui_utils.h"
 
 #define COLOR_RESET   "\033[0m"
 #define COLOR_GREEN   "\033[32m"
@@ -204,7 +205,7 @@ static void test_parse_login_response(void) {
 
 static void test_construct_tweet_payload(void) {
     // Test without reply
-    gchar *payload = construct_tweet_payload("Hello world", NULL);
+    gchar *payload = construct_tweet_payload("Hello world", NULL, NULL);
     g_assert_nonnull(payload);
     
     // Parse it back to verify
@@ -223,7 +224,7 @@ static void test_construct_tweet_payload(void) {
     g_free(payload);
 
     // Test with reply
-    payload = construct_tweet_payload("Reply text", "12345");
+    payload = construct_tweet_payload("Reply text", "12345", NULL);
     parser = json_parser_new();
     json_parser_load_from_data(parser, payload, -1, &error);
     g_assert_no_error(error);
@@ -566,11 +567,11 @@ static void test_parse_communities_private(void) {
 }
 
 static void test_parse_upload_response(void) {
-    const char *json_input = "{\"file_url\": \"/api/uploads/test_image.png\", \"success\": true}";
+    const char *json_input = "{\"file\": {\"url\": \"/api/uploads/test_image.webp\"}, \"success\": true}";
     gchar *file_url = parse_upload_response(json_input);
     
     g_assert_nonnull(file_url);
-    g_assert_cmpstr(file_url, ==, "/api/uploads/test_image.png");
+    g_assert_cmpstr(file_url, ==, "/api/uploads/test_image.webp");
     
     g_free(file_url);
 }
@@ -580,6 +581,48 @@ static void test_parse_upload_response_failure(void) {
     gchar *file_url = parse_upload_response(json_input);
     
     g_assert_null(file_url);
+}
+
+static void test_build_attachment_list(void) {
+    GList *attachments = build_attachment_list("/api/uploads/test.jpg", "image/jpeg");
+    
+    g_assert_nonnull(attachments);
+    g_assert_cmpint(g_list_length(attachments), ==, 1);
+    
+    struct Attachment *a = (struct Attachment *)attachments->data;
+    g_assert_cmpstr(a->file_url, ==, "/api/uploads/test.jpg");
+    g_assert_cmpstr(a->file_type, ==, "image/jpeg");
+    g_assert_null(a->id);
+    
+    g_list_free_full(attachments, free_attachment_payload);
+}
+
+static void test_build_attachment_list_null_url(void) {
+    GList *attachments = build_attachment_list(NULL, "image/jpeg");
+    
+    g_assert_null(attachments);
+}
+
+static void test_build_attachment_list_default_type(void) {
+    GList *attachments = build_attachment_list("/api/uploads/test.mp4", NULL);
+    
+    g_assert_nonnull(attachments);
+    
+    struct Attachment *a = (struct Attachment *)attachments->data;
+    g_assert_cmpstr(a->file_type, ==, "application/octet-stream");
+    
+    g_list_free_full(attachments, free_attachment_payload);
+}
+
+static void test_free_attachment_payload(void) {
+    struct Attachment *attach = g_new0(struct Attachment, 1);
+    attach->id = g_strdup("att123");
+    attach->file_url = g_strdup("/api/uploads/image.jpg");
+    attach->file_type = g_strdup("image/jpeg");
+    
+    free_attachment_payload(attach);
+    
+    g_assert_true(TRUE);
 }
 
 static void test_poll_memory_management(void) {
@@ -753,6 +796,10 @@ int main(int argc, char** argv) {
     g_test_add_func("/communities/memory_management", test_community_memory_management);
     g_test_add_func("/upload/parse_success", test_parse_upload_response);
     g_test_add_func("/upload/parse_failure", test_parse_upload_response_failure);
+    g_test_add_func("/upload/build_attachment_list", test_build_attachment_list);
+    g_test_add_func("/upload/build_attachment_list_null_url", test_build_attachment_list_null_url);
+    g_test_add_func("/upload/build_attachment_list_default_type", test_build_attachment_list_default_type);
+    g_test_add_func("/upload/free_attachment_payload", test_free_attachment_payload);
     g_test_add_func("/timeline/enum_values", test_timeline_type_enum);
     
     int result = g_test_run();
@@ -767,9 +814,9 @@ int main(int argc, char** argv) {
     // we'll use the exit code to determine failure count
     int failed_count = result;
     
-    // We know we have 33 tests registered
+    // We know we have 37 tests registered
     // This is a workaround since GLib doesn't provide an easy way to get the count
-    int known_total = 33;
+    int known_total = 37;
     total_tests = known_total;
     passed_tests = known_total - failed_count;
     
