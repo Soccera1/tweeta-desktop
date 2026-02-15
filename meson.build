@@ -5,6 +5,7 @@ project('tweeta-desktop', 'c',
 gtk_dep = dependency('gtk+-3.0')
 json_glib_dep = dependency('json-glib-1.0')
 curl_dep = dependency('libcurl')
+gpgme_dep = dependency('gpgme')
 
 inc = include_directories('src')
 
@@ -17,19 +18,22 @@ sources = [
   'src/ui_components.c',
   'src/views.c',
   'src/actions.c',
-  'src/challenge.c'
+  'src/challenge.c',
+  'src/p2p_crypto.c',
+  'src/p2p_network.c',
+  'src/actions_p2p_network.c'
 ]
 
 executable('tweeta-desktop',
   sources: sources + ['src/main.c'],
-  dependencies : [gtk_dep, json_glib_dep, curl_dep],
+  dependencies : [gtk_dep, json_glib_dep, curl_dep, gpgme_dep],
   include_directories : inc,
   install : true
 )
 
 test_runner = executable('test_runner',
   sources: sources + ['test_main.c'],
-  dependencies : [gtk_dep, json_glib_dep, curl_dep],
+  dependencies : [gtk_dep, json_glib_dep, curl_dep, gpgme_dep],
   include_directories : inc,
   install : false
 )

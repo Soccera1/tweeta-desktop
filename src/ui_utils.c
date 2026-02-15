@@ -50,7 +50,7 @@ fetch_avatar_thread(gpointer data)
             g_idle_add(set_image_pixbuf, params);
         }
         g_object_unref(stream);
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(full_url);
@@ -137,4 +137,11 @@ build_attachment_list(const gchar *file_url, const gchar *file_type)
             attach->file_url, attach->file_type);
 
     return g_list_append(NULL, attach);
+}
+
+void
+free_wrapper(gpointer data, GClosure *closure)
+{
+    (void)closure;
+    g_free(data);
 }

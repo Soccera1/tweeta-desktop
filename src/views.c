@@ -284,7 +284,7 @@ on_dm_send_clicked(GtkWidget *widget, gpointer user_data)
         if (fetch_url(url, &chunk, post_data, "POST")) {
             gtk_entry_set_text(GTK_ENTRY(g_dm_entry), "");
             start_loading_messages(GTK_LIST_BOX(g_dm_messages_list), conv_id);
-            free(chunk.memory);
+            g_free(chunk.memory);
         }
         
         g_free(post_data);
@@ -367,7 +367,7 @@ create_p2p_messages_view(void)
     gtk_widget_set_size_request(contacts_scroll, 250, -1);
     g_p2p_contacts_list = gtk_list_box_new();
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_p2p_contacts_list), GTK_SELECTION_SINGLE);
-    g_signal_connect(g_p2p_contacts_list, "row-selected", G_CALLBACK(on_p2p_contact_selected), NULL);
+    g_signal_connect(g_p2p_contacts_list, "row-selected", G_CALLBACK(on_p2p_contact_row_selected), NULL);
     gtk_container_add(GTK_CONTAINER(contacts_scroll), g_p2p_contacts_list);
     gtk_paned_pack1(GTK_PANED(paned), contacts_scroll, FALSE, TRUE);
     

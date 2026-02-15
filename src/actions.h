@@ -33,6 +33,7 @@ void on_settings_clicked(GtkWidget *widget, gpointer user_data);
 void on_admin_clicked(GtkWidget *widget, gpointer user_data);
 void on_mark_all_read_clicked(GtkWidget *widget, gpointer user_data);
 void on_refresh_clicked(GtkWidget *widget, gpointer user_data);
+gboolean perform_post_tweet(const gchar *content, const gchar *reply_to_id, GList *attachments);
 void on_compose_clicked(GtkWidget *widget, gpointer window);
 void on_note_button_clicked(GtkWidget *widget, gpointer user_data);
 void on_login_clicked(GtkWidget *widget, gpointer window);
@@ -96,7 +97,7 @@ void refresh_cache_size_display(void);
 /* P2P Encrypted Messaging actions */
 void on_p2p_send_clicked(GtkWidget *widget, gpointer user_data);
 void on_p2p_setup_clicked(GtkWidget *widget, gpointer user_data);
-void on_p2p_contact_selected(GtkWidget *widget, gpointer user_data);
+void on_p2p_contact_row_selected(GtkListBox *box, GtkListBoxRow *row, gpointer user_data);
 void on_p2p_generate_keys_clicked(GtkWidget *widget, gpointer user_data);
 void on_p2p_import_contact_clicked(GtkWidget *widget, gpointer user_data);
 void on_p2p_add_contact_clicked(GtkWidget *widget, gpointer user_data);
@@ -108,5 +109,8 @@ gboolean p2p_init_session(const gchar *username);
 void p2p_send_encrypted_message(const gchar *recipient, const gchar *plaintext);
 void p2p_refresh_contacts_list(void);
 void p2p_refresh_messages_list(const gchar *contact_username);
+void p2p_free_contact(gpointer data);
+void p2p_free_message(gpointer data);
+void p2p_free_session(struct P2PSession *session);
 
 #endif /* ACTIONS_H */

@@ -10,5 +10,6 @@ gchar* detect_mime_type(const gchar *file_path);
 
 void free_attachment_payload(gpointer data);
 GList* build_attachment_list(const gchar *file_url, const gchar *file_type);
+void free_wrapper(gpointer data, GClosure *closure);
 
 #endif /* UI_UTILS_H */

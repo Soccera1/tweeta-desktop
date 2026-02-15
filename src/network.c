@@ -21,9 +21,9 @@ WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
   size_t realsize = size * nmemb;
   struct MemoryStruct *mem = (struct MemoryStruct *)userp;
 
-  char *ptr = realloc(mem->memory, mem->size + realsize + 1);
+  char *ptr = g_realloc(mem->memory, mem->size + realsize + 1);
   if(ptr == NULL) {
-    g_critical("not enough memory (realloc returned NULL)");
+    g_critical("not enough memory (g_realloc returned NULL)");
     return 0;
   }
 
@@ -48,20 +48,16 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
     }
 
     if (chunk->memory) {
-        free(chunk->memory);
+        g_free(chunk->memory);
     }
-    chunk->memory = malloc(1);
+    chunk->memory = g_malloc(1);
     chunk->size = 0;
-    if (!chunk->memory) {
-        g_critical("fetch_url_internal: malloc failed");
-        return FALSE;
-    }
     chunk->memory[0] = '\0';
 
     curl_handle = curl_easy_init();
     if (!curl_handle) {
         g_critical("curl_easy_init() failed");
-        free(chunk->memory);
+        g_free(chunk->memory);
         chunk->memory = NULL;
         return FALSE;
     }
@@ -105,7 +101,7 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
 
     if (res != CURLE_OK) {
         g_critical("curl_easy_perform() failed: %s", curl_easy_strerror(res));
-        free(chunk->memory);
+        g_free(chunk->memory);
         chunk->memory = NULL;
         chunk->size = 0;
         curl_easy_cleanup(curl_handle);
@@ -189,7 +185,7 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
             challenge_chunk.size = 0;
             if (fetch_url_internal(CAP_CHALLENGE_URL, &challenge_chunk, "{}", "POST", &response_code)) {
                 cap_token = check_and_solve_challenge(challenge_chunk.memory);
-                free(challenge_chunk.memory);
+                g_free(challenge_chunk.memory);
                 
                 if (cap_token) {
                     g_message("Fetched and solved new challenge. Retrying original request.");
@@ -201,7 +197,7 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
                         gchar *bypass_data = g_strdup_printf("{\"capToken\": \"%s\"}", cap_token);
                         fetch_url_internal(API_BASE_URL "/auth/cap/rate-limit-bypass", &bypass_chunk, bypass_data, "POST", &response_code);
                         g_free(bypass_data);
-                        if (bypass_chunk.memory) free(bypass_chunk.memory);
+                        if (bypass_chunk.memory) g_free(bypass_chunk.memory);
                     }
 
                     gchar *new_post_data = NULL;
@@ -250,20 +246,16 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
     }
 
     if (chunk->memory) {
-        free(chunk->memory);
+        g_free(chunk->memory);
     }
-    chunk->memory = malloc(1);
+    chunk->memory = g_malloc(1);
     chunk->size = 0;
-    if (!chunk->memory) {
-        g_critical("fetch_url_with_file: malloc failed");
-        return FALSE;
-    }
     chunk->memory[0] = '\0';
 
     curl_handle = curl_easy_init();
     if (!curl_handle) {
         g_critical("curl_easy_init() failed");
-        free(chunk->memory);
+        g_free(chunk->memory);
         chunk->memory = NULL;
         return FALSE;
     }
@@ -271,7 +263,7 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
     mime = curl_mime_init(curl_handle);
     if (!mime) {
         g_critical("curl_mime_init() failed");
-        free(chunk->memory);
+        g_free(chunk->memory);
         chunk->memory = NULL;
         curl_easy_cleanup(curl_handle);
         return FALSE;
@@ -312,7 +304,7 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
 
     if (res != CURLE_OK) {
         g_critical("curl_easy_perform() failed: %s", curl_easy_strerror(res));
-        free(chunk->memory);
+        g_free(chunk->memory);
         chunk->memory = NULL;
         chunk->size = 0;
         curl_easy_cleanup(curl_handle);
