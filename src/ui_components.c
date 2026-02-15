@@ -91,7 +91,7 @@ on_like_clicked(GtkWidget *widget, gpointer user_data)
         } else if (chunk.memory) {
             g_warning("on_like_clicked: API returned error: %s", chunk.memory);
         }
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         g_debug("on_like_clicked: fetch_url failed");
     }
@@ -156,7 +156,7 @@ on_retweet_clicked(GtkWidget *widget, gpointer user_data)
         } else if (chunk.memory) {
             g_warning("on_retweet_clicked: API returned error: %s", chunk.memory);
         }
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         g_debug("on_retweet_clicked: fetch_url failed");
     }
@@ -193,7 +193,7 @@ on_quote_response(GtkDialog *dialog, gint response_id, gpointer user_data)
             struct MemoryStruct chunk = {0};
             if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
                 start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
-                free(chunk.memory);
+                g_free(chunk.memory);
             }
 
             g_free(post_data);
@@ -351,7 +351,7 @@ on_bookmark_clicked(GtkWidget *widget, gpointer user_data)
         } else if (chunk.memory) {
             g_warning("on_bookmark_clicked: API returned error: %s", chunk.memory);
         }
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         g_debug("on_bookmark_clicked: fetch_url failed");
     }
@@ -476,24 +476,6 @@ on_reaction_clicked(GtkWidget *widget, gpointer user_data)
 
     gtk_widget_show_all(dialog);
     g_signal_connect_swapped(dialog, "response", G_CALLBACK(gtk_widget_destroy), dialog);
-}
-
-static gboolean
-perform_post_tweet(const gchar *content, const gchar *reply_to_id, GList *attachments)
-{
-    struct MemoryStruct chunk = {0};
-    gboolean success = FALSE;
-    gchar *post_data = construct_tweet_payload(content, reply_to_id, attachments);
-
-    if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
-        success = TRUE;
-        if (chunk.memory) {
-            free(chunk.memory);
-        }
-    }
-    
-    g_free(post_data);
-    return success;
 }
 
 static void
@@ -875,7 +857,7 @@ on_admin_post_button_press(GtkWidget *widget, GdkEventButton *event, gpointer us
 
         GtkWidget *menu = gtk_menu_new();
         GtkWidget *delete_item = gtk_menu_item_new_with_label("Admin: Delete Post");
-        g_signal_connect(delete_item, "activate", G_CALLBACK(on_admin_delete_post_activated), g_strdup(post_id));
+        g_signal_connect_data(delete_item, "activate", G_CALLBACK(on_admin_delete_post_activated), g_strdup(post_id), free_wrapper, 0);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), delete_item);
         
         gtk_widget_show_all(menu);
@@ -912,11 +894,11 @@ on_admin_user_button_press(GtkWidget *widget, GdkEventButton *event, gpointer us
         GtkWidget *menu = gtk_menu_new();
         
         GtkWidget *verify_item = gtk_menu_item_new_with_label("Admin: Verify User");
-        g_signal_connect(verify_item, "activate", G_CALLBACK(on_admin_verify_user_activated), g_strdup(username));
+        g_signal_connect_data(verify_item, "activate", G_CALLBACK(on_admin_verify_user_activated), g_strdup(username), free_wrapper, 0);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), verify_item);
 
         GtkWidget *delete_item = gtk_menu_item_new_with_label("Admin: Delete User");
-        g_signal_connect(delete_item, "activate", G_CALLBACK(on_admin_delete_user_activated), g_strdup(username));
+        g_signal_connect_data(delete_item, "activate", G_CALLBACK(on_admin_delete_user_activated), g_strdup(username), free_wrapper, 0);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), delete_item);
 
         gtk_widget_show_all(menu);
@@ -1386,7 +1368,7 @@ on_conversation_clicked(GtkWidget *widget, gpointer user_data)
         gchar *url = g_strdup_printf(DM_MARK_READ_URL, conv_id);
         struct MemoryStruct chunk = {0};
         if (fetch_url(url, &chunk, "", "PATCH")) {
-            free(chunk.memory);
+            g_free(chunk.memory);
         }
         g_free(url);
     }
@@ -1774,48 +1756,13 @@ static void on_file_selected(GtkFileChooserButton *chooser, gpointer user_data)
 
 static gboolean perform_post_tweet_with_media(const gchar *content, const gchar *media_url, const gchar *file_type)
 {
-    g_debug("perform_post_tweet_with_media: content='%s', media_url=%s, file_type=%s", 
-            content ? content : "(null)", media_url ? media_url : "(null)", file_type ? file_type : "(null)");
-    
-    struct MemoryStruct chunk = {0};
-    gboolean success = FALSE;
     GList *attachments = build_attachment_list(media_url, file_type);
+    gboolean success = perform_post_tweet(content ? content : "", NULL, attachments);
     
-    // Check if we have valid content or attachments before proceeding
-    gboolean has_text = content && content[0] != '\0';
-    gboolean has_media = media_url && media_url[0] != '\0';
-    
-    g_debug("perform_post_tweet_with_media: has_text=%d, has_media=%d", has_text, has_media);
-    
-    if (!has_text && !has_media) {
-        g_warning("perform_post_tweet_with_media: No content or media to post");
-        if (attachments) {
-            g_list_free_full(attachments, free_attachment_payload);
-        }
-        return FALSE;
-    }
-    
-    gchar *post_data = construct_tweet_payload(content, NULL, attachments);
-    g_debug("perform_post_tweet_with_media: constructed payload=%s", post_data ? post_data : "(null)");
-
-    g_debug("perform_post_tweet_with_media: posting to %s", POST_TWEET_URL);
-    if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
-        success = TRUE;
-        g_debug("perform_post_tweet_with_media: post succeeded, response=%s", 
-                chunk.memory ? chunk.memory : "(null)");
-        if (chunk.memory) {
-            free(chunk.memory);
-        }
-    } else {
-        g_debug("perform_post_tweet_with_media: post failed");
-    }
-
-    g_free(post_data);
     if (attachments) {
         g_list_free_full(attachments, free_attachment_payload);
     }
 
-    g_debug("perform_post_tweet_with_media: returning success=%d", success);
     return success;
 }
 

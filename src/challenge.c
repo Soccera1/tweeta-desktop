@@ -176,7 +176,7 @@ gchar* check_and_solve_challenge(const gchar *response_json) {
                 }
             }
             g_object_unref(redeem_parser);
-            free(chunk.memory);
+            g_free(chunk.memory);
         }
         
         g_free(post_data);

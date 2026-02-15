@@ -14,6 +14,7 @@
 #include "ui_utils.h"
 #include "views.h"
 #include "p2p_crypto.h"
+#include "p2p_network.h"
 
 static inline gchar* get_username_safe(void) {
     g_mutex_lock(&g_globals_mutex);
@@ -39,6 +40,98 @@ static inline gchar* get_auth_token_safe(void) {
     gchar *token = g_auth_token ? g_strdup(g_auth_token) : NULL;
     g_mutex_unlock(&g_globals_mutex);
     return token;
+}
+
+/* Memory Management Helpers */
+
+void
+p2p_free_contact(gpointer data)
+{
+    struct P2PContact *contact = (struct P2PContact *)data;
+    if (contact) {
+        g_free(contact->username);
+        g_free(contact->display_name);
+        g_free(contact->public_key_fingerprint);
+        g_free(contact->public_key_armor);
+        g_free(contact->avatar_url);
+        g_free(contact->direct_host);
+        g_free(contact->last_seen);
+        g_free(contact);
+    }
+}
+
+void
+p2p_free_message(gpointer data)
+{
+    struct P2PMessage *msg = (struct P2PMessage *)data;
+    if (msg) {
+        g_free(msg->id);
+        g_free(msg->sender_username);
+        g_free(msg->recipient_username);
+        g_free(msg->encrypted_content);
+        g_free(msg->plaintext_content);
+        g_free(msg->timestamp);
+        g_free(msg);
+    }
+}
+
+static void
+p2p_free_message_list(gpointer data)
+{
+    g_list_free_full((GList *)data, p2p_free_message);
+}
+
+void
+p2p_free_session(struct P2PSession *session)
+{
+    if (!session) return;
+
+    g_mutex_lock(&session->session_mutex);
+
+    g_free(session->local_username);
+    g_free(session->local_key_fingerprint);
+
+    if (session->contacts) {
+        g_hash_table_destroy(session->contacts);
+    }
+
+    if (session->conversations) {
+        g_hash_table_destroy(session->conversations);
+    }
+
+    g_mutex_unlock(&session->session_mutex);
+    g_mutex_clear(&session->session_mutex);
+
+    g_free(session);
+}
+
+static void
+free_async_data(struct AsyncData *data)
+{
+    if (!data) return;
+
+    if (data->tweets) free_tweets(data->tweets);
+    if (data->users) free_users(data->users);
+    if (data->notifications) free_notifications(data->notifications);
+    if (data->conversations) free_conversations(data->conversations);
+    if (data->messages) free_messages(data->messages);
+    if (data->communities) free_communities(data->communities);
+
+    if (data->profile) {
+        g_free(data->profile->name);
+        g_free(data->profile->username);
+        g_free(data->profile->bio);
+        g_free(data->profile->avatar);
+        g_free(data->profile);
+    }
+
+    g_free(data->username);
+    g_free(data->query);
+    g_free(data->conversation_id);
+    g_free(data->community_id);
+    g_free(data->before_id);
+
+    g_free(data);
 }
 
 /* P2P Encrypted Messaging Implementation */
@@ -170,7 +263,7 @@ on_p2p_setup_clicked(GtkWidget *widget, gpointer user_data)
     gtk_widget_destroy(dialog);
 }
 
-static void
+void
 on_p2p_contact_row_selected(GtkListBox *box, GtkListBoxRow *row, gpointer user_data)
 {
     (void)box;
@@ -196,17 +289,6 @@ on_p2p_contact_row_selected(GtkListBox *box, GtkListBoxRow *row, gpointer user_d
     }
 }
 
-void
-on_p2p_contact_selected(GtkWidget *widget, gpointer user_data)
-{
-    (void)user_data;
-    const gchar *username = g_object_get_data(G_OBJECT(widget), "contact_username");
-
-    g_mutex_lock(&g_p2p_mutex);
-    g_free(g_p2p_current_contact);
-    g_p2p_current_contact = username ? g_strdup(username) : NULL;
-    g_mutex_unlock(&g_p2p_mutex);
-}
 
 void
 on_p2p_generate_keys_clicked(GtkWidget *widget, gpointer user_data)
@@ -302,10 +384,20 @@ p2p_init_session(const gchar *username)
         return FALSE;
     }
 
+    struct P2PTransportConfig config = {0};
+    config.mode = P2P_TRANSPORT_TWEETAPUS;
+    config.local_username = (gchar *)username;
+    config.local_key_fingerprint = (gchar *)p2p_get_local_fingerprint();
+
+    if (!p2p_network_init(&config)) {
+        g_warning("Failed to initialize P2P network");
+        return FALSE;
+    }
+
     g_p2p_session = g_new0(struct P2PSession, 1);
     g_p2p_session->local_username = g_strdup(username);
-    g_p2p_session->contacts = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-    g_p2p_session->conversations = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    g_p2p_session->contacts = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, p2p_free_contact);
+    g_p2p_session->conversations = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, p2p_free_message_list);
     g_mutex_init(&g_p2p_session->session_mutex);
 
     return TRUE;
@@ -403,9 +495,6 @@ p2p_refresh_contacts_list(void)
     }
     g_mutex_unlock(&g_p2p_session->session_mutex);
 
-    /* Connect selection handler */
-    g_signal_connect(g_p2p_contacts_list, "row-selected",
-        G_CALLBACK(on_p2p_contact_row_selected), NULL);
 }
 
 void
@@ -533,13 +622,13 @@ gboolean perform_login(const gchar *username, const gchar *password)
                 g_mutex_lock(&g_globals_mutex);
                 g_is_admin = is_admin;
                 g_mutex_unlock(&g_globals_mutex);
-                free(me_chunk.memory);
+                g_free(me_chunk.memory);
             }
 
             save_session(g_auth_token, g_current_username, g_is_admin);
             success = TRUE;
         }
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(post_data);
@@ -614,7 +703,7 @@ void on_login_clicked(GtkWidget *widget, gpointer window)
     gtk_widget_show(dialog);
 }
 
-static gboolean perform_post_tweet(const gchar *content, const gchar *reply_to_id, GList *attachments)
+gboolean perform_post_tweet(const gchar *content, const gchar *reply_to_id, GList *attachments)
 {
     struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
@@ -623,7 +712,7 @@ static gboolean perform_post_tweet(const gchar *content, const gchar *reply_to_i
     if (fetch_url(POST_TWEET_URL, &chunk, post_data, "POST")) {
         success = TRUE;
         if (chunk.memory) {
-            free(chunk.memory);
+            g_free(chunk.memory);
         }
     }
     
@@ -786,11 +875,7 @@ static gboolean on_tweets_loaded(gpointer data)
     g_mutex_unlock(&load_tweets_mutex);
     
     if (!is_active) {
-        if (async_data->tweets) {
-            free_tweets(async_data->tweets);
-        }
-        g_free(async_data->before_id);
-        g_free(async_data);
+        free_async_data(async_data);
         return G_SOURCE_REMOVE;
     }
     
@@ -822,6 +907,7 @@ static gboolean on_tweets_loaded(gpointer data)
         }
 
         free_tweets(async_data->tweets);
+        async_data->tweets = NULL;
     } else {
         if (!async_data->is_append) {
             GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
@@ -845,8 +931,7 @@ static gboolean on_tweets_loaded(gpointer data)
         }
     }
 
-    g_free(async_data->before_id);
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -904,7 +989,7 @@ static gpointer fetch_tweets_thread(gpointer data)
             async_data->tweets = parse_tweets(chunk.memory);
         }
         async_data->success = (async_data->tweets != NULL);
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -1037,20 +1122,13 @@ static gboolean on_profile_loaded(gpointer data)
             }
 
             free_tweets(async_data->tweets);
+            async_data->tweets = NULL;
         }
     } else {
         gtk_label_set_text(GTK_LABEL(g_profile_name_label), "Error loading profile");
     }
 
-    if (async_data->profile) {
-        g_free(async_data->profile->name);
-        g_free(async_data->profile->username);
-        g_free(async_data->profile->bio);
-        g_free(async_data->profile->avatar);
-        g_free(async_data->profile);
-    }
-    g_free(async_data->username);
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -1069,8 +1147,9 @@ static gboolean on_profile_replies_loaded(gpointer data)
         }
 
         free_tweets(async_data->tweets);
+        async_data->tweets = NULL;
     }
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -1084,7 +1163,7 @@ static gpointer fetch_profile_thread(gpointer data)
         async_data->profile = parse_profile(chunk.memory);
         async_data->tweets = parse_tweets(chunk.memory);
         async_data->success = (async_data->profile != NULL);
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -1103,7 +1182,7 @@ static gpointer fetch_profile_replies_thread(gpointer data)
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->tweets = parse_profile_replies(chunk.memory);
         async_data->success = (async_data->tweets != NULL);
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -1180,6 +1259,7 @@ static gboolean on_tweet_loaded(gpointer data)
         }
 
         free_tweets(async_data->tweets);
+        async_data->tweets = NULL;
     } else {
         GList *children = gtk_container_get_children(GTK_CONTAINER(g_conversation_list));
         for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
@@ -1191,8 +1271,7 @@ static gboolean on_tweet_loaded(gpointer data)
         gtk_list_box_insert(GTK_LIST_BOX(g_conversation_list), error_label, -1);
     }
 
-    g_free(async_data->query); // used as tweet_id here
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -1205,7 +1284,7 @@ static gpointer fetch_tweet_thread(gpointer data)
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->tweets = parse_tweet_details(chunk.memory);
         async_data->success = (async_data->tweets != NULL);
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -1304,16 +1383,14 @@ static gboolean on_notifications_loaded(gpointer data)
     g_mutex_unlock(&load_notifications_mutex);
     
     if (!is_active) {
-        if (async_data->notifications) {
-            free_notifications(async_data->notifications);
-        }
-        g_free(async_data);
+        free_async_data(async_data);
         return G_SOURCE_REMOVE;
     }
 
     if (async_data->success && async_data->notifications) {
         populate_notification_list(async_data->list_box, async_data->notifications);
         free_notifications(async_data->notifications);
+        async_data->notifications = NULL;
     } else {
         GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
         for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
@@ -1325,7 +1402,7 @@ static gboolean on_notifications_loaded(gpointer data)
         gtk_list_box_insert(async_data->list_box, error_label, -1);
     }
 
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -1337,7 +1414,7 @@ static gpointer fetch_notifications_thread(gpointer data)
     if (fetch_url(NOTIFICATIONS_URL, &chunk, NULL, "GET")) {
         async_data->notifications = parse_notifications(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -1403,7 +1480,7 @@ void on_mark_all_read_clicked(GtkWidget *widget, gpointer user_data)
 
     struct MemoryStruct chunk = {0};
     if (fetch_url(NOTIFICATIONS_MARK_ALL_READ_URL, &chunk, "", "PATCH")) {
-        free(chunk.memory);
+        g_free(chunk.memory);
         start_loading_notifications(GTK_LIST_BOX(g_notifications_list));
     }
 }
@@ -1417,16 +1494,14 @@ static gboolean on_conversations_loaded(gpointer data)
     g_mutex_unlock(&load_conversations_mutex);
     
     if (!is_active) {
-        if (async_data->conversations) {
-            free_conversations(async_data->conversations);
-        }
-        g_free(async_data);
+        free_async_data(async_data);
         return G_SOURCE_REMOVE;
     }
 
     if (async_data->success && async_data->conversations) {
         populate_conversation_list(async_data->list_box, async_data->conversations);
         free_conversations(async_data->conversations);
+        async_data->conversations = NULL;
     } else {
         GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
         for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
@@ -1438,7 +1513,7 @@ static gboolean on_conversations_loaded(gpointer data)
         gtk_list_box_insert(async_data->list_box, error_label, -1);
     }
 
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -1450,7 +1525,7 @@ static gpointer fetch_conversations_thread(gpointer data)
     if (fetch_url(DM_CONVERSATIONS_URL, &chunk, NULL, "GET")) {
         async_data->conversations = parse_conversations(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -1493,17 +1568,14 @@ static gboolean on_messages_loaded(gpointer data)
     g_mutex_unlock(&load_messages_mutex);
     
     if (!is_active) {
-        if (async_data->messages) {
-            free_messages(async_data->messages);
-        }
-        g_free(async_data->conversation_id);
-        g_free(async_data);
+        free_async_data(async_data);
         return G_SOURCE_REMOVE;
     }
 
     if (async_data->success && async_data->messages) {
         populate_message_list(async_data->list_box, async_data->messages);
         free_messages(async_data->messages);
+        async_data->messages = NULL;
     } else {
         GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
         for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
@@ -1515,8 +1587,7 @@ static gboolean on_messages_loaded(gpointer data)
         gtk_list_box_insert(async_data->list_box, error_label, -1);
     }
 
-    g_free(async_data->conversation_id);
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -1529,7 +1600,7 @@ static gpointer fetch_messages_thread(gpointer data)
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->messages = parse_messages(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -1621,7 +1692,7 @@ fetch_admin_stats_thread(gpointer data)
 
     if (fetch_url(ADMIN_STATS_URL, &chunk, NULL, "GET")) {
         stats_text = parse_admin_stats(chunk.memory);
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_idle_add(on_admin_stats_loaded, stats_text);
@@ -1655,11 +1726,11 @@ on_admin_users_loaded(gpointer data)
     if (async_data->success && async_data->users) {
         populate_user_list(GTK_LIST_BOX(g_admin_users_list), async_data->users);
         free_users(async_data->users);
+        async_data->users = NULL;
     } else {
         gtk_label_set_text(GTK_LABEL(g_user_label), "Failed to load admin users.");
     }
-    g_free(async_data->query);
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -1680,7 +1751,7 @@ fetch_admin_users_thread(gpointer data)
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->users = parse_admin_users(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -1703,9 +1774,9 @@ on_admin_posts_loaded(gpointer data)
     if (async_data->success && async_data->tweets) {
         populate_tweet_list(GTK_LIST_BOX(g_admin_posts_list), async_data->tweets);
         free_tweets(async_data->tweets);
+        async_data->tweets = NULL;
     }
-    g_free(async_data->query);
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -1726,7 +1797,7 @@ fetch_admin_posts_thread(gpointer data)
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->tweets = parse_admin_posts(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -1749,7 +1820,7 @@ void perform_admin_verify(const gchar *username, gboolean verify)
     gchar *post_data = g_strdup_printf("{\"verified\": %s}", verify ? "true" : "false");
     struct MemoryStruct chunk = {0};
     if (fetch_url(url, &chunk, post_data, "PATCH")) {
-        free(chunk.memory);
+        g_free(chunk.memory);
         start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
     }
     g_free(post_data);
@@ -1763,7 +1834,7 @@ void perform_admin_suspend(const gchar *username, const gchar *reason)
     gchar *post_data = g_strdup_printf("{\"reason\": \"%s\", \"action\": \"suspend\"}", reason);
     struct MemoryStruct chunk = {0};
     if (fetch_url(url, &chunk, post_data, "POST")) {
-        free(chunk.memory);
+        g_free(chunk.memory);
         start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
     }
     g_free(post_data);
@@ -1776,7 +1847,7 @@ void perform_admin_delete_user(const gchar *username)
     gchar *url = g_strdup_printf("%s/%s", ADMIN_USERS_URL, username);
     struct MemoryStruct chunk = {0};
     if (fetch_url(url, &chunk, NULL, "DELETE")) {
-        free(chunk.memory);
+        g_free(chunk.memory);
         start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
     }
     g_free(url);
@@ -1788,7 +1859,7 @@ void perform_admin_delete_post(const gchar *post_id)
     gchar *url = g_strdup_printf("%s/%s", ADMIN_POSTS_URL, post_id);
     struct MemoryStruct chunk = {0};
     if (fetch_url(url, &chunk, NULL, "DELETE")) {
-        free(chunk.memory);
+        g_free(chunk.memory);
         start_loading_admin_posts(gtk_entry_get_text(GTK_ENTRY(g_admin_posts_search)));
     }
     g_free(url);
@@ -1801,6 +1872,7 @@ static gboolean on_users_loaded(gpointer data)
     if (async_data->success && async_data->users) {
         populate_user_list(async_data->list_box, async_data->users);
         free_users(async_data->users);
+        async_data->users = NULL;
     } else {
         GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
         for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
@@ -1812,8 +1884,7 @@ static gboolean on_users_loaded(gpointer data)
         gtk_list_box_insert(async_data->list_box, error_label, -1);
     }
 
-    g_free(async_data->query);
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -1824,6 +1895,7 @@ static gboolean on_search_tweets_loaded(gpointer data)
     if (async_data->success && async_data->tweets) {
         populate_tweet_list(async_data->list_box, async_data->tweets);
         free_tweets(async_data->tweets);
+        async_data->tweets = NULL;
     } else {
         GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
         for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
@@ -1835,8 +1907,7 @@ static gboolean on_search_tweets_loaded(gpointer data)
         gtk_list_box_insert(async_data->list_box, error_label, -1);
     }
 
-    g_free(async_data->query);
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -1851,7 +1922,7 @@ static gpointer fetch_search_users_thread(gpointer data)
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->users = parse_users(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -1872,7 +1943,7 @@ static gpointer fetch_search_tweets_thread(gpointer data)
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->tweets = parse_tweets(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -1932,7 +2003,7 @@ gboolean perform_like(const gchar *tweet_id)
         } else if (chunk.memory) {
             g_warning("perform_like: API returned error: %s", chunk.memory);
         }
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         g_debug("perform_like: fetch_url failed");
     }
@@ -1955,7 +2026,7 @@ gboolean perform_retweet(const gchar *tweet_id)
         } else if (chunk.memory) {
             g_warning("perform_retweet: API returned error: %s", chunk.memory);
         }
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         g_debug("perform_retweet: fetch_url failed");
     }
@@ -1988,7 +2059,7 @@ gboolean perform_bookmark(const gchar *tweet_id, gboolean add)
         } else if (chunk.memory) {
             g_warning("perform_bookmark: API returned error: %s", chunk.memory);
         }
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         g_debug("perform_bookmark: fetch_url failed");
     }
@@ -2023,7 +2094,7 @@ gboolean perform_reaction(const gchar *tweet_id, const gchar *emoji)
         } else if (chunk.memory) {
             g_warning("perform_reaction: API returned error: %s", chunk.memory);
         }
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         g_debug("perform_reaction: fetch_url failed");
     }
@@ -2078,7 +2149,7 @@ GList* fetch_emojis(void)
             g_error_free(error);
         }
         g_object_unref(parser);
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     return emojis;
@@ -2104,7 +2175,7 @@ static gboolean perform_add_note(const gchar *tweet_id, const gchar *note, const
 
     if (fetch_url(url, &chunk, post_data, "POST")) {
         success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(post_data);
@@ -2245,7 +2316,7 @@ gboolean perform_follow(const gchar *username, gboolean follow)
 
     if (fetch_url(url, &chunk, "{}", method)) {
         success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(url);
@@ -2259,6 +2330,7 @@ static gboolean on_followers_loaded(gpointer data)
     if (async_data->success && async_data->users) {
         populate_user_list(GTK_LIST_BOX(g_followers_list), async_data->users);
         free_users(async_data->users);
+        async_data->users = NULL;
     } else {
         GList *children = gtk_container_get_children(GTK_CONTAINER(g_followers_list));
         for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
@@ -2270,8 +2342,7 @@ static gboolean on_followers_loaded(gpointer data)
         gtk_list_box_insert(GTK_LIST_BOX(g_followers_list), error_label, -1);
     }
 
-    g_free(async_data->username);
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -2284,7 +2355,7 @@ static gpointer fetch_followers_thread(gpointer data)
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->users = parse_users(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -2317,6 +2388,7 @@ static gboolean on_following_loaded(gpointer data)
     if (async_data->success && async_data->users) {
         populate_user_list(GTK_LIST_BOX(g_following_list), async_data->users);
         free_users(async_data->users);
+        async_data->users = NULL;
     } else {
         GList *children = gtk_container_get_children(GTK_CONTAINER(g_following_list));
         for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
@@ -2328,8 +2400,7 @@ static gboolean on_following_loaded(gpointer data)
         gtk_list_box_insert(GTK_LIST_BOX(g_following_list), error_label, -1);
     }
 
-    g_free(async_data->username);
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -2342,7 +2413,7 @@ static gpointer fetch_following_thread(gpointer data)
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->users = parse_users(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -2375,6 +2446,7 @@ static gboolean on_bookmarks_loaded(gpointer data)
     if (async_data->success && async_data->tweets) {
         populate_tweet_list(async_data->list_box, async_data->tweets);
         free_tweets(async_data->tweets);
+        async_data->tweets = NULL;
     } else {
         GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
         for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
@@ -2386,7 +2458,7 @@ static gboolean on_bookmarks_loaded(gpointer data)
         gtk_list_box_insert(async_data->list_box, error_label, -1);
     }
 
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -2399,7 +2471,7 @@ static gpointer fetch_bookmarks_thread(gpointer data)
         // Bookmarks API returns posts similar to regular tweets
         async_data->tweets = parse_tweets(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -2447,7 +2519,7 @@ gboolean perform_block(const gchar *username, gboolean block)
 
     if (fetch_url(url, &chunk, post_data, "POST")) {
         success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(post_data);
@@ -2477,7 +2549,7 @@ gboolean perform_mute(const gchar *username, gboolean mute)
 
     if (fetch_url(url, &chunk, post_data, "POST")) {
         success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(post_data);
@@ -2508,7 +2580,7 @@ gboolean check_user_blocked(const gchar *username)
             g_error_free(error);
         }
         g_object_unref(parser);
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(url);
@@ -2537,7 +2609,7 @@ gboolean check_user_muted(const gchar *username)
             g_error_free(error);
         }
         g_object_unref(parser);
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(url);
@@ -2600,7 +2672,7 @@ gboolean perform_poll_vote(const gchar *tweet_id, const gchar *option_id)
 
     if (fetch_url(url, &chunk, post_data, "POST")) {
         success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(post_data);
@@ -2665,7 +2737,7 @@ gboolean perform_update_profile(const gchar *username, const gchar *name, const 
 
     if (fetch_url(url, &chunk, post_data, "PATCH")) {
         success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(post_data);
@@ -2686,7 +2758,7 @@ gboolean perform_upload_avatar(const gchar *username, const gchar *file_path)
 
     if (fetch_url_with_file(url, &chunk, file_path, "image")) {
         success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(url);
@@ -2703,7 +2775,7 @@ gboolean perform_upload_banner(const gchar *username, const gchar *file_path)
 
     if (fetch_url_with_file(url, &chunk, file_path, "image")) {
         success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(url);
@@ -2735,7 +2807,7 @@ gchar* perform_media_upload(const gchar *file_path)
         file_url = parse_upload_response(chunk.memory);
         g_debug("perform_media_upload: extracted file_url=%s", file_url ? file_url : "(null)");
         
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         g_debug("perform_media_upload: fetch_url_with_file failed");
     }
@@ -2754,7 +2826,7 @@ gboolean perform_join_community(const gchar *community_id)
 
     if (fetch_url(url, &chunk, "{}", "POST")) {
         success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(url);
@@ -2771,7 +2843,7 @@ gboolean perform_leave_community(const gchar *community_id)
 
     if (fetch_url(url, &chunk, "{}", "POST")) {
         success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     }
 
     g_free(url);
@@ -2790,12 +2862,13 @@ static gboolean on_communities_loaded(gpointer data)
     if (async_data->success) {
         populate_community_list(async_data->list_box, async_data->communities);
         free_communities(async_data->communities);
+        async_data->communities = NULL;
     } else {
         GtkWidget *error_label = gtk_label_new("Failed to load communities");
         gtk_list_box_insert(async_data->list_box, error_label, -1);
     }
 
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -2807,7 +2880,7 @@ static gpointer fetch_communities_thread(gpointer data)
     if (fetch_url(COMMUNITIES_LIST_URL, &chunk, NULL, "GET")) {
         async_data->communities = parse_communities(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -2841,6 +2914,7 @@ static gboolean on_community_tweets_loaded(gpointer data)
     if (async_data->success && async_data->tweets) {
         populate_tweet_list(async_data->list_box, async_data->tweets);
         free_tweets(async_data->tweets);
+        async_data->tweets = NULL;
     } else {
         GList *children = gtk_container_get_children(GTK_CONTAINER(async_data->list_box));
         for(GList *iter = children; iter != NULL; iter = g_list_next(iter))
@@ -2852,8 +2926,7 @@ static gboolean on_community_tweets_loaded(gpointer data)
         gtk_list_box_insert(async_data->list_box, error_label, -1);
     }
     
-    g_free(async_data->community_id);
-    g_free(async_data);
+    free_async_data(async_data);
     return G_SOURCE_REMOVE;
 }
 
@@ -2867,7 +2940,7 @@ static gpointer fetch_community_tweets_thread(gpointer data)
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->tweets = parse_tweets(chunk.memory);
         async_data->success = TRUE;
-        free(chunk.memory);
+        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }

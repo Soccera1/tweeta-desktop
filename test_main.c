@@ -834,7 +834,9 @@ int main(int argc, char** argv) {
     
     // Cleanup temp root
     gchar *rm_cmd = g_strdup_printf("rm -rf \"%s\"", tmp_root);
-    system(rm_cmd);
+    if (system(rm_cmd) != 0) {
+        g_warning("Failed to remove temporary directory: %s", tmp_root);
+    }
     g_free(rm_cmd);
     g_free(tmp_root);
     

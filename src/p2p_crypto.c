@@ -17,6 +17,7 @@
 static gpgme_ctx_t g_gpg_ctx = NULL;
 static gchar *g_local_fingerprint = NULL;
 static GMutex g_crypto_mutex;
+static gboolean g_crypto_initialized = FALSE;
 
 static void
 init_gpgme(void)
@@ -31,6 +32,8 @@ init_gpgme(void)
 gboolean
 p2p_crypto_init(void)
 {
+    if (g_crypto_initialized) return TRUE;
+
     g_mutex_init(&g_crypto_mutex);
     g_mutex_lock(&g_crypto_mutex);
 
@@ -46,6 +49,7 @@ p2p_crypto_init(void)
     gpgme_set_armor(g_gpg_ctx, 1);
     gpgme_set_textmode(g_gpg_ctx, 1);
 
+    g_crypto_initialized = TRUE;
     g_mutex_unlock(&g_crypto_mutex);
     return TRUE;
 }
@@ -53,6 +57,8 @@ p2p_crypto_init(void)
 void
 p2p_crypto_cleanup(void)
 {
+    if (!g_crypto_initialized) return;
+
     g_mutex_lock(&g_crypto_mutex);
 
     if (g_gpg_ctx) {
@@ -65,6 +71,7 @@ p2p_crypto_cleanup(void)
 
     g_mutex_unlock(&g_crypto_mutex);
     g_mutex_clear(&g_crypto_mutex);
+    g_crypto_initialized = FALSE;
 }
 
 gchar *
@@ -157,6 +164,7 @@ p2p_export_public_key(const gchar *fingerprint)
 gboolean
 p2p_import_public_key(const gchar *armored_key, const gchar *fingerprint)
 {
+    (void)fingerprint;
     if (!g_gpg_ctx || !armored_key) {
         return FALSE;
     }
@@ -250,6 +258,7 @@ cleanup:
 gchar *
 p2p_decrypt_message(const gchar *encrypted_armor, const gchar *passphrase)
 {
+    (void)passphrase;
     if (!g_gpg_ctx || !encrypted_armor) {
         return NULL;
     }
@@ -296,6 +305,7 @@ cleanup:
 gchar *
 p2p_sign_message(const gchar *message, const gchar *fingerprint, const gchar *passphrase)
 {
+    (void)passphrase;
     if (!g_gpg_ctx || !message || !fingerprint) {
         return NULL;
     }
@@ -342,6 +352,7 @@ cleanup:
 gboolean
 p2p_verify_signature(const gchar *message, const gchar *signature, const gchar *signer_fingerprint)
 {
+    (void)signer_fingerprint;
     if (!g_gpg_ctx || !message || !signature) {
         return FALSE;
     }

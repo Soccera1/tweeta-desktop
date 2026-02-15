@@ -42,6 +42,23 @@ static GThread *g_listener_thread = NULL;
 static GThread *g_poll_thread = NULL;
 static GMutex g_network_mutex;
 static GMutex g_connections_mutex;
+static gboolean g_network_initialized = FALSE;
+
+static void
+p2p_free_contact_info(gpointer data)
+{
+    struct P2PContactInfo *info = (struct P2PContactInfo *)data;
+    if (info) {
+        g_free(info->username);
+        g_free(info->public_key_fingerprint);
+        g_free(info->direct_host);
+        g_free(info->last_seen);
+        if (info->socket_fd >= 0) {
+            close(info->socket_fd);
+        }
+        g_free(info);
+    }
+}
 
 /* Wrapper for UI refresh callback to match GSourceFunc signature */
 static gboolean refresh_messages_idle_cb(gpointer user_data)
@@ -175,6 +192,8 @@ p2p_free_network_message(struct P2PNetworkMessage *msg)
 gboolean
 p2p_network_init(struct P2PTransportConfig *config)
 {
+    if (g_network_initialized) return TRUE;
+
     g_mutex_init(&g_network_mutex);
     g_mutex_init(&g_connections_mutex);
 
@@ -194,9 +213,10 @@ p2p_network_init(struct P2PTransportConfig *config)
         }
     }
 
-    g_active_connections = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    g_active_connections = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, p2p_free_contact_info);
     g_pending_messages = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
 
+    g_network_initialized = TRUE;
     return TRUE;
 }
 
@@ -204,6 +224,8 @@ p2p_network_init(struct P2PTransportConfig *config)
 void
 p2p_network_cleanup(void)
 {
+    if (!g_network_initialized) return;
+
     p2p_stop_listener();
     p2p_stop_message_polling();
 
@@ -227,6 +249,7 @@ p2p_network_cleanup(void)
 
     g_mutex_clear(&g_network_mutex);
     g_mutex_clear(&g_connections_mutex);
+    g_network_initialized = FALSE;
 }
 
 /* Listener thread function for direct P2P connections */
@@ -493,7 +516,7 @@ send_tweetapus_message(const gchar *recipient, struct P2PNetworkMessage *msg)
 
     g_free(url);
     g_free(post_data);
-    if (chunk.memory) free(chunk.memory);
+    if (chunk.memory) g_free(chunk.memory);
 
     return success;
 }
@@ -687,7 +710,7 @@ p2p_poll_tweetapus_messages(const gchar *since_timestamp)
     }
 
     g_free(url);
-    if (chunk.memory) free(chunk.memory);
+    if (chunk.memory) g_free(chunk.memory);
 
     return messages;
 }

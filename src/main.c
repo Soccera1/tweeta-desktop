@@ -6,6 +6,8 @@
 #include "actions.h"
 #include "views.h"
 #include "types.h"
+#include "p2p_network.h"
+#include "p2p_crypto.h"
 
 int main(int argc, char *argv[]) {
     GtkWidget *window;
@@ -47,6 +49,16 @@ int main(int argc, char *argv[]) {
     }
     g_free(g_auth_token);
     g_free(g_current_username);
+    g_free(g_community_id);
+
+    if (g_p2p_session) {
+        p2p_free_session(g_p2p_session);
+    }
+
+    p2p_network_cleanup();
+    p2p_crypto_cleanup();
+
+    g_mutex_clear(&g_globals_mutex);
 
     return 0;
 }
