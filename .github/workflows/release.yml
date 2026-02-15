@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -79,13 +79,25 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Install build dependencies
         run: |
-          brew install gtk+3 json-glib pkg-config dylibbundler curl gpgme adwaita-icon-theme hicolor-icon-theme gettext libffi
+          cat <<EOF > Brewfile
+          brew "gtk+3"
+          brew "json-glib"
+          brew "pkg-config"
+          brew "dylibbundler"
+          brew "curl"
+          brew "gpgme"
+          brew "adwaita-icon-theme"
+          brew "hicolor-icon-theme"
+          brew "gettext"
+          brew "libffi"
+          EOF
+          brew bundle install
           echo "PKG_CONFIG_PATH=$(brew --prefix curl)/lib/pkgconfig:$(brew --prefix libffi)/lib/pkgconfig:$(brew --prefix gettext)/lib/pkgconfig:$(brew --prefix gpgme)/lib/pkgconfig" >> $GITHUB_ENV
 
       - name: Build project
@@ -166,7 +178,7 @@ jobs:
 #    runs-on: windows-latest
 #    steps:
 #      - name: Checkout code
-#        uses: actions/checkout@v3
+#        uses: actions/checkout@v4
 #        with:
 #          fetch-depth: 0
 #
@@ -304,7 +316,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -338,44 +350,28 @@ jobs:
           echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
         shell: bash
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ env.NEW_TAG }}
-          release_name: Release ${{ env.NEW_TAG }}
-          body: |
-            Automated release for Tweeta Desktop.
-            Commit: ${{ github.sha }}
-          draft: false
-          prerelease: false
-
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts/
 
-      - name: Upload AppImage Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/tweeta-desktop-appimage/Tweeta_Desktop-x86_64.AppImage
-          asset_name: Tweeta_Desktop-${{ env.NEW_TAG }}-x86_64.AppImage
-          asset_content_type: application/octet-stream
+      - name: Prepare assets for release
+        run: |
+          mkdir release_assets
+          cp ./artifacts/tweeta-desktop-appimage/Tweeta_Desktop-x86_64.AppImage release_assets/Tweeta_Desktop-${{ env.NEW_TAG }}-x86_64.AppImage
+          cp ./artifacts/tweeta-desktop-macos-dmg/Tweeta_Desktop-macos.dmg release_assets/Tweeta_Desktop-${{ env.NEW_TAG }}-macos.dmg
 
-      - name: Upload MacOS DMG Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/tweeta-desktop-macos-dmg/Tweeta_Desktop-macos.dmg
-          asset_name: Tweeta_Desktop-${{ env.NEW_TAG }}-macos.dmg
-          asset_content_type: application/octet-stream
+          tag_name: ${{ env.NEW_TAG }}
+          name: Release ${{ env.NEW_TAG }}
+          body: |
+            Automated release for Tweeta Desktop.
+            Commit: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          files: release_assets/*
 
 #      - name: Upload Windows Setup Release Asset
 #        uses: actions/upload-release-asset@v1
