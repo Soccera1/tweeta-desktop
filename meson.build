@@ -51,3 +51,16 @@ install_data('logo.png',
 )
 
 install_man('tweeta-desktop.1')
+
+makeinfo_prog = find_program('makeinfo', required : false)
+if makeinfo_prog.found()
+  info_manual = custom_target('tweeta-desktop-info',
+    input : 'tweeta-desktop.texi',
+    output : 'tweeta-desktop.info',
+    command : [makeinfo_prog, '-o', '@OUTPUT@', '@INPUT@'],
+    install : true,
+    install_dir : get_option('datadir') / 'info'
+  )
+else
+  warning('makeinfo not found; skipping Texinfo manual generation/install')
+endif

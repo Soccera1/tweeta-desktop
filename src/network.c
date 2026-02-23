@@ -35,12 +35,49 @@ WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
   return realsize;
 }
 
+static const gchar *
+get_runtime_api_base_url(void)
+{
+    const gchar *env = g_getenv("TWEETA_API_BASE_URL");
+    return (env && *env) ? env : API_BASE_URL;
+}
+
+static const gchar *
+get_runtime_base_domain(void)
+{
+    const gchar *env = g_getenv("TWEETA_BASE_DOMAIN");
+    return (env && *env) ? env : BASE_DOMAIN;
+}
+
+static gchar *
+rewrite_url_for_runtime_base(const gchar *url)
+{
+    if (!url) {
+        return NULL;
+    }
+
+    const gchar *runtime_api_base = get_runtime_api_base_url();
+    if (g_str_has_prefix(url, API_BASE_URL) &&
+        g_strcmp0(runtime_api_base, API_BASE_URL) != 0) {
+        return g_strdup_printf("%s%s", runtime_api_base, url + strlen(API_BASE_URL));
+    }
+
+    const gchar *runtime_base_domain = get_runtime_base_domain();
+    if (g_str_has_prefix(url, BASE_DOMAIN) &&
+        g_strcmp0(runtime_base_domain, BASE_DOMAIN) != 0) {
+        return g_strdup_printf("%s%s", runtime_base_domain, url + strlen(BASE_DOMAIN));
+    }
+
+    return g_strdup(url);
+}
+
 gboolean
 fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, const gchar *method, long *response_code)
 {
     CURL *curl_handle;
     CURLcode res;
     struct curl_slist *headers = NULL;
+    gchar *request_url = NULL;
 
     if (!url) {
         g_critical("fetch_url_internal: URL is NULL");
@@ -62,7 +99,8 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
         return FALSE;
     }
 
-    curl_easy_setopt(curl_handle, CURLOPT_URL, url);
+    request_url = rewrite_url_for_runtime_base(url);
+    curl_easy_setopt(curl_handle, CURLOPT_URL, request_url);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)chunk);
     curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
@@ -73,8 +111,13 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
     curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
 
     headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "Accept: application/json");
     gchar *auth_token = get_auth_token_safe();
-    g_debug("fetch_url_internal: url=%s, method=%s, has_auth_token=%d", url, method, auth_token != NULL);
+    g_debug("fetch_url_internal: url=%s, request_url=%s, method=%s, has_auth_token=%d",
+            url,
+            request_url,
+            method,
+            auth_token != NULL);
     if (auth_token) {
         gchar *auth_header = g_strdup_printf("Authorization: Bearer %s", auth_token);
         headers = curl_slist_append(headers, auth_header);
@@ -105,10 +148,12 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
         chunk->memory = NULL;
         chunk->size = 0;
         curl_easy_cleanup(curl_handle);
+        g_free(request_url);
         return FALSE;
     }
 
     curl_easy_cleanup(curl_handle);
+    g_free(request_url);
     return TRUE;
 }
 gboolean

@@ -1,6 +1,7 @@
 tweetapus-gtk-c
 tweeta-desktop
 test_runner
+tweeta-desktop.info
 *.o
 .tweetapus/
 tweetapus/

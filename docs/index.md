@@ -16,6 +16,10 @@ Tweeta Desktop provides a lightweight, native experience for interacting with Tw
 - [**Architecture**](architecture.md): Information about the internal structure and technical implementation.
 - [**Development**](development.md): Information for developers, including testing and contributing.
 
+Additional local manuals:
+- Man page: `tweeta-desktop(1)`
+- GNU Info manual: `info tweeta-desktop`
+
 ## Features
 
 - **Timeline View**: View public tweets from the Tweetapus community.

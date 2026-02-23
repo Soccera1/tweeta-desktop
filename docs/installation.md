@@ -17,12 +17,13 @@ To build the client, you will need the following dependencies installed on your 
 - **libcurl**: Client-side URL transfer library for networking.
 - **json-glib-1.0**: A library for parsing and generating JSON using GLib and GObject.
 - **pkg-config**: A helper tool used when compiling applications and libraries.
+- **Texinfo**: Required to generate the GNU Info manual (`makeinfo`).
 
 On Debian-based systems (like Ubuntu), you can install these with:
 
 ```bash
 sudo apt update
-sudo apt install build-essential meson ninja-build libgtk-3-dev libcurl4-openssl-dev libjson-glib-dev pkg-config
+sudo apt install build-essential meson ninja-build libgtk-3-dev libcurl4-openssl-dev libjson-glib-dev texinfo pkg-config
 ```
 
 ## Building
@@ -47,6 +48,12 @@ It is recommended to build in a dedicated build directory to keep the source tre
 This will produce an executable named `tweeta-desktop` in the `build/` directory.
 
 Alternatively, you can still build directly in the root directory by simply running `make`.
+
+To build the GNU Info page, run:
+
+```bash
+make info
+```
 
 ### Using Meson
 
@@ -95,6 +102,7 @@ Both methods will perform the following actions:
 - Install the desktop entry to `/usr/local/share/applications/tweeta-desktop.desktop`.
 - Install the application icon to `/usr/local/share/pixmaps/tweeta-desktop.png`.
 - Install the man page to `/usr/local/share/man/man1/tweeta-desktop.1`.
+- Install the GNU Info page to `/usr/local/share/info/tweeta-desktop.info`.
 
 ## Uninstallation
 

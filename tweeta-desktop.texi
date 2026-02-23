@@ -1,0 +1,122 @@
+\input texinfo
+@c -*-texinfo-*-
+@setfilename tweeta-desktop.info
+@settitle Tweeta Desktop Manual
+@documentencoding UTF-8
+
+@dircategory Internet and network applications
+@direntry
+* tweeta-desktop: (tweeta-desktop). GTK3 desktop client for Tweeta/Tweetapus.
+@end direntry
+
+@copying
+This manual documents @command{tweeta-desktop}.
+
+Copyright @copyright{} 2025 Lily.
+
+Permission is granted to copy, distribute and/or modify this document under
+the terms of the GNU Affero General Public License, Version 3 or any later
+version published by the Free Software Foundation.
+@end copying
+
+@titlepage
+@title Tweeta Desktop Manual
+@subtitle GTK3 Desktop Client for Tweeta/Tweetapus
+@author Lily
+
+@vskip 1em
+@insertcopying
+@end titlepage
+
+@contents
+
+@node Top
+@top Tweeta Desktop
+
+@insertcopying
+
+Tweeta Desktop is a GTK3 desktop client for the Tweeta/Tweetapus social
+platform.
+
+@menu
+* Overview::
+* Invoking tweeta-desktop::
+* Environment Variables::
+* Files::
+* Feature Summary::
+* License::
+@end menu
+
+@node Overview
+@chapter Overview
+
+Tweeta Desktop provides a native desktop interface for timelines, profiles,
+search, notifications, direct messages, and moderation/admin features.
+
+Current runtime support is Linux.
+
+@node Invoking tweeta-desktop
+@chapter Invoking tweeta-desktop
+
+Run the program as:
+
+@example
+tweeta-desktop
+@end example
+
+Tweeta Desktop does not define custom command-line options. Standard GTK3
+options are supported.
+
+@node Environment Variables
+@chapter Environment Variables
+
+@table @code
+@item TWEETA_API_BASE_URL
+Overrides the default API base URL used for API requests.
+
+@item TWEETA_BASE_DOMAIN
+Overrides the default site base domain used for absolute web/media URLs.
+
+@item XDG_CONFIG_HOME
+Base directory used by GLib for per-user configuration.
+
+@item XDG_CACHE_HOME
+Base directory used by GLib for per-user cache data.
+@end table
+
+@node Files
+@chapter Files
+
+@table @file
+@item $XDG_CONFIG_HOME/tweeta-desktop/session.json
+Stores session token, username, and admin flag after a successful login.
+
+@item $XDG_CACHE_HOME/tweeta-desktop/
+Cache directory used by cache management in the Settings view.
+@end table
+
+@node Feature Summary
+@chapter Feature Summary
+
+@itemize @bullet
+@item Public and following timelines with infinite scroll.
+@item User authentication (login/logout) with session restore.
+@item Composing posts with optional media uploads.
+@item Reply, like, retweet/quote, bookmark, and emoji reaction actions.
+@item Search for users and posts.
+@item Profile views with tweets/replies/followers/following.
+@item Notifications inbox and mark-all-read action.
+@item Direct messages, including encrypted messaging with GPG keys.
+@item Communities browsing and join/leave actions.
+@item Admin views for site stats, users, posts, and moderation actions.
+@item Settings for theme, compact mode, notifications, and cache cleanup.
+@end itemize
+
+@node License
+@chapter License
+
+Tweeta Desktop is licensed under the GNU Affero General Public License v3.0
+(AGPLv3). See the @file{COPYING} file distributed with the source code for the
+full license text.
+
+@bye

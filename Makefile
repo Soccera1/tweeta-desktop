@@ -21,6 +21,9 @@ LDFLAGS =
 
 TARGET      = tweeta-desktop
 TEST_TARGET = test_runner
+INFO_SOURCE = tweeta-desktop.texi
+INFO_TARGET = tweeta-desktop.info
+MAKEINFO   ?= makeinfo
 
 # Define source files (all in src/ directory)
 MAIN_SRC = src/main.c
@@ -40,6 +43,8 @@ TEST_OBJS = $(TEST_OBJ) $(CORE_OBJS)
 
 all: $(TARGET)
 
+info: $(INFO_TARGET)
+
 $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -o $(TARGET) $(OBJS) $(GTK_LIBS)
 
@@ -52,7 +57,10 @@ static: $(OBJS)
 	$(CC) $(CFLAGS) $(GTK_CFLAGS) -c $< -o $@
 
 clean:
-	rm -f src/*.o *.o $(TARGET) $(TARGET)-static $(TEST_TARGET)
+	rm -f src/*.o *.o $(TARGET) $(TARGET)-static $(TEST_TARGET) $(INFO_TARGET)
+
+$(INFO_TARGET): $(INFO_SOURCE)
+	$(MAKEINFO) -o $(INFO_TARGET) $(INFO_SOURCE)
 
 install: all
 	@if [ ! -d "$(DESTDIR)$(PREFIX)" ]; then \
@@ -71,12 +79,16 @@ install: all
 	@mkdir -p $(DESTDIR)$(PREFIX)/share/man/man1
 	@cp $(SRCDIR)/tweeta-desktop.1 $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
 	@chmod 644 $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
+	@mkdir -p $(DESTDIR)$(PREFIX)/share/info
+	@$(MAKEINFO) -o $(DESTDIR)$(PREFIX)/share/info/$(INFO_TARGET) $(SRCDIR)/$(INFO_SOURCE)
+	@chmod 644 $(DESTDIR)$(PREFIX)/share/info/$(INFO_TARGET)
 
 uninstall:
 	rm -f $(DESTDIR)$(PREFIX)/bin/$(TARGET)
 	rm -f $(DESTDIR)$(PREFIX)/share/applications/tweeta-desktop.desktop
 	rm -f $(DESTDIR)$(PREFIX)/share/pixmaps/tweeta-desktop.png
 	rm -f $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
+	rm -f $(DESTDIR)$(PREFIX)/share/info/$(INFO_TARGET)
 
 test: $(TEST_TARGET)
 	./$(TEST_TARGET)
@@ -84,4 +96,4 @@ test: $(TEST_TARGET)
 $(TEST_TARGET): $(TEST_OBJS)
 	$(CC) $(LDFLAGS) -o $(TEST_TARGET) $(TEST_OBJS) $(GTK_LIBS)
 
-.PHONY: all static clean install uninstall test
+.PHONY: all info static clean install uninstall test

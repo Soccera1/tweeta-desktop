@@ -15,6 +15,7 @@ Detailed documentation is available in the [docs/](docs/index.md) directory.
 ## Building
 
 To build the client, you will need to have GTK3, libcurl, json-glib, and GPGME installed.
+To build the Texinfo manual, install `makeinfo` from GNU Texinfo.
 
 ### Dependencies
 
@@ -23,20 +24,23 @@ To build the client, you will need to have GTK3, libcurl, json-glib, and GPGME i
 - libcurl (libcurl4-openssl-dev on Debian/Ubuntu)
 - json-glib (libjson-glib-dev on Debian/Ubuntu)
 - GPGME (libgpgme-dev on Debian/Ubuntu) - for encrypted messaging support
+- GNU Texinfo (`makeinfo`) - for generating the Info manual
 
 **Installing dependencies on Debian/Ubuntu:**
 ```bash
-sudo apt-get install libgtk-3-dev libcurl4-openssl-dev libjson-glib-dev libgpgme-dev pkg-config
+sudo apt-get install libgtk-3-dev libcurl4-openssl-dev libjson-glib-dev libgpgme-dev texinfo pkg-config
 ```
 
 **Installing dependencies on macOS (Homebrew):**
 ```bash
-brew install gtk+3 json-glib curl gpgme pkg-config
+brew install gtk+3 json-glib curl gpgme texinfo pkg-config
 ```
 
 ### Using Make
 
 Run `make` to build the client.
+
+Run `make info` to build the Info manual (`tweeta-desktop.info`).
 
 ### Using Meson/Ninja
 
@@ -49,3 +53,12 @@ ninja -C build
 ## Running
 
 To run the client, simply run `./tweeta-desktop`.
+
+If you need to target a different Tweeta/Tweetapus instance, you can override
+the default endpoints at runtime:
+
+```bash
+TWEETA_API_BASE_URL="https://your-instance.example/api" \
+TWEETA_BASE_DOMAIN="https://your-instance.example" \
+./tweeta-desktop
+```

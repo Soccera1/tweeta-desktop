@@ -1,42 +1,75 @@
-.TH TWEETA-DESKTOP 1 "30 December 2025" "tweeta-desktop" "Tweeta User Manual"
+.TH TWEETA-DESKTOP 1 "19 February 2026" "tweeta-desktop" "Tweeta User Manual"
 .SH NAME
-tweeta-desktop \- A minimal GTK3 X11 client for Tweetapus
+tweeta-desktop \- GTK3 desktop client for Tweeta/Tweetapus
 .SH SYNOPSIS
 .B tweeta-desktop
+.RI [ GTK_OPTIONS ]
 .SH DESCRIPTION
 .B tweeta-desktop
-is a desktop client for the Tweetapus social media platform. It provides a minimal GTK3 interface to view public timelines, search for users and posts, and manage your Tweetapus account.
+is a GTK3 desktop client for the Tweeta/Tweetapus social platform.
+.SH FEATURES
 .PP
-Key features include:
+Current application features include:
+.PP
 .IP \(bu 2
-Viewing public timelines.
+Public and following timelines with infinite scroll.
 .IP \(bu 2
-User authentication (Login/Logout).
+User authentication (login/logout) with persisted session restore.
 .IP \(bu 2
-Composing, replying, quoting, and liking tweets.
+Composing posts with optional media uploads.
 .IP \(bu 2
-Searching for posts and users.
+Tweet interactions: reply, like, retweet/quote, bookmark, and emoji reactions.
 .IP \(bu 2
-Direct messaging between users.
+Search for users and posts.
 .IP \(bu 2
-Viewing user profiles and their tweet history.
+Profile views with tweets/replies/followers/following and follow/unfollow actions.
 .IP \(bu 2
-Real-time notifications for interactions.
+Notifications inbox with "mark all as read".
 .IP \(bu 2
-Fact-checking and notes for administrators.
+Direct messaging, including an encrypted messaging workspace (GPG key setup/import and contact management).
+.IP \(bu 2
+Communities browsing, join/leave, and community timelines.
+.IP \(bu 2
+Poll rendering and voting in timelines.
+.IP \(bu 2
+Admin views for stats, users, posts, and post notes/moderation actions.
+.IP \(bu 2
+Settings for theme, compact mode, notification toggles, and cache cleanup.
 .SH OPTIONS
 .B tweeta-desktop
-accepts standard GTK+ command-line options. For a complete list, see the GTK+ documentation.
+does not define custom command-line options.
+It accepts standard GTK+ 3 command-line options.
+.SH ENVIRONMENT
+.TP
+.B TWEETA_API_BASE_URL
+Overrides the default API base URL used for API requests.
+.TP
+.B TWEETA_BASE_DOMAIN
+Overrides the default site base domain used for absolute web/media URLs.
+.TP
+.B XDG_CONFIG_HOME
+Base directory used by GLib for per-user configuration.
+.TP
+.B XDG_CACHE_HOME
+Base directory used by GLib for per-user cache data.
 .SH FILES
 .TP
 .I $XDG_CONFIG_HOME/tweeta-desktop/session.json
-Stores the session token and username after a successful login.
+Stores session token, username, and admin flag after a successful login.
+.TP
+.I $XDG_CACHE_HOME/tweeta-desktop/
+Cache directory used by cache management in the Settings view.
 .TP
 .I /usr/local/share/pixmaps/tweeta-desktop.png
-The application icon.
+Installed application icon (location varies by install prefix).
+.SH NOTES
+Primary runtime support is Linux.
+.PP
+Encrypted messaging features depend on a working GPGME/GnuPG environment.
 .SH AUTHOR
 Lily
 .SH COPYRIGHT
 (c) 2025 Lily. Licensed under the GNU Affero General Public License v3.0 (AGPLv3).
 .SH SEE ALSO
-.BR gtk-options (7)
+.BR gtk-options (7),
+.BR info (1)
