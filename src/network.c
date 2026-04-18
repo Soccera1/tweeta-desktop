@@ -7,6 +7,9 @@
 #include "globals.h"
 #include "network.h"
 
+#define TWEETA_DESKTOP_CLIENT_HEADER "Tweeta Desktop; 1.0.0"
+#define TWEETA_DESKTOP_USER_AGENT "TweetaDesktop/1.0.0"
+
 static inline gchar* get_auth_token_safe(void) {
     g_mutex_lock(&g_globals_mutex);
     gchar *token = g_auth_token ? g_strdup(g_auth_token) : NULL;
@@ -103,7 +106,7 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
     curl_easy_setopt(curl_handle, CURLOPT_URL, request_url);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)chunk);
-    curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "libcurl-agent/1.0");
+    curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, TWEETA_DESKTOP_USER_AGENT);
     curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 1L);
     curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYHOST, 2L);
     curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 30L);
@@ -112,6 +115,7 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
 
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "Accept: application/json");
+    headers = curl_slist_append(headers, "X-Tweetapus-Client: " TWEETA_DESKTOP_CLIENT_HEADER);
     gchar *auth_token = get_auth_token_safe();
     g_debug("fetch_url_internal: url=%s, request_url=%s, method=%s, has_auth_token=%d",
             url,

@@ -12,16 +12,25 @@ struct Attachment {
     gchar *id;
     gchar *file_url;
     gchar *file_type;
+    gchar *file_hash;
+    gchar *file_name;
+    gint64 file_size;
+    gboolean is_spoiler;
 };
 
 struct Tweet {
     gchar *content;
+    gchar *author_id;
     gchar *author_name;
     gchar *author_username;
     gchar *author_avatar;
+    gboolean author_verified;
+    gboolean author_gold;
+    gboolean author_gray;
     gchar *id;
     gchar *note;
-    gchar *note_severity;   /* warning, danger, or info */
+    gchar *note_severity;
+    gchar *edited_at;
     GList *attachments;
     gboolean liked;
     gboolean retweeted;
@@ -29,14 +38,22 @@ struct Tweet {
     int like_count;
     int retweet_count;
     int reply_count;
+    int view_count;
+    int quote_count;
+    int reaction_count;
     struct Tweet *quote_tweet;
     struct Poll *poll;
+    gchar *content_type;
+    gchar *retweet_created_at;
+    gchar *original_post_id;
 };
 
 struct Emoji {
     gchar *id;
     gchar *name;
     gchar *file_url;
+    gchar *file_hash;
+    gchar *created_by;
 };
 
 struct Profile {
@@ -44,20 +61,31 @@ struct Profile {
     gchar *username;
     gchar *bio;
     gchar *avatar;
+    gchar *banner;
     int follower_count;
     int following_count;
     int post_count;
+    gboolean is_following;
+    gboolean follows_me;
+    gboolean is_own_profile;
+    gboolean blocked_by_profile;
+    gboolean blocked_profile;
+    gboolean author_verified;
+    gboolean author_gold;
+    gboolean author_gray;
 };
 
 struct Notification {
     gchar *id;
-    gchar *type;            /* like, retweet, reply, follow, mention, quote, reaction */
+    gchar *type;
     gchar *content;
-    gchar *related_id;      /* ID of related tweet or object */
+    gchar *related_id;
     gchar *actor_id;
     gchar *actor_username;
     gchar *actor_name;
     gchar *actor_avatar;
+    gboolean actor_verified;
+    gboolean actor_gold;
     gboolean read;
     gchar *created_at;
 };
@@ -67,23 +95,29 @@ struct DirectMessage {
     gchar *conversation_id;
     gchar *sender_id;
     gchar *content;
+    gchar *message_type;
+    gchar *reply_to;
     gchar *username;
     gchar *name;
     gchar *avatar;
+    gboolean verified;
     gchar *created_at;
+    gchar *edited_at;
     GList *attachments;
 };
 
 struct Conversation {
     gchar *id;
-    gchar *type;            /* direct or group */
+    gchar *type;
     gchar *title;
     gchar *display_name;
     gchar *display_avatar;
     gchar *last_message_content;
     gchar *last_message_time;
+    gchar *last_message_sender;
     int unread_count;
-    GList *participants;    /* List of Profile* */
+    int participant_count;
+    GList *participants;
 };
 
 struct AdminStats {
@@ -169,7 +203,9 @@ struct PollOption {
     gchar *id;
     gchar *option_text;
     int vote_count;
+    int percentage;
     gboolean voted;
+    gchar *user_vote;
 };
 
 struct Poll {
@@ -191,13 +227,17 @@ struct Community {
     gchar *id;
     gchar *name;
     gchar *description;
+    gchar *rules;
     gchar *icon_url;
     gchar *banner_url;
-    gchar *access_mode;     /* public, private, or restricted */
+    gchar *access_mode;
     int member_count;
     gboolean is_member;
     gboolean is_admin;
     gboolean is_moderator;
+    gboolean tag_enabled;
+    gchar *tag_emoji;
+    gchar *tag_text;
 };
 
 struct P2PContact {

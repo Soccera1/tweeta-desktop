@@ -35,6 +35,54 @@ static inline gchar* get_community_id_safe(void) {
 }
 
 static void
+append_badge(GtkWidget *box, const gchar *text, const gchar *color)
+{
+    GtkWidget *badge = gtk_label_new(NULL);
+    gchar *markup = g_strdup_printf("<span foreground='white' background='%s' size='small' weight='bold'> %s </span>",
+                                    color,
+                                    text);
+    gtk_label_set_markup(GTK_LABEL(badge), markup);
+    g_free(markup);
+    gtk_box_pack_start(GTK_BOX(box), badge, FALSE, FALSE, 0);
+}
+
+static void
+append_account_badges(GtkWidget *box, gboolean verified, gboolean gold, gboolean gray)
+{
+    if (gold) {
+        append_badge(box, "Gold", "#c88900");
+    } else if (gray) {
+        append_badge(box, "Gray", "#6c757d");
+    } else if (verified) {
+        append_badge(box, "Verified", "#1d9bf0");
+    }
+}
+
+static gchar *
+build_tweet_meta_text(struct Tweet *tweet)
+{
+    GString *meta = g_string_new(NULL);
+
+    g_string_append_printf(meta, "%d replies  %d likes  %d retweets",
+                           tweet->reply_count,
+                           tweet->like_count,
+                           tweet->retweet_count);
+
+    if (tweet->quote_count > 0 || tweet->view_count > 0 || tweet->reaction_count > 0) {
+        g_string_append_printf(meta, "  %d quotes  %d views  %d reactions",
+                               tweet->quote_count,
+                               tweet->view_count,
+                               tweet->reaction_count);
+    }
+
+    if (tweet->edited_at) {
+        g_string_append(meta, "  edited");
+    }
+
+    return g_string_free(meta, FALSE);
+}
+
+static void
 on_like_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)user_data;
@@ -991,6 +1039,7 @@ create_tweet_widget_full(struct Tweet *tweet, const gchar *op_username)
     g_signal_connect(author_btn, "clicked", G_CALLBACK(on_author_clicked), NULL);
 
     gtk_box_pack_start(GTK_BOX(author_hbox), author_btn, FALSE, FALSE, 0);
+    append_account_badges(author_hbox, tweet->author_verified, tweet->author_gold, tweet->author_gray);
 
     if (op_username && g_strcmp0(tweet->author_username, op_username) == 0) {
         GtkWidget *op_label = gtk_label_new("OP");
@@ -1010,6 +1059,14 @@ create_tweet_widget_full(struct Tweet *tweet, const gchar *op_username)
 
     gtk_box_pack_start(GTK_BOX(box), author_hbox, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(box), content_label, FALSE, FALSE, 0);
+
+    gchar *meta_text = build_tweet_meta_text(tweet);
+    GtkWidget *meta_label = gtk_label_new(meta_text);
+    gtk_label_set_xalign(GTK_LABEL(meta_label), 0.0);
+    GtkStyleContext *meta_context = gtk_widget_get_style_context(meta_label);
+    gtk_style_context_add_class(meta_context, "dim-label");
+    gtk_box_pack_start(GTK_BOX(box), meta_label, FALSE, FALSE, 0);
+    g_free(meta_text);
 
     if (tweet->note) {
         GtkWidget *note_frame = gtk_frame_new(NULL);
@@ -1180,6 +1237,7 @@ create_user_widget(struct Profile *user)
     g_signal_connect(user_btn, "clicked", G_CALLBACK(on_author_clicked), NULL);
 
     gtk_box_pack_start(GTK_BOX(box), user_btn, FALSE, FALSE, 0);
+    append_account_badges(box, user->author_verified, user->author_gold, user->author_gray);
 
     if (user->bio && strlen(user->bio) > 0) {
         GtkWidget *bio_label = gtk_label_new(user->bio);
@@ -1283,22 +1341,29 @@ create_notification_widget(struct Notification *notif)
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
     
     gchar *notif_text;
+    const gchar *actor_name = notif->actor_name ? notif->actor_name : notif->actor_username;
+    const gchar *badge_suffix = "";
+    if (notif->actor_gold) {
+        badge_suffix = " <span foreground='#c88900'>[Gold]</span>";
+    } else if (notif->actor_verified) {
+        badge_suffix = " <span foreground='#1d9bf0'>[Verified]</span>";
+    }
     if (g_strcmp0(notif->type, "like") == 0) {
-        notif_text = g_strdup_printf("<b>%s</b> liked your tweet", notif->actor_name ? notif->actor_name : notif->actor_username);
+        notif_text = g_strdup_printf("<b>%s</b>%s liked your tweet", actor_name, badge_suffix);
     } else if (g_strcmp0(notif->type, "retweet") == 0) {
-        notif_text = g_strdup_printf("<b>%s</b> retweeted your tweet", notif->actor_name ? notif->actor_name : notif->actor_username);
+        notif_text = g_strdup_printf("<b>%s</b>%s retweeted your tweet", actor_name, badge_suffix);
     } else if (g_strcmp0(notif->type, "reply") == 0) {
-        notif_text = g_strdup_printf("<b>%s</b> replied to your tweet", notif->actor_name ? notif->actor_name : notif->actor_username);
+        notif_text = g_strdup_printf("<b>%s</b>%s replied to your tweet", actor_name, badge_suffix);
     } else if (g_strcmp0(notif->type, "follow") == 0) {
-        notif_text = g_strdup_printf("<b>%s</b> followed you", notif->actor_name ? notif->actor_name : notif->actor_username);
+        notif_text = g_strdup_printf("<b>%s</b>%s followed you", actor_name, badge_suffix);
     } else if (g_strcmp0(notif->type, "mention") == 0) {
-        notif_text = g_strdup_printf("<b>%s</b> mentioned you", notif->actor_name ? notif->actor_name : notif->actor_username);
+        notif_text = g_strdup_printf("<b>%s</b>%s mentioned you", actor_name, badge_suffix);
     } else if (g_strcmp0(notif->type, "quote") == 0) {
-        notif_text = g_strdup_printf("<b>%s</b> quoted your tweet", notif->actor_name ? notif->actor_name : notif->actor_username);
+        notif_text = g_strdup_printf("<b>%s</b>%s quoted your tweet", actor_name, badge_suffix);
     } else if (g_strcmp0(notif->type, "reaction") == 0) {
-        notif_text = g_strdup_printf("<b>%s</b> reacted to your tweet", notif->actor_name ? notif->actor_name : notif->actor_username);
+        notif_text = g_strdup_printf("<b>%s</b>%s reacted to your tweet", actor_name, badge_suffix);
     } else {
-        notif_text = g_strdup_printf("<b>%s</b>: %s", notif->actor_name ? notif->actor_name : notif->actor_username, notif->content);
+        notif_text = g_strdup_printf("<b>%s</b>%s: %s", actor_name, badge_suffix, notif->content);
     }
 
     GtkWidget *label = gtk_label_new(NULL);
@@ -1395,14 +1460,33 @@ create_conversation_widget(struct Conversation *conv)
     gtk_label_set_xalign(GTK_LABEL(name_label), 0.0);
     g_free(name_markup);
 
-    GtkWidget *last_msg_label = gtk_label_new(conv->last_message_content);
+    GtkWidget *last_msg_label = gtk_label_new(conv->last_message_content ? conv->last_message_content : "");
     gtk_label_set_xalign(GTK_LABEL(last_msg_label), 0.0);
     gtk_label_set_ellipsize(GTK_LABEL(last_msg_label), PANGO_ELLIPSIZE_END);
     GtkStyleContext *context = gtk_widget_get_style_context(last_msg_label);
     gtk_style_context_add_class(context, "dim-label");
 
+    gchar *details_text = NULL;
+    if (conv->participant_count > 1 && conv->last_message_sender) {
+        details_text = g_strdup_printf("%d participants  •  Last from %s",
+                                       conv->participant_count,
+                                       conv->last_message_sender);
+    } else if (conv->participant_count > 1) {
+        details_text = g_strdup_printf("%d participants", conv->participant_count);
+    } else if (conv->last_message_sender) {
+        details_text = g_strdup_printf("Last from %s", conv->last_message_sender);
+    }
+
     gtk_box_pack_start(GTK_BOX(vbox), name_label, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(vbox), last_msg_label, FALSE, FALSE, 0);
+    if (details_text) {
+        GtkWidget *details_label = gtk_label_new(details_text);
+        gtk_label_set_xalign(GTK_LABEL(details_label), 0.0);
+        GtkStyleContext *details_context = gtk_widget_get_style_context(details_label);
+        gtk_style_context_add_class(details_context, "dim-label");
+        gtk_box_pack_start(GTK_BOX(vbox), details_label, FALSE, FALSE, 0);
+        g_free(details_text);
+    }
 
     gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hbox), vbox, TRUE, TRUE, 0);
@@ -1509,7 +1593,20 @@ create_message_widget(struct DirectMessage *msg)
         load_avatar(avatar_image, msg->avatar, 32);
     }
 
-    gchar *header_text = g_strdup_printf("<b>%s</b> (@%s) · %s", msg->name, msg->username, msg->created_at);
+    gchar *header_text = NULL;
+    if (msg->verified) {
+        header_text = g_strdup_printf("<b>%s</b> <span foreground='#1d9bf0'>[Verified]</span> (@%s) · %s%s",
+                                      msg->name,
+                                      msg->username,
+                                      msg->created_at,
+                                      msg->edited_at ? " · edited" : "");
+    } else {
+        header_text = g_strdup_printf("<b>%s</b> (@%s) · %s%s",
+                                      msg->name,
+                                      msg->username,
+                                      msg->created_at,
+                                      msg->edited_at ? " · edited" : "");
+    }
     GtkWidget *header_label = gtk_label_new(NULL);
     gtk_label_set_markup(GTK_LABEL(header_label), header_text);
     gtk_label_set_xalign(GTK_LABEL(header_label), 0.0);
@@ -1521,6 +1618,24 @@ create_message_widget(struct DirectMessage *msg)
     gtk_label_set_selectable(GTK_LABEL(content_label), TRUE);
 
     gtk_box_pack_start(GTK_BOX(vbox), header_label, FALSE, FALSE, 0);
+    if (msg->message_type && g_strcmp0(msg->message_type, "text") != 0) {
+        gchar *type_text = g_strdup_printf("Type: %s", msg->message_type);
+        GtkWidget *type_label = gtk_label_new(type_text);
+        gtk_label_set_xalign(GTK_LABEL(type_label), 0.0);
+        GtkStyleContext *type_context = gtk_widget_get_style_context(type_label);
+        gtk_style_context_add_class(type_context, "dim-label");
+        gtk_box_pack_start(GTK_BOX(vbox), type_label, FALSE, FALSE, 0);
+        g_free(type_text);
+    }
+    if (msg->reply_to) {
+        gchar *reply_text = g_strdup_printf("Replying to %s", msg->reply_to);
+        GtkWidget *reply_label = gtk_label_new(reply_text);
+        gtk_label_set_xalign(GTK_LABEL(reply_label), 0.0);
+        GtkStyleContext *reply_context = gtk_widget_get_style_context(reply_label);
+        gtk_style_context_add_class(reply_context, "dim-label");
+        gtk_box_pack_start(GTK_BOX(vbox), reply_label, FALSE, FALSE, 0);
+        g_free(reply_text);
+    }
     gtk_box_pack_start(GTK_BOX(vbox), content_label, FALSE, FALSE, 0);
     
     add_attachments_to_box(GTK_BOX(vbox), msg->attachments);

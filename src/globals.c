@@ -53,6 +53,8 @@ GtkWidget *g_sound_notifications_switch = NULL;
 GtkWidget *g_dm_notifications_switch = NULL;
 GtkWidget *g_cache_size_label = NULL;
 GtkWidget *g_settings_username_label = NULL;
+GtkWidget *g_settings_auth_button = NULL;
+GtkWidget *g_change_password_button = NULL;
 
 gboolean g_notifications_enabled = TRUE;
 gboolean g_sound_enabled = TRUE;

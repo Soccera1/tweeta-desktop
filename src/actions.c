@@ -42,6 +42,47 @@ static inline gchar* get_auth_token_safe(void) {
     return token;
 }
 
+static gboolean
+response_has_success_flag(const gchar *json_data, const gchar *state_key, gboolean *state_value)
+{
+    JsonParser *parser;
+    JsonNode *root;
+    JsonObject *obj;
+    gboolean success = FALSE;
+    GError *error = NULL;
+
+    if (state_value) {
+        *state_value = FALSE;
+    }
+
+    if (!json_data) {
+        return FALSE;
+    }
+
+    parser = json_parser_new();
+    if (!json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) {
+            g_error_free(error);
+        }
+        g_object_unref(parser);
+        return FALSE;
+    }
+
+    root = json_parser_get_root(parser);
+    if (root && JSON_NODE_HOLDS_OBJECT(root)) {
+        obj = json_node_get_object(root);
+        if (json_object_has_member(obj, "success")) {
+            success = json_object_get_boolean_member(obj, "success");
+        }
+        if (state_key && state_value && json_object_has_member(obj, state_key)) {
+            *state_value = json_object_get_boolean_member(obj, state_key);
+        }
+    }
+
+    g_object_unref(parser);
+    return success;
+}
+
 /* Memory Management Helpers */
 
 void
@@ -554,6 +595,12 @@ void update_login_ui(void)
         gchar *label_text = g_strdup_printf("Logged in as @%s", username);
         gtk_label_set_text(GTK_LABEL(g_user_label), label_text);
         gtk_widget_set_sensitive(g_compose_button, TRUE);
+        if (g_settings_auth_button) {
+            gtk_button_set_label(GTK_BUTTON(g_settings_auth_button), "Logout");
+        }
+        if (g_change_password_button) {
+            gtk_widget_set_sensitive(g_change_password_button, TRUE);
+        }
         if (is_admin) {
             gtk_widget_show(g_admin_button);
         } else {
@@ -563,9 +610,16 @@ void update_login_ui(void)
     } else {
         gtk_label_set_text(GTK_LABEL(g_user_label), "Not logged in");
         gtk_widget_set_sensitive(g_compose_button, FALSE);
+        if (g_settings_auth_button) {
+            gtk_button_set_label(GTK_BUTTON(g_settings_auth_button), "Login");
+        }
+        if (g_change_password_button) {
+            gtk_widget_set_sensitive(g_change_password_button, FALSE);
+        }
         gtk_widget_hide(g_admin_button);
     }
-    
+
+    update_settings_username_display();
     g_free(username);
 }
 
@@ -668,6 +722,13 @@ void on_login_clicked(GtkWidget *widget, gpointer window)
     if (g_auth_token) {
         perform_logout();
         return;
+    }
+
+    if (!window && widget) {
+        GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
+        if (GTK_IS_WINDOW(toplevel)) {
+            window = toplevel;
+        }
     }
 
     GtkWidget *dialog = gtk_dialog_new_with_buttons("Login",
@@ -945,15 +1006,19 @@ static gpointer fetch_tweets_thread(gpointer data)
 
     if (g_strcmp0(feed_type, "profile_posts") == 0) {
         if (async_data->before_id) {
-            url = g_strdup_printf("%s/profile/%s/posts?before=%s", API_BASE_URL, async_data->username, async_data->before_id);
+            gchar *base_url = g_strdup_printf(PROFILE_POSTS_URL, async_data->username);
+            url = g_strdup_printf("%s?before=%s", base_url, async_data->before_id);
+            g_free(base_url);
         } else {
-            url = g_strdup_printf("%s/profile/%s/posts", API_BASE_URL, async_data->username);
+            url = g_strdup_printf(PROFILE_POSTS_URL, async_data->username);
         }
     } else if (g_strcmp0(feed_type, "profile_replies") == 0) {
         if (async_data->before_id) {
-            url = g_strdup_printf("%s/profile/%s/replies?before=%s", API_BASE_URL, async_data->username, async_data->before_id);
+            gchar *base_url = g_strdup_printf(PROFILE_REPLIES_URL, async_data->username);
+            url = g_strdup_printf("%s?before=%s", base_url, async_data->before_id);
+            g_free(base_url);
         } else {
-            url = g_strdup_printf("%s/profile/%s/replies", API_BASE_URL, async_data->username);
+            url = g_strdup_printf(PROFILE_REPLIES_URL, async_data->username);
         }
     } else if (g_strcmp0(feed_type, "community") == 0) {
         gchar *community_id;
@@ -974,7 +1039,7 @@ static gpointer fetch_tweets_thread(gpointer data)
             url = NULL;
         }
     } else {
-        const gchar *timeline_url = (g_current_timeline_type == TIMELINE_FOLLOWING) ? FOLLOWING_TIMELINE_URL : PUBLIC_TWEETS_URL;
+        const gchar *timeline_url = (g_current_timeline_type == TIMELINE_FOLLOWING) ? FOLLOWING_TIMELINE_URL : TIMELINE_URL;
         if (async_data->before_id) {
             url = g_strdup_printf("%s?before=%s", timeline_url, async_data->before_id);
         } else {
@@ -1105,6 +1170,19 @@ static gboolean on_profile_loaded(gpointer data)
         gtk_label_set_text(GTK_LABEL(g_profile_stats_label), stats_str);
         g_free(stats_str);
 
+        if (g_follow_button) {
+            if (!async_data->profile->is_own_profile && g_auth_token) {
+                gboolean *is_following = g_new(gboolean, 1);
+                *is_following = async_data->profile->is_following;
+                g_object_set_data_full(G_OBJECT(g_follow_button), "username", g_strdup(async_data->profile->username), g_free);
+                g_object_set_data_full(G_OBJECT(g_follow_button), "is_following", is_following, g_free);
+                gtk_button_set_label(GTK_BUTTON(g_follow_button), async_data->profile->is_following ? "Unfollow" : "Follow");
+                gtk_widget_show(g_follow_button);
+            } else {
+                gtk_widget_hide(g_follow_button);
+            }
+        }
+
         gtk_image_set_from_icon_name(GTK_IMAGE(g_profile_avatar_image), "avatar-default", GTK_ICON_SIZE_DND);
         if (async_data->profile->avatar) {
             load_avatar(g_profile_avatar_image, async_data->profile->avatar, 80);
@@ -1157,7 +1235,7 @@ static gpointer fetch_profile_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
     struct MemoryStruct chunk = {0};
-    gchar *url = g_strdup_printf("%s/profile/%s", API_BASE_URL, async_data->username);
+    gchar *url = g_strdup_printf(PROFILE_URL, async_data->username);
 
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->profile = parse_profile(chunk.memory);
@@ -1177,7 +1255,7 @@ static gpointer fetch_profile_replies_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
     struct MemoryStruct chunk = {0};
-    gchar *url = g_strdup_printf("%s/profile/%s/replies", API_BASE_URL, async_data->username);
+    gchar *url = g_strdup_printf(PROFILE_REPLIES_URL, async_data->username);
 
     if (fetch_url(url, &chunk, NULL, "GET")) {
         async_data->tweets = parse_profile_replies(chunk.memory);
@@ -1321,6 +1399,9 @@ void show_profile(const gchar *username)
     gtk_label_set_text(GTK_LABEL(g_profile_name_label), "Loading...");
     gtk_label_set_text(GTK_LABEL(g_profile_bio_label), "");
     gtk_label_set_text(GTK_LABEL(g_profile_stats_label), "");
+    if (g_follow_button) {
+        gtk_widget_hide(g_follow_button);
+    }
     
     g_object_set_data_full(G_OBJECT(g_profile_tweets_list), "current_profile_user", g_strdup(username), g_free);
     g_object_set_data_full(G_OBJECT(g_profile_replies_list), "current_profile_user", g_strdup(username), g_free);
@@ -1993,12 +2074,16 @@ gboolean perform_like(const gchar *tweet_id)
 {
     struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
+    gboolean liked = FALSE;
     gchar *url = g_strdup_printf(LIKE_TWEET_URL, tweet_id);
 
     g_debug("perform_like: tweet_id=%s, url=%s", tweet_id, url);
     if (fetch_url(url, &chunk, "{}", "POST")) {
         g_debug("perform_like: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
         if (chunk.memory && strstr(chunk.memory, "\"error\"") == NULL) {
+            if (response_has_success_flag(chunk.memory, "liked", &liked)) {
+                update_interaction_cache(tweet_id, liked, -1, -1);
+            }
             success = TRUE;
         } else if (chunk.memory) {
             g_warning("perform_like: API returned error: %s", chunk.memory);
@@ -2016,12 +2101,16 @@ gboolean perform_retweet(const gchar *tweet_id)
 {
     struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
+    gboolean retweeted = FALSE;
     gchar *url = g_strdup_printf(RETWEET_URL, tweet_id);
 
     g_debug("perform_retweet: tweet_id=%s, url=%s", tweet_id, url);
     if (fetch_url(url, &chunk, "{}", "POST")) {
         g_debug("perform_retweet: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
         if (chunk.memory && strstr(chunk.memory, "\"error\"") == NULL) {
+            if (response_has_success_flag(chunk.memory, "retweeted", &retweeted)) {
+                update_interaction_cache(tweet_id, -1, retweeted, -1);
+            }
             success = TRUE;
         } else if (chunk.memory) {
             g_warning("perform_retweet: API returned error: %s", chunk.memory);
@@ -2039,6 +2128,7 @@ gboolean perform_bookmark(const gchar *tweet_id, gboolean add)
 {
     struct MemoryStruct chunk = {0};
     gboolean success = FALSE;
+    gboolean bookmarked = FALSE;
     const gchar *url = add ? BOOKMARK_ADD_URL : BOOKMARK_REMOVE_URL;
 
     JsonBuilder *builder = json_builder_new();
@@ -2055,6 +2145,9 @@ gboolean perform_bookmark(const gchar *tweet_id, gboolean add)
     if (fetch_url(url, &chunk, post_data, "POST")) {
         g_debug("perform_bookmark: fetch_url succeeded, response: %s", chunk.memory ? chunk.memory : "(null)");
         if (chunk.memory && strstr(chunk.memory, "\"error\"") == NULL) {
+            if (response_has_success_flag(chunk.memory, "bookmarked", &bookmarked)) {
+                update_interaction_cache(tweet_id, -1, -1, bookmarked);
+            }
             success = TRUE;
         } else if (chunk.memory) {
             g_warning("perform_bookmark: API returned error: %s", chunk.memory);
@@ -2113,6 +2206,8 @@ static void free_emoji(gpointer data)
         g_free(emoji->id);
         g_free(emoji->name);
         g_free(emoji->file_url);
+        g_free(emoji->file_hash);
+        g_free(emoji->created_by);
         g_free(emoji);
     }
 }
@@ -2142,6 +2237,10 @@ GList* fetch_emojis(void)
                     emoji->id = g_strdup(json_object_get_string_member(e_obj, "id"));
                     emoji->name = g_strdup(json_object_get_string_member(e_obj, "name"));
                     emoji->file_url = g_strdup(json_object_get_string_member(e_obj, "file_url"));
+                    if (json_object_has_member(e_obj, "file_hash") && !json_node_is_null(json_object_get_member(e_obj, "file_hash")))
+                        emoji->file_hash = g_strdup(json_object_get_string_member(e_obj, "file_hash"));
+                    if (json_object_has_member(e_obj, "created_by") && !json_node_is_null(json_object_get_member(e_obj, "created_by")))
+                        emoji->created_by = g_strdup(json_object_get_string_member(e_obj, "created_by"));
                     emojis = g_list_append(emojis, emoji);
                 }
             }
@@ -2498,16 +2597,16 @@ void start_loading_bookmarks(GtkListBox *list_box)
     g_thread_new("bookmarks-loader", fetch_bookmarks_thread, data);
 }
 
-gboolean perform_block(const gchar *username, gboolean block)
+gboolean perform_block(const gchar *user_id, gboolean block)
 {
-    if (!g_auth_token || !username) return FALSE;
+    if (!g_auth_token || !user_id) return FALSE;
 
     const gchar *url = block ? BLOCK_USER_URL : UNBLOCK_USER_URL;
 
     JsonBuilder *builder = json_builder_new();
     json_builder_begin_object(builder);
-    json_builder_set_member_name(builder, "username");
-    json_builder_add_string_value(builder, username);
+    json_builder_set_member_name(builder, "userId");
+    json_builder_add_string_value(builder, user_id);
     json_builder_end_object(builder);
 
     JsonGenerator *gen = json_generator_new();
@@ -2528,16 +2627,16 @@ gboolean perform_block(const gchar *username, gboolean block)
     return success;
 }
 
-gboolean perform_mute(const gchar *username, gboolean mute)
+gboolean perform_mute(const gchar *user_id, gboolean mute)
 {
-    if (!g_auth_token || !username) return FALSE;
+    if (!g_auth_token || !user_id) return FALSE;
 
     const gchar *url = mute ? MUTE_USER_URL : UNMUTE_USER_URL;
 
     JsonBuilder *builder = json_builder_new();
     json_builder_begin_object(builder);
-    json_builder_set_member_name(builder, "username");
-    json_builder_add_string_value(builder, username);
+    json_builder_set_member_name(builder, "userId");
+    json_builder_add_string_value(builder, user_id);
     json_builder_end_object(builder);
 
     JsonGenerator *gen = json_generator_new();
@@ -2662,7 +2761,7 @@ gboolean perform_poll_vote(const gchar *tweet_id, const gchar *option_id)
 
     JsonBuilder *builder = json_builder_new();
     json_builder_begin_object(builder);
-    json_builder_set_member_name(builder, "option_id");
+    json_builder_set_member_name(builder, "optionId");
     json_builder_add_string_value(builder, option_id);
     json_builder_end_object(builder);
 
@@ -2705,6 +2804,7 @@ void free_poll_option(gpointer data)
 
     g_free(option->id);
     g_free(option->option_text);
+    g_free(option->user_vote);
     g_free(option);
 }
 
@@ -2735,7 +2835,7 @@ gboolean perform_update_profile(const gchar *username, const gchar *name, const 
     json_generator_set_root(gen, json_builder_get_root(builder));
     gchar *post_data = json_generator_to_data(gen, NULL);
 
-    if (fetch_url(url, &chunk, post_data, "PATCH")) {
+    if (fetch_url(url, &chunk, post_data, "PUT")) {
         success = TRUE;
         g_free(chunk.memory);
     }

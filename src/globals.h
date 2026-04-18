@@ -57,6 +57,8 @@ extern GtkWidget *g_sound_notifications_switch;
 extern GtkWidget *g_dm_notifications_switch;
 extern GtkWidget *g_cache_size_label;
 extern GtkWidget *g_settings_username_label;
+extern GtkWidget *g_settings_auth_button;
+extern GtkWidget *g_change_password_button;
 
 extern gboolean g_notifications_enabled;
 extern gboolean g_sound_enabled;

@@ -552,14 +552,14 @@ create_settings_view(void)
     gtk_widget_set_halign(g_settings_username_label, GTK_ALIGN_START);
     gtk_box_pack_start(GTK_BOX(account_box), g_settings_username_label, FALSE, FALSE, 0);
 
-    GtkWidget *change_pw_btn = gtk_button_new_with_label("Change Password");
-    g_signal_connect(change_pw_btn, "clicked", G_CALLBACK(on_change_password_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(account_box), change_pw_btn, FALSE, FALSE, 0);
+    g_change_password_button = gtk_button_new_with_label("Change Password");
+    g_signal_connect(g_change_password_button, "clicked", G_CALLBACK(on_change_password_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(account_box), g_change_password_button, FALSE, FALSE, 0);
 
-    GtkWidget *logout_btn = gtk_button_new_with_label("Logout");
-    gtk_widget_set_name(logout_btn, "logout_button");
-    g_signal_connect(logout_btn, "clicked", G_CALLBACK(on_logout_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(account_box), logout_btn, FALSE, FALSE, 0);
+    g_settings_auth_button = gtk_button_new_with_label("Login");
+    gtk_widget_set_name(g_settings_auth_button, "auth_button");
+    g_signal_connect(g_settings_auth_button, "clicked", G_CALLBACK(on_login_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(account_box), g_settings_auth_button, FALSE, FALSE, 0);
 
     gtk_container_add(GTK_CONTAINER(account_frame), account_box);
     gtk_box_pack_start(GTK_BOX(content_box), account_frame, FALSE, FALSE, 0);
@@ -905,4 +905,3 @@ create_window(void)
 
     return window;
 }
-
