@@ -6,12 +6,15 @@ gboolean g_is_admin = FALSE;
 GMutex g_globals_mutex;
 GHashTable *g_interaction_cache = NULL;
 GtkWidget *g_compose_button = NULL;
+GtkWidget *g_header_auth_button = NULL;
+GtkWidget *g_notifications_button = NULL;
 GtkWidget *g_user_label = NULL;
 GtkWidget *g_main_list_box = NULL;
 GtkWidget *g_notifications_list = NULL;
 GtkWidget *g_conversations_list = NULL;
 GtkWidget *g_dm_messages_list = NULL;
 GtkWidget *g_dm_title_label = NULL;
+GtkWidget *g_dm_info_label = NULL;
 GtkWidget *g_dm_entry = NULL;
 GtkWidget *g_conversation_list = NULL;
 GtkWidget *g_stack = NULL;
@@ -29,14 +32,28 @@ GtkWidget *g_search_users_list = NULL;
 GtkWidget *g_search_tweets_list = NULL;
 
 GtkWidget *g_profile_name_label = NULL;
+GtkWidget *g_profile_username_label = NULL;
 GtkWidget *g_profile_bio_label = NULL;
+GtkWidget *g_profile_status_label = NULL;
+GtkWidget *g_profile_details_label = NULL;
 GtkWidget *g_profile_stats_label = NULL;
 GtkWidget *g_profile_avatar_image = NULL;
+GtkWidget *g_profile_banner_image = NULL;
+GtkWidget *g_profile_badges_box = NULL;
 GtkWidget *g_profile_tweets_list = NULL;
 GtkWidget *g_profile_replies_list = NULL;
+GtkWidget *g_profile_media_list = NULL;
+GtkWidget *g_profile_mutuals_list = NULL;
 GtkWidget *g_follow_button = NULL;
+GtkWidget *g_profile_edit_button = NULL;
+GtkWidget *g_profile_notify_button = NULL;
+GtkWidget *g_profile_block_button = NULL;
+GtkWidget *g_profile_mute_button = NULL;
+GtkWidget *g_profile_delete_avatar_button = NULL;
+GtkWidget *g_profile_delete_banner_button = NULL;
 GtkWidget *g_followers_list = NULL;
 GtkWidget *g_following_list = NULL;
+struct Profile *g_active_profile = NULL;
 
 GtkWidget *g_bookmarks_list = NULL;
 
@@ -44,6 +61,8 @@ TimelineType g_current_timeline_type = TIMELINE_PUBLIC;
 
 GtkWidget *g_communities_list = NULL;
 GtkWidget *g_community_tweets_list = NULL;
+GtkWidget *g_community_title_label = NULL;
+GtkWidget *g_community_details_label = NULL;
 gchar *g_community_id = NULL;
 
 GtkWidget *g_theme_combo = NULL;

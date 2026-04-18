@@ -41,6 +41,7 @@ struct Tweet {
     int view_count;
     int quote_count;
     int reaction_count;
+    gboolean pinned;
     struct Tweet *quote_tweet;
     struct Poll *poll;
     gchar *content_type;
@@ -57,19 +58,29 @@ struct Emoji {
 };
 
 struct Profile {
+    gchar *id;
     gchar *name;
     gchar *username;
     gchar *bio;
     gchar *avatar;
     gchar *banner;
+    gchar *location;
+    gchar *website;
+    gchar *pronouns;
+    gchar *theme;
+    gchar *accent_color;
+    gchar *label_type;
     int follower_count;
     int following_count;
     int post_count;
+    int avatar_radius;
     gboolean is_following;
     gboolean follows_me;
     gboolean is_own_profile;
     gboolean blocked_by_profile;
     gboolean blocked_profile;
+    gboolean notify_tweets;
+    gboolean label_automated;
     gboolean author_verified;
     gboolean author_gold;
     gboolean author_gray;
@@ -97,12 +108,15 @@ struct DirectMessage {
     gchar *content;
     gchar *message_type;
     gchar *reply_to;
+    gchar *reply_preview;
     gchar *username;
     gchar *name;
     gchar *avatar;
     gboolean verified;
+    gboolean is_deleted;
     gchar *created_at;
     gchar *edited_at;
+    gchar *reactions_summary;
     GList *attachments;
 };
 
@@ -115,8 +129,11 @@ struct Conversation {
     gchar *last_message_content;
     gchar *last_message_time;
     gchar *last_message_sender;
+    gchar *last_message_sender_name;
     int unread_count;
     int participant_count;
+    gboolean disappearing_enabled;
+    int disappearing_duration;
     GList *participants;
 };
 
@@ -147,7 +164,9 @@ struct AsyncData {
     GList *messages;
     GList *communities;
     gboolean success;
+    gboolean has_more;
     struct Profile *profile;
+    struct Conversation *conversation;
     gchar *username;
     gchar *query;
     gchar *conversation_id;

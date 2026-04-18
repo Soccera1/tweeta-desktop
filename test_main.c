@@ -148,6 +148,18 @@ static void test_parse_tweets_with_info_note(void) {
     free_tweets(tweets);
 }
 
+static void test_tweets_response_is_empty(void) {
+    g_assert_true(tweets_response_is_empty("{\"timeline\": []}"));
+    g_assert_false(tweets_response_is_empty("{\"timeline\": [{\"id\": \"1\", \"content\": \"Hello\", \"author\": {\"name\": \"User\", \"username\": \"u\"}}]}"));
+    g_assert_false(tweets_response_is_empty("{\"error\": \"bad request\"}"));
+}
+
+static void test_profile_replies_response_is_empty(void) {
+    g_assert_true(profile_replies_response_is_empty("{\"replies\": []}"));
+    g_assert_false(profile_replies_response_is_empty("{\"replies\": [{\"id\": \"1\", \"content\": \"Reply\", \"author\": {\"name\": \"User\", \"username\": \"u\"}}]}"));
+    g_assert_false(profile_replies_response_is_empty("{\"error\": \"bad request\"}"));
+}
+
 static void test_parse_login_response(void) {
     gchar *token = NULL;
     gchar *username = NULL;
@@ -309,7 +321,7 @@ static void test_session_persistence(void) {
 }
 
 static void test_parse_profile(void) {
-    const char *json_input = "{\"profile\": {\"name\": \"Test User\", \"username\": \"testuser\", \"bio\": \"This is a test bio\", \"avatar\": \"/api/uploads/profile.png\", \"follower_count\": 100, \"following_count\": 50, \"post_count\": 10}}";
+    const char *json_input = "{\"profile\": {\"name\": \"Test User\", \"username\": \"testuser\", \"bio\": \"This is a test bio\", \"avatar\": \"/api/uploads/profile.png\", \"banner\": \"/api/uploads/banner.png\", \"location\": \"Melbourne\", \"website\": \"https://example.com\", \"pronouns\": \"she/her\", \"theme\": \"dark\", \"accent_color\": \"#1d9bf0\", \"label_type\": \"commentary\", \"label_automated\": true, \"notifyTweets\": true, \"avatar_radius\": 12, \"verified\": 1, \"gold\": 0, \"gray\": 1, \"blockedByProfile\": true, \"blockedProfile\": false, \"follower_count\": 100, \"following_count\": 50, \"post_count\": 10}, \"isFollowing\": true, \"followsMe\": true, \"isOwnProfile\": false}";
     struct Profile *p = parse_profile(json_input);
 
     g_assert_nonnull(p);
@@ -317,15 +329,29 @@ static void test_parse_profile(void) {
     g_assert_cmpstr(p->username, ==, "testuser");
     g_assert_cmpstr(p->bio, ==, "This is a test bio");
     g_assert_cmpstr(p->avatar, ==, "/api/uploads/profile.png");
+    g_assert_cmpstr(p->banner, ==, "/api/uploads/banner.png");
+    g_assert_cmpstr(p->location, ==, "Melbourne");
+    g_assert_cmpstr(p->website, ==, "https://example.com");
+    g_assert_cmpstr(p->pronouns, ==, "she/her");
+    g_assert_cmpstr(p->theme, ==, "dark");
+    g_assert_cmpstr(p->accent_color, ==, "#1d9bf0");
+    g_assert_cmpstr(p->label_type, ==, "commentary");
     g_assert_cmpint(p->follower_count, ==, 100);
     g_assert_cmpint(p->following_count, ==, 50);
     g_assert_cmpint(p->post_count, ==, 10);
+    g_assert_cmpint(p->avatar_radius, ==, 12);
+    g_assert_true(p->is_following);
+    g_assert_true(p->follows_me);
+    g_assert_false(p->is_own_profile);
+    g_assert_true(p->blocked_by_profile);
+    g_assert_false(p->blocked_profile);
+    g_assert_true(p->notify_tweets);
+    g_assert_true(p->label_automated);
+    g_assert_true(p->author_verified);
+    g_assert_false(p->author_gold);
+    g_assert_true(p->author_gray);
 
-    g_free(p->name);
-    g_free(p->username);
-    g_free(p->bio);
-    g_free(p->avatar);
-    g_free(p);
+    free_user(p);
 }
 
 static void test_parse_profile_replies(void) {
@@ -358,6 +384,21 @@ static void test_parse_users(void) {
     g_assert_cmpstr(u->bio, ==, "Test Bio");
     g_assert_cmpstr(u->avatar, ==, "/api/uploads/user.png");
     g_assert_cmpint(u->follower_count, ==, 123);
+
+    free_users(users);
+}
+
+static void test_parse_users_mutuals(void) {
+    const char *json_input = "{\"mutuals\": [{\"id\": \"u2\", \"username\": \"mutual\", \"name\": \"Mutual User\", \"bio\": \"Known account\"}]}";
+    GList *users = parse_users(json_input);
+
+    g_assert_nonnull(users);
+    g_assert_cmpint(g_list_length(users), ==, 1);
+
+    struct Profile *u = (struct Profile *)users->data;
+    g_assert_cmpstr(u->id, ==, "u2");
+    g_assert_cmpstr(u->username, ==, "mutual");
+    g_assert_cmpstr(u->name, ==, "Mutual User");
 
     free_users(users);
 }
@@ -410,6 +451,36 @@ static void test_parse_tweets_with_attachments(void) {
     free_tweets(tweets);
 }
 
+static void test_parse_tweets_skips_invalid_post_children(void) {
+    const char *json_input =
+        "{\"posts\": [null, {"
+        "\"id\": \"123\","
+        "\"content\": \"Hello with media\","
+        "\"author\": {\"name\": \"Test User\", \"username\": \"testuser\"},"
+        "\"attachments\": [null, {\"id\": \"a1\", \"file_url\": \"/api/uploads/image.jpg\", \"file_type\": \"image/jpeg\"}],"
+        "\"poll\": {"
+        "\"id\": \"poll1\","
+        "\"question\": \"Favorite color?\","
+        "\"is_active\": true,"
+        "\"options\": [null, {\"id\": \"opt1\", \"option_text\": \"Red\", \"vote_count\": 30, \"voted\": false}]"
+        "}"
+        "}]}";
+    GList *tweets = parse_tweets(json_input);
+
+    g_assert_nonnull(tweets);
+    g_assert_cmpint(g_list_length(tweets), ==, 1);
+
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    g_assert_cmpstr(t->id, ==, "123");
+    g_assert_nonnull(t->attachments);
+    g_assert_cmpint(g_list_length(t->attachments), ==, 1);
+    g_assert_nonnull(t->poll);
+    g_assert_nonnull(t->poll->options);
+    g_assert_cmpint(g_list_length(t->poll->options), ==, 1);
+
+    free_tweets(tweets);
+}
+
 static void test_parse_conversations(void) {
     const char *json_input = "{\"conversations\": [{\"id\": \"c1\", \"type\": \"direct\", \"displayName\": \"Test User\", \"displayAvatar\": \"/avatar.png\", \"last_message_content\": \"Hello\", \"last_message_time\": \"2023-10-27T10:00:00Z\", \"unread_count\": 1}]}";
     GList *convs = parse_conversations(json_input);
@@ -439,6 +510,36 @@ static void test_parse_messages(void) {
     g_assert_cmpstr(m->id, ==, "m1");
     g_assert_cmpstr(m->content, ==, "Hello");
     g_assert_cmpstr(m->username, ==, "testuser");
+
+    free_messages(msgs);
+}
+
+static void test_parse_messages_extended(void) {
+    const char *json_input = "{"
+        "\"conversation\": {"
+        "\"messages\": [{"
+            "\"id\": \"m2\","
+            "\"conversation_id\": \"c1\","
+            "\"sender_id\": \"u2\","
+            "\"content\": \"Updated message\","
+            "\"username\": \"editor\","
+            "\"name\": \"Editor\","
+            "\"created_at\": \"2024-01-01T00:00:00Z\","
+            "\"deleted_at\": \"2024-01-01T01:00:00Z\","
+            "\"reply_to\": \"m1\","
+            "\"reply_to_message\": {\"content\": \"Original\"},"
+            "\"reactions\": [{\"emoji\": \"😀\", \"count\": 2}]"
+        "}]}}";
+    GList *msgs = parse_messages(json_input);
+
+    g_assert_nonnull(msgs);
+    g_assert_cmpint(g_list_length(msgs), ==, 1);
+
+    struct DirectMessage *m = (struct DirectMessage *)msgs->data;
+    g_assert_true(m->is_deleted);
+    g_assert_cmpstr(m->reply_to, ==, "m1");
+    g_assert_cmpstr(m->reply_preview, ==, "Original");
+    g_assert_cmpstr(m->reactions_summary, ==, "😀 2");
 
     free_messages(msgs);
 }
@@ -566,6 +667,20 @@ static void test_parse_communities_private(void) {
     free_communities(communities);
 }
 
+static void test_parse_community_details(void) {
+    const char *json_input = "{\"community\": {\"id\": \"comm3\", \"name\": \"Builders\", \"description\": \"Ship things\", \"rules\": \"Be useful\", \"access_mode\": \"locked\", \"member_count\": 12}}";
+    struct Community *community = parse_community_details(json_input);
+
+    g_assert_nonnull(community);
+    g_assert_cmpstr(community->id, ==, "comm3");
+    g_assert_cmpstr(community->name, ==, "Builders");
+    g_assert_cmpstr(community->rules, ==, "Be useful");
+    g_assert_cmpstr(community->access_mode, ==, "locked");
+    g_assert_cmpint(community->member_count, ==, 12);
+
+    free_community(community);
+}
+
 static void test_parse_upload_response(void) {
     const char *json_input = "{\"file\": {\"url\": \"/api/uploads/test_image.webp\"}, \"success\": true}";
     gchar *file_url = parse_upload_response(json_input);
@@ -623,6 +738,37 @@ static void test_free_attachment_payload(void) {
     free_attachment_payload(attach);
     
     g_assert_true(TRUE);
+}
+
+static void test_build_reply_banner_text(void) {
+    gchar *with_username = build_reply_banner_text("alice");
+    gchar *with_empty_username = build_reply_banner_text("");
+    gchar *with_null_username = build_reply_banner_text(NULL);
+
+    g_assert_cmpstr(with_username, ==, "Replying to @alice:");
+    g_assert_cmpstr(with_empty_username, ==, "Replying to @unknown:");
+    g_assert_cmpstr(with_null_username, ==, "Replying to @unknown:");
+
+    g_free(with_username);
+    g_free(with_empty_username);
+    g_free(with_null_username);
+}
+
+static void test_build_account_label_text(void) {
+    gchar *with_both = build_account_label_text("Alice", "alice");
+    gchar *with_missing_name = build_account_label_text(NULL, "alice");
+    gchar *with_missing_username = build_account_label_text("Alice", NULL);
+    gchar *with_missing_both = build_account_label_text("", "");
+
+    g_assert_cmpstr(with_both, ==, "Alice (@alice)");
+    g_assert_cmpstr(with_missing_name, ==, "Unknown (@alice)");
+    g_assert_cmpstr(with_missing_username, ==, "Alice (@unknown)");
+    g_assert_cmpstr(with_missing_both, ==, "Unknown (@unknown)");
+
+    g_free(with_both);
+    g_free(with_missing_name);
+    g_free(with_missing_username);
+    g_free(with_missing_both);
 }
 
 static void test_poll_memory_management(void) {
@@ -702,6 +848,17 @@ static void test_tweet_with_poll_and_attachments(void) {
     free_tweets(tweets);
 }
 
+static void test_parse_tweet_pinned(void) {
+    const char *json_input = "{\"posts\": [{\"id\": \"789\", \"content\": \"Pinned post\", \"pinned\": 1, \"author\": {\"name\": \"User\", \"username\": \"user\"}}]}";
+    GList *tweets = parse_tweets(json_input);
+
+    g_assert_nonnull(tweets);
+    struct Tweet *t = (struct Tweet *)tweets->data;
+    g_assert_true(t->pinned);
+
+    free_tweets(tweets);
+}
+
 static void test_parse_closed_poll(void) {
     // Test parsing a closed/inactive poll
     const char *json_input = "{\"posts\": [{\"id\": \"456\", \"content\": \"Poll ended\", \"author\": {\"name\": \"User\", \"username\": \"user\"}, \"poll\": {\"id\": \"p2\", \"question\": \"Winner?\", \"is_active\": false, \"expires_at\": \"2024-01-01T00:00:00Z\", \"total_votes\": 200, \"options\": [{\"id\": \"o1\", \"option_text\": \"Option A\", \"vote_count\": 80, \"voted\": false}, {\"id\": \"o2\", \"option_text\": \"Option B\", \"vote_count\": 120, \"voted\": false}]}}]}";
@@ -772,16 +929,21 @@ int main(int argc, char** argv) {
     g_test_add_func("/parsetweets/note", test_parse_tweets_with_note);
     g_test_add_func("/parsetweets/note_danger", test_parse_tweets_with_danger_note);
     g_test_add_func("/parsetweets/note_info", test_parse_tweets_with_info_note);
+    g_test_add_func("/parsetweets/empty_response", test_tweets_response_is_empty);
     g_test_add_func("/parsetweets/attachments", test_parse_tweets_with_attachments);
+    g_test_add_func("/parsetweets/invalid_children", test_parse_tweets_skips_invalid_post_children);
     g_test_add_func("/parselogin/basic", test_parse_login_response);
     g_test_add_func("/constructpayload/basic", test_construct_tweet_payload);
     g_test_add_func("/session/persistence", test_session_persistence);
     g_test_add_func("/parseprofile/basic", test_parse_profile);
     g_test_add_func("/parseprofile/replies", test_parse_profile_replies);
+    g_test_add_func("/parseprofile/replies_empty_response", test_profile_replies_response_is_empty);
     g_test_add_func("/parseusers/basic", test_parse_users);
+    g_test_add_func("/parseusers/mutuals", test_parse_users_mutuals);
     g_test_add_func("/parsenotifications/basic", test_parse_notifications);
     g_test_add_func("/parseconversations/basic", test_parse_conversations);
     g_test_add_func("/parsemessages/basic", test_parse_messages);
+    g_test_add_func("/parsemessages/extended", test_parse_messages_extended);
     g_test_add_func("/parsetweetdetails/basic", test_parse_tweet_details);
     g_test_add_func("/challenge/solver", test_challenge_solver);
     
@@ -791,8 +953,10 @@ int main(int argc, char** argv) {
     g_test_add_func("/polls/option_memory", test_poll_option_memory_management);
     g_test_add_func("/polls/closed_poll", test_parse_closed_poll);
     g_test_add_func("/polls/with_attachments", test_tweet_with_poll_and_attachments);
+    g_test_add_func("/parsetweets/pinned", test_parse_tweet_pinned);
     g_test_add_func("/communities/parse", test_parse_communities);
     g_test_add_func("/communities/private", test_parse_communities_private);
+    g_test_add_func("/communities/details", test_parse_community_details);
     g_test_add_func("/communities/memory_management", test_community_memory_management);
     g_test_add_func("/upload/parse_success", test_parse_upload_response);
     g_test_add_func("/upload/parse_failure", test_parse_upload_response_failure);
@@ -800,6 +964,8 @@ int main(int argc, char** argv) {
     g_test_add_func("/upload/build_attachment_list_null_url", test_build_attachment_list_null_url);
     g_test_add_func("/upload/build_attachment_list_default_type", test_build_attachment_list_default_type);
     g_test_add_func("/upload/free_attachment_payload", test_free_attachment_payload);
+    g_test_add_func("/ui/reply_banner_text", test_build_reply_banner_text);
+    g_test_add_func("/ui/account_label_text", test_build_account_label_text);
     g_test_add_func("/timeline/enum_values", test_timeline_type_enum);
     
     int result = g_test_run();
@@ -814,9 +980,9 @@ int main(int argc, char** argv) {
     // we'll use the exit code to determine failure count
     int failed_count = result;
     
-    // We know we have 37 tests registered
+    // We know we have 41 tests registered
     // This is a workaround since GLib doesn't provide an easy way to get the count
-    int known_total = 37;
+    int known_total = 41;
     total_tests = known_total;
     passed_tests = known_total - failed_count;
     

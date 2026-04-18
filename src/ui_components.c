@@ -34,6 +34,28 @@ static inline gchar* get_community_id_safe(void) {
     return id;
 }
 
+static inline gchar* get_current_username_safe(void) {
+    g_mutex_lock(&g_globals_mutex);
+    gchar *username = g_current_username ? g_strdup(g_current_username) : NULL;
+    g_mutex_unlock(&g_globals_mutex);
+    return username;
+}
+
+static void
+refresh_current_dm_messages(void)
+{
+    const gchar *conversation_id;
+
+    if (!g_dm_messages_list) {
+        return;
+    }
+
+    conversation_id = g_object_get_data(G_OBJECT(g_dm_messages_list), "conversation_id");
+    if (conversation_id) {
+        start_loading_messages(GTK_LIST_BOX(g_dm_messages_list), conversation_id);
+    }
+}
+
 static void
 append_badge(GtkWidget *box, const gchar *text, const gchar *color)
 {
@@ -527,6 +549,167 @@ on_reaction_clicked(GtkWidget *widget, gpointer user_data)
 }
 
 static void
+show_text_dialog(GtkWidget *widget, const gchar *title, const gchar *body)
+{
+    GtkWidget *dialog;
+    GtkWidget *content_area;
+    GtkWidget *scroll;
+    GtkWidget *label;
+    GtkWidget *toplevel;
+
+    toplevel = gtk_widget_get_toplevel(widget);
+    dialog = gtk_dialog_new_with_buttons(title,
+                                         GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL,
+                                         GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                         "_Close", GTK_RESPONSE_CLOSE,
+                                         NULL);
+    content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    scroll = gtk_scrolled_window_new(NULL, NULL);
+    gtk_widget_set_size_request(scroll, 420, 360);
+    label = gtk_label_new(body ? body : "");
+    gtk_label_set_xalign(GTK_LABEL(label), 0.0);
+    gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
+    gtk_label_set_selectable(GTK_LABEL(label), TRUE);
+    gtk_container_add(GTK_CONTAINER(scroll), label);
+    gtk_box_pack_start(GTK_BOX(content_area), scroll, TRUE, TRUE, 0);
+
+    gtk_widget_show_all(dialog);
+    gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
+}
+
+static void
+refresh_after_tweet_mutation(const gchar *tweet_id)
+{
+    const gchar *current_view = NULL;
+
+    if (GTK_IS_STACK(g_stack)) {
+        current_view = gtk_stack_get_visible_child_name(GTK_STACK(g_stack));
+    }
+    if (g_strcmp0(current_view, "conversation") == 0 && tweet_id) {
+        show_tweet(tweet_id);
+    } else if (g_strcmp0(current_view, "profile") == 0 && g_active_profile && g_active_profile->username) {
+        show_profile(g_active_profile->username);
+    } else if (g_strcmp0(current_view, "bookmarks") == 0 && GTK_IS_LIST_BOX(g_bookmarks_list)) {
+        start_loading_bookmarks(GTK_LIST_BOX(g_bookmarks_list));
+    } else if (g_strcmp0(current_view, "community_tweets") == 0 &&
+               g_community_id &&
+               GTK_IS_LIST_BOX(g_community_tweets_list)) {
+        start_loading_community_tweets(GTK_LIST_BOX(g_community_tweets_list), g_community_id);
+    } else if (GTK_IS_LIST_BOX(g_main_list_box)) {
+        start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+    }
+}
+
+static void
+on_tweet_edit_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkWidget *dialog;
+    GtkWidget *content_area;
+    GtkWidget *entry;
+    GtkWidget *toplevel;
+    const gchar *tweet_id;
+    const gchar *current_content;
+
+    (void)user_data;
+    tweet_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
+    current_content = g_object_get_data(G_OBJECT(widget), "tweet_content");
+    if (!tweet_id) {
+        return;
+    }
+
+    toplevel = gtk_widget_get_toplevel(widget);
+    dialog = gtk_dialog_new_with_buttons("Edit Tweet",
+                                         GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL,
+                                         GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                         "_Cancel", GTK_RESPONSE_CANCEL,
+                                         "_Save", GTK_RESPONSE_ACCEPT,
+                                         NULL);
+    content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    entry = gtk_entry_new();
+    gtk_entry_set_text(GTK_ENTRY(entry), current_content ? current_content : "");
+    gtk_box_pack_start(GTK_BOX(content_area), entry, TRUE, TRUE, 8);
+    gtk_widget_show_all(dialog);
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        if (perform_edit_tweet(tweet_id, gtk_entry_get_text(GTK_ENTRY(entry)))) {
+            refresh_after_tweet_mutation(tweet_id);
+        }
+    }
+
+    gtk_widget_destroy(dialog);
+}
+
+static void
+on_tweet_delete_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkWidget *dialog;
+    GtkWidget *toplevel;
+    const gchar *tweet_id;
+
+    (void)user_data;
+    tweet_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
+    if (!tweet_id) {
+        return;
+    }
+
+    toplevel = gtk_widget_get_toplevel(widget);
+    dialog = gtk_message_dialog_new(GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL,
+                                    GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                    GTK_MESSAGE_WARNING,
+                                    GTK_BUTTONS_OK_CANCEL,
+                                    "Delete this tweet?");
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_OK) {
+        if (perform_delete_tweet(tweet_id)) {
+            refresh_after_tweet_mutation(tweet_id);
+        }
+    }
+    gtk_widget_destroy(dialog);
+}
+
+static void
+on_tweet_history_clicked(GtkWidget *widget, gpointer user_data)
+{
+    gchar *history_text;
+
+    (void)user_data;
+    history_text = fetch_tweet_edit_history_text(g_object_get_data(G_OBJECT(widget), "tweet_id"));
+    show_text_dialog(widget, "Edit History", history_text ? history_text : "No edit history available.");
+    g_free(history_text);
+}
+
+static void
+on_tweet_reactions_clicked(GtkWidget *widget, gpointer user_data)
+{
+    gchar *reaction_text;
+
+    (void)user_data;
+    reaction_text = fetch_tweet_reactions_text(g_object_get_data(G_OBJECT(widget), "tweet_id"));
+    show_text_dialog(widget, "Tweet Reactions", reaction_text ? reaction_text : "No reactions yet.");
+    g_free(reaction_text);
+}
+
+static void
+on_tweet_pin_clicked(GtkWidget *widget, gpointer user_data)
+{
+    const gchar *tweet_id;
+    gboolean pinned;
+
+    (void)user_data;
+    tweet_id = g_object_get_data(G_OBJECT(widget), "tweet_id");
+    pinned = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget), "tweet_pinned"));
+    if (!tweet_id) {
+        return;
+    }
+
+    if (perform_toggle_pin_tweet(tweet_id, !pinned)) {
+        g_object_set_data(G_OBJECT(widget), "tweet_pinned", GINT_TO_POINTER(!pinned));
+        gtk_button_set_label(GTK_BUTTON(widget), pinned ? "Pin" : "Unpin");
+        refresh_after_tweet_mutation(tweet_id);
+    }
+}
+
+static void
 on_reply_response(GtkDialog *dialog, gint response_id, gpointer user_data)
 {
     struct ReplyContext *ctx = (struct ReplyContext *)user_data;
@@ -562,14 +745,9 @@ on_reply_response(GtkDialog *dialog, gint response_id, gpointer user_data)
         gboolean has_attachment = (attachments != NULL);
 
         if (upload_success && (has_text || has_attachment)) {
-             if (perform_post_tweet(content ? content : "", ctx->reply_to_id, attachments)) {
-                const gchar *current_view = gtk_stack_get_visible_child_name(GTK_STACK(g_stack));
-                if (g_strcmp0(current_view, "conversation") == 0 && ctx->reply_to_id) {
-                    show_tweet(ctx->reply_to_id);
-                } else {
-                    start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
-                }
-             } else {
+            if (perform_post_tweet(content ? content : "", ctx->reply_to_id, attachments)) {
+                refresh_after_tweet_mutation(ctx->reply_to_id);
+            } else {
                 GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
                                          GTK_DIALOG_DESTROY_WITH_PARENT,
                                          GTK_MESSAGE_ERROR,
@@ -577,7 +755,7 @@ on_reply_response(GtkDialog *dialog, gint response_id, gpointer user_data)
                                          "Failed to post reply.");
                 gtk_dialog_run(GTK_DIALOG(error_dialog));
                 gtk_widget_destroy(error_dialog);
-             }
+            }
         } else if (!upload_success) {
             GtkWidget *error_dialog = gtk_message_dialog_new(GTK_WINDOW(dialog),
                                      GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -625,6 +803,17 @@ on_reply_clicked(GtkWidget *widget, gpointer user_data)
     GtkWidget *toplevel = gtk_widget_get_toplevel(widget);
     GtkWindow *window = GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL;
 
+    if (!tweet_id || tweet_id[0] == '\0') {
+        GtkWidget *error_dialog = gtk_message_dialog_new(window,
+                                 GTK_DIALOG_DESTROY_WITH_PARENT,
+                                 GTK_MESSAGE_ERROR,
+                                 GTK_BUTTONS_CLOSE,
+                                 "This tweet cannot be replied to right now.");
+        gtk_dialog_run(GTK_DIALOG(error_dialog));
+        gtk_widget_destroy(error_dialog);
+        return;
+    }
+
     GtkWidget *dialog = gtk_dialog_new_with_buttons("Reply to Tweet",
                                                     window,
                                                     GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
@@ -633,8 +822,8 @@ on_reply_clicked(GtkWidget *widget, gpointer user_data)
                                                     NULL);
 
     GtkWidget *content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
-    
-    gchar *replying_to = g_strdup_printf("Replying to @%s:", username);
+
+    gchar *replying_to = build_reply_banner_text(username);
     GtkWidget *label = gtk_label_new(replying_to);
     gtk_label_set_xalign(GTK_LABEL(label), 0.0);
     gtk_box_pack_start(GTK_BOX(content_area), label, FALSE, FALSE, 5);
@@ -969,7 +1158,9 @@ create_quoted_tweet_widget(struct Tweet *tweet)
     gtk_widget_set_size_request(avatar_image, 20, 20);
     load_avatar(avatar_image, tweet->author_avatar, 20);
     
-    gchar *author_str = g_strdup_printf("<b>%s</b> <span foreground='gray'>@%s</span>", tweet->author_name, tweet->author_username);
+    const gchar *author_name = (tweet->author_name && tweet->author_name[0] != '\0') ? tweet->author_name : "Unknown";
+    const gchar *author_username = (tweet->author_username && tweet->author_username[0] != '\0') ? tweet->author_username : "unknown";
+    gchar *author_str = g_strdup_printf("<b>%s</b> <span foreground='gray'>@%s</span>", author_name, author_username);
     GtkWidget *author_label = gtk_label_new(NULL);
     gtk_label_set_markup(GTK_LABEL(author_label), author_str);
     g_free(author_str);
@@ -1023,7 +1214,7 @@ create_tweet_widget_full(struct Tweet *tweet, const gchar *op_username)
     load_avatar(avatar_image, tweet->author_avatar, AVATAR_SIZE);
 
     GtkWidget *author_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
-    gchar *author_str = g_strdup_printf("%s (@%s)", tweet->author_name, tweet->author_username);
+    gchar *author_str = build_account_label_text(tweet->author_name, tweet->author_username);
 
     GtkWidget *author_btn = gtk_button_new_with_label(author_str);
     gtk_button_set_relief(GTK_BUTTON(author_btn), GTK_RELIEF_NONE);
@@ -1170,11 +1361,50 @@ create_tweet_widget_full(struct Tweet *tweet, const gchar *op_username)
     g_object_set_data_full(G_OBJECT(reaction_btn), "tweet_id", g_strdup(tweet->id), g_free);
     g_signal_connect(reaction_btn, "clicked", G_CALLBACK(on_reaction_clicked), NULL);
 
+    GtkWidget *history_btn = gtk_button_new_with_label("History");
+    gtk_button_set_relief(GTK_BUTTON(history_btn), GTK_RELIEF_NONE);
+    g_object_set_data_full(G_OBJECT(history_btn), "tweet_id", g_strdup(tweet->id), g_free);
+    g_signal_connect(history_btn, "clicked", G_CALLBACK(on_tweet_history_clicked), NULL);
+
+    GtkWidget *reactions_btn = gtk_button_new_with_label("Reactions");
+    gtk_button_set_relief(GTK_BUTTON(reactions_btn), GTK_RELIEF_NONE);
+    g_object_set_data_full(G_OBJECT(reactions_btn), "tweet_id", g_strdup(tweet->id), g_free);
+    g_signal_connect(reactions_btn, "clicked", G_CALLBACK(on_tweet_reactions_clicked), NULL);
+
     gtk_box_pack_start(GTK_BOX(button_box), like_btn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(button_box), retweet_btn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(button_box), reply_btn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(button_box), bookmark_btn, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(button_box), reaction_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(button_box), history_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(button_box), reactions_btn, FALSE, FALSE, 0);
+
+    gchar *current_username = get_current_username_safe();
+    if (current_username && tweet->author_username &&
+        g_strcmp0(current_username, tweet->author_username) == 0) {
+        GtkWidget *edit_btn = gtk_button_new_with_label("Edit");
+        GtkWidget *delete_btn = gtk_button_new_with_label("Delete");
+        GtkWidget *pin_btn = gtk_button_new_with_label(tweet->pinned ? "Unpin" : "Pin");
+
+        gtk_button_set_relief(GTK_BUTTON(edit_btn), GTK_RELIEF_NONE);
+        gtk_button_set_relief(GTK_BUTTON(delete_btn), GTK_RELIEF_NONE);
+        gtk_button_set_relief(GTK_BUTTON(pin_btn), GTK_RELIEF_NONE);
+
+        g_object_set_data_full(G_OBJECT(edit_btn), "tweet_id", g_strdup(tweet->id), g_free);
+        g_object_set_data_full(G_OBJECT(edit_btn), "tweet_content", g_strdup(tweet->content), g_free);
+        g_object_set_data_full(G_OBJECT(delete_btn), "tweet_id", g_strdup(tweet->id), g_free);
+        g_object_set_data_full(G_OBJECT(pin_btn), "tweet_id", g_strdup(tweet->id), g_free);
+        g_object_set_data(G_OBJECT(pin_btn), "tweet_pinned", GINT_TO_POINTER(tweet->pinned));
+
+        g_signal_connect(edit_btn, "clicked", G_CALLBACK(on_tweet_edit_clicked), NULL);
+        g_signal_connect(delete_btn, "clicked", G_CALLBACK(on_tweet_delete_clicked), NULL);
+        g_signal_connect(pin_btn, "clicked", G_CALLBACK(on_tweet_pin_clicked), NULL);
+
+        gtk_box_pack_start(GTK_BOX(button_box), edit_btn, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(button_box), delete_btn, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(button_box), pin_btn, FALSE, FALSE, 0);
+    }
+    g_free(current_username);
 
     if (is_admin_user()) {
         GtkWidget *note_btn = gtk_button_new_with_label("✎ Note");
@@ -1221,7 +1451,7 @@ create_user_widget(struct Profile *user)
     gtk_widget_set_valign(avatar_image, GTK_ALIGN_START);
     load_avatar(avatar_image, user->avatar, AVATAR_SIZE);
 
-    gchar *user_str = g_strdup_printf("%s (@%s)", user->name, user->username);
+    gchar *user_str = build_account_label_text(user->name, user->username);
 
     GtkWidget *user_btn = gtk_button_new_with_label(user_str);
     gtk_button_set_relief(GTK_BUTTON(user_btn), GTK_RELIEF_NONE);
@@ -1295,7 +1525,7 @@ on_notification_avatar_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)user_data;
     const gchar *username = g_object_get_data(G_OBJECT(widget), "username");
-    if (username) {
+    if (username && username[0] != '\0') {
         show_profile(username);
     }
 }
@@ -1307,6 +1537,10 @@ on_notification_clicked(GtkWidget *widget, GdkEventButton *event, gpointer user_
     if (event->button != 1) return FALSE;
 
     const gchar *tweet_id = g_object_get_data(G_OBJECT(widget), "related_id");
+    const gchar *notification_id = g_object_get_data(G_OBJECT(widget), "notification_id");
+    if (notification_id) {
+        mark_notification_read(notification_id);
+    }
     if (tweet_id) {
         show_tweet(tweet_id);
     }
@@ -1387,10 +1621,11 @@ create_notification_widget(struct Notification *notif)
     
     GtkWidget *content_event_box = gtk_event_box_new();
     gtk_container_add(GTK_CONTAINER(content_event_box), vbox);
+    g_object_set_data_full(G_OBJECT(content_event_box), "notification_id", g_strdup(notif->id), g_free);
     if (notif->related_id) {
         g_object_set_data_full(G_OBJECT(content_event_box), "related_id", g_strdup(notif->related_id), g_free);
-        g_signal_connect(content_event_box, "button-press-event", G_CALLBACK(on_notification_clicked), NULL);
     }
+    g_signal_connect(content_event_box, "button-press-event", G_CALLBACK(on_notification_clicked), NULL);
     
     gtk_box_pack_start(GTK_BOX(hbox), content_event_box, TRUE, TRUE, 0);
 
@@ -1416,6 +1651,16 @@ populate_notification_list(GtkListBox *list_box, GList *notifications)
     }
 }
 
+void
+append_notifications_to_list(GtkListBox *list_box, GList *notifications)
+{
+    for (GList *l = notifications; l != NULL; l = l->next) {
+        GtkWidget *notif_widget = create_notification_widget(l->data);
+        gtk_widget_show_all(notif_widget);
+        gtk_list_box_insert(list_box, notif_widget, -1);
+    }
+}
+
 static void
 on_conversation_clicked(GtkWidget *widget, gpointer user_data)
 {
@@ -1424,9 +1669,22 @@ on_conversation_clicked(GtkWidget *widget, gpointer user_data)
     const gchar *display_name = g_object_get_data(G_OBJECT(widget), "display_name");
     
     if (conv_id) {
+        GtkWidget *status_label = g_object_get_data(G_OBJECT(g_dm_messages_list), "composer_status_label");
         gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "dm_messages");
         gtk_label_set_text(GTK_LABEL(g_dm_title_label), display_name ? display_name : "Messages");
+        if (g_dm_info_label) {
+            gtk_label_set_text(GTK_LABEL(g_dm_info_label), "");
+        }
         g_object_set_data_full(G_OBJECT(g_dm_messages_list), "conversation_id", g_strdup(conv_id), g_free);
+        g_object_set_data_full(G_OBJECT(g_dm_messages_list), "reply_to_id", NULL, g_free);
+        g_object_set_data_full(G_OBJECT(g_dm_messages_list), "reply_preview", NULL, g_free);
+        g_object_set_data_full(G_OBJECT(g_dm_messages_list), "pending_file_path", NULL, g_free);
+        g_object_set_data_full(G_OBJECT(g_dm_messages_list), "pending_file_type", NULL, g_free);
+        g_object_set_data(G_OBJECT(g_dm_entry), "typing_active", GINT_TO_POINTER(FALSE));
+        if (status_label) {
+            gtk_label_set_text(GTK_LABEL(status_label), "");
+            gtk_widget_hide(status_label);
+        }
         start_loading_messages(GTK_LIST_BOX(g_dm_messages_list), conv_id);
 
         // Mark as read
@@ -1579,32 +1837,204 @@ populate_conversation_list(GtkListBox *list_box, GList *conversations)
     }
 }
 
+static void
+on_dm_message_reply_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkWidget *status_label;
+    const gchar *message_id;
+    const gchar *content;
+
+    (void)user_data;
+    if (!g_dm_messages_list) {
+        return;
+    }
+
+    message_id = g_object_get_data(G_OBJECT(widget), "message_id");
+    content = g_object_get_data(G_OBJECT(widget), "message_content");
+    status_label = g_object_get_data(G_OBJECT(g_dm_messages_list), "composer_status_label");
+
+    g_object_set_data_full(G_OBJECT(g_dm_messages_list), "reply_to_id", g_strdup(message_id), g_free);
+    g_object_set_data_full(G_OBJECT(g_dm_messages_list), "reply_preview", g_strdup(content), g_free);
+    if (status_label) {
+        gchar *preview = NULL;
+        if (content) {
+            preview = g_strdup(content);
+            if (strlen(preview) > 48) {
+                preview[48] = '\0';
+            }
+        }
+        gtk_label_set_text(GTK_LABEL(status_label), preview ? preview : "Replying");
+        gtk_widget_show(status_label);
+        g_free(preview);
+    }
+    gtk_widget_grab_focus(g_dm_entry);
+}
+
+static void
+on_dm_message_react_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkWidget *dialog;
+    GtkWidget *entry;
+    GtkWidget *content_area;
+    GtkWidget *toplevel;
+    const gchar *message_id;
+
+    (void)user_data;
+    message_id = g_object_get_data(G_OBJECT(widget), "message_id");
+    if (!message_id) {
+        return;
+    }
+
+    toplevel = gtk_widget_get_toplevel(widget);
+    dialog = gtk_dialog_new_with_buttons("React to Message",
+                                         GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL,
+                                         GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                         "_Cancel", GTK_RESPONSE_CANCEL,
+                                         "_React", GTK_RESPONSE_ACCEPT,
+                                         NULL);
+    content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "Emoji");
+    gtk_box_pack_start(GTK_BOX(content_area), entry, TRUE, TRUE, 8);
+    gtk_widget_show_all(dialog);
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        const gchar *emoji = gtk_entry_get_text(GTK_ENTRY(entry));
+        if (emoji && emoji[0] != '\0') {
+            gchar *url = g_strdup_printf(DM_MESSAGE_REACTIONS_URL, message_id);
+            JsonBuilder *builder = json_builder_new();
+            JsonGenerator *gen = json_generator_new();
+            gchar *payload;
+            json_builder_begin_object(builder);
+            json_builder_set_member_name(builder, "emoji");
+            json_builder_add_string_value(builder, emoji);
+            json_builder_end_object(builder);
+            json_generator_set_root(gen, json_builder_get_root(builder));
+            payload = json_generator_to_data(gen, NULL);
+            if (fetch_url(url, &((struct MemoryStruct){0}), payload, "POST")) {
+                refresh_current_dm_messages();
+            }
+            g_free(payload);
+            g_object_unref(gen);
+            g_object_unref(builder);
+            g_free(url);
+        }
+    }
+
+    gtk_widget_destroy(dialog);
+}
+
+static void
+on_dm_message_edit_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkWidget *dialog;
+    GtkWidget *entry;
+    GtkWidget *content_area;
+    GtkWidget *toplevel;
+    const gchar *message_id;
+    const gchar *current_content;
+
+    (void)user_data;
+    message_id = g_object_get_data(G_OBJECT(widget), "message_id");
+    current_content = g_object_get_data(G_OBJECT(widget), "message_content");
+    if (!message_id) {
+        return;
+    }
+
+    toplevel = gtk_widget_get_toplevel(widget);
+    dialog = gtk_dialog_new_with_buttons("Edit Message",
+                                         GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL,
+                                         GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                         "_Cancel", GTK_RESPONSE_CANCEL,
+                                         "_Save", GTK_RESPONSE_ACCEPT,
+                                         NULL);
+    content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    entry = gtk_entry_new();
+    gtk_entry_set_text(GTK_ENTRY(entry), current_content ? current_content : "");
+    gtk_box_pack_start(GTK_BOX(content_area), entry, TRUE, TRUE, 8);
+    gtk_widget_show_all(dialog);
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        gchar *url = g_strdup_printf(DM_MESSAGE_EDIT_URL, message_id);
+        JsonBuilder *builder = json_builder_new();
+        JsonGenerator *gen = json_generator_new();
+        gchar *payload;
+        json_builder_begin_object(builder);
+        json_builder_set_member_name(builder, "content");
+        json_builder_add_string_value(builder, gtk_entry_get_text(GTK_ENTRY(entry)));
+        json_builder_end_object(builder);
+        json_generator_set_root(gen, json_builder_get_root(builder));
+        payload = json_generator_to_data(gen, NULL);
+        if (fetch_url(url, &((struct MemoryStruct){0}), payload, "PUT")) {
+            refresh_current_dm_messages();
+        }
+        g_free(payload);
+        g_object_unref(gen);
+        g_object_unref(builder);
+        g_free(url);
+    }
+
+    gtk_widget_destroy(dialog);
+}
+
+static void
+on_dm_message_delete_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkWidget *toplevel;
+    GtkWidget *dialog;
+    const gchar *message_id;
+
+    (void)user_data;
+    message_id = g_object_get_data(G_OBJECT(widget), "message_id");
+    if (!message_id) {
+        return;
+    }
+
+    toplevel = gtk_widget_get_toplevel(widget);
+    dialog = gtk_message_dialog_new(GTK_IS_WINDOW(toplevel) ? GTK_WINDOW(toplevel) : NULL,
+                                    GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                    GTK_MESSAGE_WARNING,
+                                    GTK_BUTTONS_OK_CANCEL,
+                                    "Delete this message?");
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_OK) {
+        gchar *url = g_strdup_printf(DM_MESSAGE_DELETE_URL, message_id);
+        struct MemoryStruct chunk = {0};
+        if (fetch_url(url, &chunk, NULL, "DELETE")) {
+            g_free(chunk.memory);
+            refresh_current_dm_messages();
+        }
+        g_free(url);
+    }
+    gtk_widget_destroy(dialog);
+}
+
 GtkWidget*
 create_message_widget(struct DirectMessage *msg)
 {
     GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
     gtk_container_set_border_width(GTK_CONTAINER(hbox), 5);
-    
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-    
     GtkWidget *avatar_image = gtk_image_new_from_icon_name("avatar-default", GTK_ICON_SIZE_MENU);
     gtk_widget_set_size_request(avatar_image, 32, 32);
     if (msg->avatar) {
         load_avatar(avatar_image, msg->avatar, 32);
     }
+    gchar *current_username = get_current_username_safe();
+    gboolean is_own_message = current_username && msg->username &&
+                              g_strcmp0(current_username, msg->username) == 0;
 
     gchar *header_text = NULL;
     if (msg->verified) {
         header_text = g_strdup_printf("<b>%s</b> <span foreground='#1d9bf0'>[Verified]</span> (@%s) · %s%s",
-                                      msg->name,
-                                      msg->username,
-                                      msg->created_at,
+                                      msg->name ? msg->name : "Unknown",
+                                      msg->username ? msg->username : "unknown",
+                                      msg->created_at ? msg->created_at : "",
                                       msg->edited_at ? " · edited" : "");
     } else {
         header_text = g_strdup_printf("<b>%s</b> (@%s) · %s%s",
-                                      msg->name,
-                                      msg->username,
-                                      msg->created_at,
+                                      msg->name ? msg->name : "Unknown",
+                                      msg->username ? msg->username : "unknown",
+                                      msg->created_at ? msg->created_at : "",
                                       msg->edited_at ? " · edited" : "");
     }
     GtkWidget *header_label = gtk_label_new(NULL);
@@ -1612,7 +2042,7 @@ create_message_widget(struct DirectMessage *msg)
     gtk_label_set_xalign(GTK_LABEL(header_label), 0.0);
     g_free(header_text);
 
-    GtkWidget *content_label = gtk_label_new(msg->content);
+    GtkWidget *content_label = gtk_label_new(msg->is_deleted ? "[Deleted message]" : msg->content);
     gtk_label_set_xalign(GTK_LABEL(content_label), 0.0);
     gtk_label_set_line_wrap(GTK_LABEL(content_label), TRUE);
     gtk_label_set_selectable(GTK_LABEL(content_label), TRUE);
@@ -1627,21 +2057,64 @@ create_message_widget(struct DirectMessage *msg)
         gtk_box_pack_start(GTK_BOX(vbox), type_label, FALSE, FALSE, 0);
         g_free(type_text);
     }
-    if (msg->reply_to) {
-        gchar *reply_text = g_strdup_printf("Replying to %s", msg->reply_to);
+    if (msg->reply_to || msg->reply_preview) {
+        gchar *reply_text = g_strdup_printf("Replying to %s%s%s",
+                                            msg->reply_to ? msg->reply_to : "message",
+                                            msg->reply_preview ? ": " : "",
+                                            msg->reply_preview ? msg->reply_preview : "");
         GtkWidget *reply_label = gtk_label_new(reply_text);
         gtk_label_set_xalign(GTK_LABEL(reply_label), 0.0);
+        gtk_label_set_line_wrap(GTK_LABEL(reply_label), TRUE);
         GtkStyleContext *reply_context = gtk_widget_get_style_context(reply_label);
         gtk_style_context_add_class(reply_context, "dim-label");
         gtk_box_pack_start(GTK_BOX(vbox), reply_label, FALSE, FALSE, 0);
         g_free(reply_text);
     }
     gtk_box_pack_start(GTK_BOX(vbox), content_label, FALSE, FALSE, 0);
-    
-    add_attachments_to_box(GTK_BOX(vbox), msg->attachments);
+
+    if (!msg->is_deleted) {
+        add_attachments_to_box(GTK_BOX(vbox), msg->attachments);
+    }
+
+    if (msg->reactions_summary && msg->reactions_summary[0] != '\0') {
+        GtkWidget *reactions_label = gtk_label_new(msg->reactions_summary);
+        gtk_label_set_xalign(GTK_LABEL(reactions_label), 0.0);
+        GtkStyleContext *reactions_context = gtk_widget_get_style_context(reactions_label);
+        gtk_style_context_add_class(reactions_context, "dim-label");
+        gtk_box_pack_start(GTK_BOX(vbox), reactions_label, FALSE, FALSE, 0);
+    }
+
+    GtkWidget *button_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    GtkWidget *reply_btn = gtk_button_new_with_label("Reply");
+    GtkWidget *react_btn = gtk_button_new_with_label("React");
+    gtk_button_set_relief(GTK_BUTTON(reply_btn), GTK_RELIEF_NONE);
+    gtk_button_set_relief(GTK_BUTTON(react_btn), GTK_RELIEF_NONE);
+    g_object_set_data_full(G_OBJECT(reply_btn), "message_id", g_strdup(msg->id), g_free);
+    g_object_set_data_full(G_OBJECT(reply_btn), "message_content", g_strdup(msg->content), g_free);
+    g_object_set_data_full(G_OBJECT(react_btn), "message_id", g_strdup(msg->id), g_free);
+    g_signal_connect(reply_btn, "clicked", G_CALLBACK(on_dm_message_reply_clicked), NULL);
+    g_signal_connect(react_btn, "clicked", G_CALLBACK(on_dm_message_react_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(button_box), reply_btn, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(button_box), react_btn, FALSE, FALSE, 0);
+
+    if (is_own_message && !msg->is_deleted) {
+        GtkWidget *edit_btn = gtk_button_new_with_label("Edit");
+        GtkWidget *delete_btn = gtk_button_new_with_label("Delete");
+        gtk_button_set_relief(GTK_BUTTON(edit_btn), GTK_RELIEF_NONE);
+        gtk_button_set_relief(GTK_BUTTON(delete_btn), GTK_RELIEF_NONE);
+        g_object_set_data_full(G_OBJECT(edit_btn), "message_id", g_strdup(msg->id), g_free);
+        g_object_set_data_full(G_OBJECT(edit_btn), "message_content", g_strdup(msg->content), g_free);
+        g_object_set_data_full(G_OBJECT(delete_btn), "message_id", g_strdup(msg->id), g_free);
+        g_signal_connect(edit_btn, "clicked", G_CALLBACK(on_dm_message_edit_clicked), NULL);
+        g_signal_connect(delete_btn, "clicked", G_CALLBACK(on_dm_message_delete_clicked), NULL);
+        gtk_box_pack_start(GTK_BOX(button_box), edit_btn, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(button_box), delete_btn, FALSE, FALSE, 0);
+    }
+    gtk_box_pack_start(GTK_BOX(vbox), button_box, FALSE, FALSE, 0);
 
     gtk_box_pack_start(GTK_BOX(hbox), avatar_image, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(hbox), vbox, TRUE, TRUE, 0);
+    g_free(current_username);
 
     return hbox;
 }
@@ -1756,6 +2229,10 @@ GtkWidget* create_community_widget(struct Community *community)
 
     // Store community data on row for click handler
     g_object_set_data_full(G_OBJECT(row), "community_id", g_strdup(community->id), g_free);
+    g_object_set_data_full(G_OBJECT(row), "community_name", g_strdup(community->name), g_free);
+    g_object_set_data_full(G_OBJECT(row), "community_description", g_strdup(community->description), g_free);
+    g_object_set_data_full(G_OBJECT(row), "community_rules", g_strdup(community->rules), g_free);
+    g_object_set_data_full(G_OBJECT(row), "community_access_mode", g_strdup(community->access_mode), g_free);
     g_signal_connect(row, "activate", G_CALLBACK(on_community_clicked), NULL);
 
     gtk_widget_show_all(row);
@@ -1789,6 +2266,10 @@ static void on_community_clicked(GtkListBoxRow *row, gpointer user_data)
 {
     (void)user_data;
     const gchar *community_id = g_object_get_data(G_OBJECT(row), "community_id");
+    const gchar *community_name = g_object_get_data(G_OBJECT(row), "community_name");
+    const gchar *community_description = g_object_get_data(G_OBJECT(row), "community_description");
+    const gchar *community_rules = g_object_get_data(G_OBJECT(row), "community_rules");
+    const gchar *community_access_mode = g_object_get_data(G_OBJECT(row), "community_access_mode");
     if (!community_id) return;
     
     // Set current community ID (thread-safe)
@@ -1800,8 +2281,21 @@ static void on_community_clicked(GtkListBoxRow *row, gpointer user_data)
     g_free(old_id);
 
     // Show community tweets
-    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "community");
+    gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "community_tweets");
     gtk_widget_show(g_back_button);
+    if (g_community_tweets_list) {
+        g_object_set_data_full(G_OBJECT(g_community_tweets_list), "community_id", g_strdup(community_id), g_free);
+        g_object_set_data_full(G_OBJECT(g_community_tweets_list), "community_name", g_strdup(community_name), g_free);
+        g_object_set_data_full(G_OBJECT(g_community_tweets_list), "community_description", g_strdup(community_description), g_free);
+        g_object_set_data_full(G_OBJECT(g_community_tweets_list), "community_rules", g_strdup(community_rules), g_free);
+        g_object_set_data_full(G_OBJECT(g_community_tweets_list), "community_access_mode", g_strdup(community_access_mode), g_free);
+    }
+    if (g_community_title_label) {
+        gtk_label_set_text(GTK_LABEL(g_community_title_label), community_name ? community_name : "Community");
+    }
+    if (g_community_details_label) {
+        gtk_label_set_text(GTK_LABEL(g_community_details_label), community_description ? community_description : "");
+    }
 
     // Load community tweets using the action function
     start_loading_community_tweets(GTK_LIST_BOX(g_community_tweets_list), community_id);

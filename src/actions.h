@@ -31,8 +31,11 @@ void on_notifications_clicked(GtkWidget *widget, gpointer user_data);
 void on_messages_clicked(GtkWidget *widget, gpointer user_data);
 void on_settings_clicked(GtkWidget *widget, gpointer user_data);
 void on_admin_clicked(GtkWidget *widget, gpointer user_data);
+void on_open_full_admin_panel_clicked(GtkWidget *widget, gpointer user_data);
 void on_mark_all_read_clicked(GtkWidget *widget, gpointer user_data);
 void on_refresh_clicked(GtkWidget *widget, gpointer user_data);
+void refresh_notification_badge(void);
+gboolean mark_notification_read(const gchar *notification_id);
 gboolean perform_post_tweet(const gchar *content, const gchar *reply_to_id, GList *attachments);
 void on_compose_clicked(GtkWidget *widget, gpointer window);
 void on_note_button_clicked(GtkWidget *widget, gpointer user_data);
@@ -43,12 +46,22 @@ gboolean perform_like(const gchar *tweet_id);
 gboolean perform_retweet(const gchar *tweet_id);
 gboolean perform_bookmark(const gchar *tweet_id, gboolean add);
 gboolean perform_reaction(const gchar *tweet_id, const gchar *emoji);
+gboolean perform_edit_tweet(const gchar *tweet_id, const gchar *new_content);
+gboolean perform_delete_tweet(const gchar *tweet_id);
+gchar* fetch_tweet_edit_history_text(const gchar *tweet_id);
+gchar* fetch_tweet_reactions_text(const gchar *tweet_id);
 GList* fetch_emojis(void);
 void free_emojis(GList *emojis);
 
 gboolean perform_follow(const gchar *username, gboolean follow);
+gboolean perform_profile_notify_tweets(const gchar *username, gboolean notify);
+gboolean perform_delete_profile_avatar(const gchar *username);
+gboolean perform_delete_profile_banner(const gchar *username);
+gboolean perform_toggle_pin_tweet(const gchar *tweet_id, gboolean pin);
 void start_loading_followers(const gchar *username);
 void start_loading_following(const gchar *username);
+void start_loading_profile_media(const gchar *username);
+void start_loading_profile_mutuals(const gchar *username);
 
 void start_loading_bookmarks(GtkListBox *list_box);
 
@@ -65,7 +78,18 @@ gboolean perform_poll_vote(const gchar *tweet_id, const gchar *option_id);
 void free_poll(struct Poll *poll);
 void free_poll_option(gpointer data);
 
-gboolean perform_update_profile(const gchar *username, const gchar *name, const gchar *bio);
+gboolean perform_update_profile(const gchar *username,
+                                const gchar *name,
+                                const gchar *bio,
+                                const gchar *location,
+                                const gchar *website,
+                                const gchar *pronouns,
+                                const gchar *theme,
+                                const gchar *accent_color,
+                                const gchar *label_type,
+                                gboolean label_automated,
+                                gboolean include_avatar_radius,
+                                gint avatar_radius);
 gboolean perform_upload_avatar(const gchar *username, const gchar *file_path);
 gboolean perform_upload_banner(const gchar *username, const gchar *file_path);
 
@@ -73,8 +97,21 @@ gchar* perform_media_upload(const gchar *file_path);
 
 void start_loading_communities(GtkListBox *list_box);
 void start_loading_community_tweets(GtkListBox *list_box, const gchar *community_id);
+void start_loading_community_members(const gchar *community_id, GtkListBox *list_box);
+void start_loading_community_details(const gchar *community_id);
 gboolean perform_join_community(const gchar *community_id);
 gboolean perform_leave_community(const gchar *community_id);
+gboolean perform_create_community(const gchar *name,
+                                  const gchar *description,
+                                  const gchar *rules,
+                                  const gchar *access_mode);
+gboolean perform_update_community(const gchar *community_id,
+                                  const gchar *name,
+                                  const gchar *description,
+                                  const gchar *rules,
+                                  const gchar *access_mode);
+gboolean perform_delete_community(const gchar *community_id);
+gboolean perform_update_community_access_mode(const gchar *community_id, const gchar *access_mode);
 void free_community(gpointer data);
 void free_communities(GList *communities);
 

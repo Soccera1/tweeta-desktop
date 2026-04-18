@@ -77,7 +77,7 @@ on_author_clicked(GtkButton *button, gpointer user_data)
 {
     (void)user_data;
     const gchar *username = g_object_get_data(G_OBJECT(button), "username");
-    if (username) {
+    if (username && username[0] != '\0') {
         show_profile(username);
     }
 }
@@ -103,6 +103,21 @@ detect_mime_type(const gchar *file_path)
     }
 
     return mime_type;
+}
+
+gchar*
+build_reply_banner_text(const gchar *username)
+{
+    const gchar *display_username = (username && username[0] != '\0') ? username : "unknown";
+    return g_strdup_printf("Replying to @%s:", display_username);
+}
+
+gchar*
+build_account_label_text(const gchar *name, const gchar *username)
+{
+    const gchar *display_name = (name && name[0] != '\0') ? name : "Unknown";
+    const gchar *display_username = (username && username[0] != '\0') ? username : "unknown";
+    return g_strdup_printf("%s (@%s)", display_name, display_username);
 }
 
 void
