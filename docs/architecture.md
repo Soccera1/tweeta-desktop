@@ -89,7 +89,7 @@ Key endpoints used:
 - `/upload/`: Media uploads.
 - `/blocking/block`, `/blocking/unblock`, `/blocking/mute`, `/blocking/unmute`: Blocking and muting.
 - `/emojis`: Custom emoji list.
-- `/admin/stats`, `/admin/users`, `/admin/posts`: Admin endpoints.
+- `/admin/*`: Admin endpoints. The desktop client renders a native GTK admin surface over these endpoints, including notifications, clone-user tools, impersonation, post-as-user, and bulk user editing.
 
 ## File Structure
 

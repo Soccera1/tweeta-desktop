@@ -26,6 +26,22 @@ get_config_path(void)
 void
 save_session(const gchar *token, const gchar *username, gboolean is_admin)
 {
+    gchar *impersonation_token = NULL;
+    gchar *impersonation_username = NULL;
+    gboolean is_impersonating = FALSE;
+    gboolean impersonation_is_admin = FALSE;
+
+    g_mutex_lock(&g_globals_mutex);
+    is_impersonating = g_is_impersonating;
+    impersonation_is_admin = g_impersonation_admin_is_admin;
+    if (g_impersonation_admin_token) {
+        impersonation_token = g_strdup(g_impersonation_admin_token);
+    }
+    if (g_impersonation_admin_username) {
+        impersonation_username = g_strdup(g_impersonation_admin_username);
+    }
+    g_mutex_unlock(&g_globals_mutex);
+
     JsonBuilder *builder = json_builder_new();
     json_builder_begin_object(builder);
     json_builder_set_member_name(builder, "token");
@@ -34,6 +50,16 @@ save_session(const gchar *token, const gchar *username, gboolean is_admin)
     json_builder_add_string_value(builder, username);
     json_builder_set_member_name(builder, "is_admin");
     json_builder_add_boolean_value(builder, is_admin);
+    json_builder_set_member_name(builder, "is_impersonating");
+    json_builder_add_boolean_value(builder, is_impersonating);
+    if (impersonation_token && impersonation_username) {
+        json_builder_set_member_name(builder, "impersonation_admin_token");
+        json_builder_add_string_value(builder, impersonation_token);
+        json_builder_set_member_name(builder, "impersonation_admin_username");
+        json_builder_add_string_value(builder, impersonation_username);
+        json_builder_set_member_name(builder, "impersonation_admin_is_admin");
+        json_builder_add_boolean_value(builder, impersonation_is_admin);
+    }
     json_builder_end_object(builder);
 
     JsonGenerator *gen = json_generator_new();
@@ -53,6 +79,8 @@ save_session(const gchar *token, const gchar *username, gboolean is_admin)
 
     g_free(path);
     g_free(data);
+    g_free(impersonation_username);
+    g_free(impersonation_token);
     g_object_unref(gen);
     g_object_unref(builder);
 }
@@ -90,6 +118,19 @@ load_session(void)
                     g_is_admin = json_object_get_boolean_member(obj, "is_admin");
                 } else {
                     g_is_admin = FALSE;
+                }
+                g_is_impersonating = json_object_has_member(obj, "is_impersonating") &&
+                    json_object_get_boolean_member(obj, "is_impersonating");
+                g_clear_pointer(&g_impersonation_admin_token, g_free);
+                g_clear_pointer(&g_impersonation_admin_username, g_free);
+                g_impersonation_admin_is_admin = FALSE;
+                if (json_object_has_member(obj, "impersonation_admin_token") &&
+                    json_object_has_member(obj, "impersonation_admin_username")) {
+                    g_impersonation_admin_token = g_strdup(json_object_get_string_member(obj, "impersonation_admin_token"));
+                    g_impersonation_admin_username = g_strdup(json_object_get_string_member(obj, "impersonation_admin_username"));
+                    if (json_object_has_member(obj, "impersonation_admin_is_admin")) {
+                        g_impersonation_admin_is_admin = json_object_get_boolean_member(obj, "impersonation_admin_is_admin");
+                    }
                 }
                 g_mutex_unlock(&g_globals_mutex);
             }

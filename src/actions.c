@@ -1,7 +1,4 @@
 #include <stdlib.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <string.h>
 #include <time.h>
 #include <curl/curl.h>
@@ -51,6 +48,8 @@ static gchar* build_community_details_text(const struct Community *community);
 static gchar* build_dm_conversation_info(const struct Conversation *conversation);
 static void update_notifications_button_label(gint unread_count);
 static void load_more_notifications(GtkListBox *list_box, const gchar *before_id);
+static gboolean perform_admin_request(const gchar *url, const gchar *payload, const gchar *method, gchar **response_out);
+static gchar *extract_error_message(const gchar *json_data);
 
 static inline gchar* get_auth_token_safe(void) {
     g_mutex_lock(&g_globals_mutex);
@@ -60,12 +59,6 @@ static inline gchar* get_auth_token_safe(void) {
 }
 
 static void show_modal_message(GtkMessageType type, const gchar *primary, const gchar *secondary);
-static gboolean cleanup_launcher_file_cb(gpointer data);
-static gboolean write_all_to_fd(int fd, const gchar *data, gsize len, GError **error);
-static gchar* create_admin_launcher_file(const gchar *html, GError **error);
-static gchar* build_full_admin_launcher_html(const gchar *auth_url, const gchar *admin_url);
-static gchar* get_runtime_base_domain_for_browser(void);
-static gboolean launch_full_admin_panel(GError **error);
 
 static void
 show_modal_message(GtkMessageType type, const gchar *primary, const gchar *secondary)
@@ -81,274 +74,6 @@ show_modal_message(GtkMessageType type, const gchar *primary, const gchar *secon
     }
     gtk_dialog_run(GTK_DIALOG(dialog));
     gtk_widget_destroy(dialog);
-}
-
-static gboolean
-cleanup_launcher_file_cb(gpointer data)
-{
-    gchar *path = (gchar *)data;
-
-    if (path && *path) {
-        gchar *dir = g_path_get_dirname(path);
-        g_remove(path);
-        g_rmdir(dir);
-        g_free(dir);
-    }
-    g_free(path);
-    return G_SOURCE_REMOVE;
-}
-
-static gboolean
-write_all_to_fd(int fd, const gchar *data, gsize len, GError **error)
-{
-    gsize offset = 0;
-
-    while (offset < len) {
-        ssize_t written = write(fd, data + offset, len - offset);
-        if (written < 0) {
-            g_set_error(error,
-                        G_FILE_ERROR,
-                        g_file_error_from_errno(errno),
-                        "Failed to write admin launcher: %s",
-                        g_strerror(errno));
-            return FALSE;
-        }
-        offset += (gsize)written;
-    }
-
-    return TRUE;
-}
-
-static gchar *
-create_admin_launcher_file(const gchar *html, GError **error)
-{
-    gchar *dir_path;
-    gchar *file_path;
-    int fd;
-
-    dir_path = g_dir_make_tmp("tweeta-admin-launcher-XXXXXX", error);
-    if (!dir_path) {
-        return NULL;
-    }
-
-    file_path = g_build_filename(dir_path, "index.html", NULL);
-    fd = g_open(file_path, O_CREAT | O_WRONLY | O_TRUNC, 0600);
-    if (fd < 0) {
-        g_set_error(error,
-                    G_FILE_ERROR,
-                    g_file_error_from_errno(errno),
-                    "Failed to create admin launcher file: %s",
-                    g_strerror(errno));
-        g_rmdir(dir_path);
-        g_free(file_path);
-        g_free(dir_path);
-        return NULL;
-    }
-
-    if (!write_all_to_fd(fd, html, strlen(html), error)) {
-        close(fd);
-        g_remove(file_path);
-        g_rmdir(dir_path);
-        g_free(file_path);
-        g_free(dir_path);
-        return NULL;
-    }
-
-    if (close(fd) != 0) {
-        g_set_error(error,
-                    G_FILE_ERROR,
-                    g_file_error_from_errno(errno),
-                    "Failed to close admin launcher file: %s",
-                    g_strerror(errno));
-        g_remove(file_path);
-        g_rmdir(dir_path);
-        g_free(file_path);
-        g_free(dir_path);
-        return NULL;
-    }
-
-    g_free(dir_path);
-    return file_path;
-}
-
-static gchar *
-build_full_admin_launcher_html(const gchar *auth_url, const gchar *admin_url)
-{
-    gchar *auth_url_js = g_strescape(auth_url, NULL);
-    gchar *admin_url_js = g_strescape(admin_url, NULL);
-    gchar *auth_url_html = g_markup_escape_text(auth_url, -1);
-    gchar *admin_url_html = g_markup_escape_text(admin_url, -1);
-    gchar *html;
-
-    html = g_strdup_printf(
-        "<!doctype html>\n"
-        "<html lang=\"en\">\n"
-        "<head>\n"
-        "  <meta charset=\"utf-8\">\n"
-        "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
-        "  <title>Open Tweetapus Admin</title>\n"
-        "  <style>\n"
-        "    body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 24px; }\n"
-        "    main { max-width: 42rem; margin: 0 auto; background: #111827; border-radius: 14px; padding: 24px; box-shadow: 0 20px 45px rgba(0,0,0,0.35); }\n"
-        "    h1 { margin-top: 0; font-size: 1.6rem; }\n"
-        "    p { line-height: 1.5; }\n"
-        "    button, a.button { display: inline-block; border: 0; border-radius: 999px; padding: 12px 18px; background: #2563eb; color: white; text-decoration: none; cursor: pointer; font: inherit; }\n"
-        "    button:hover, a.button:hover { background: #1d4ed8; }\n"
-        "    .muted { color: #94a3b8; font-size: 0.95rem; }\n"
-        "    .manual { margin-top: 18px; padding-top: 18px; border-top: 1px solid rgba(148,163,184,0.2); }\n"
-        "    .links a { display: block; margin-top: 10px; color: #93c5fd; word-break: break-all; }\n"
-        "    code { background: rgba(148,163,184,0.14); border-radius: 6px; padding: 0.1rem 0.35rem; }\n"
-        "  </style>\n"
-        "</head>\n"
-        "<body>\n"
-        "  <main>\n"
-        "    <h1>Open the full Tweetapus admin panel</h1>\n"
-        "    <p>This helper syncs your browser session to the same account used in Tweeta Desktop, then opens <code>/admin</code>.</p>\n"
-        "    <p class=\"muted\">If your browser blocks the automatic handoff, use the manual links below.</p>\n"
-        "    <button id=\"launchBtn\" type=\"button\">Continue</button>\n"
-        "    <p id=\"status\" class=\"muted\">Preparing browser handoff...</p>\n"
-        "    <div class=\"manual\" id=\"manualSection\" hidden>\n"
-        "      <strong>Manual fallback</strong>\n"
-        "      <div class=\"links\">\n"
-        "        <a href=\"%s\" target=\"_blank\">1. Sync browser session with desktop token</a>\n"
-        "        <a href=\"%s\" target=\"_blank\">2. Open the admin panel</a>\n"
-        "      </div>\n"
-        "    </div>\n"
-        "  </main>\n"
-        "  <script>\n"
-        "    (function () {\n"
-        "      const authUrl = '%s';\n"
-        "      const adminUrl = '%s';\n"
-        "      const statusEl = document.getElementById('status');\n"
-        "      const manualEl = document.getElementById('manualSection');\n"
-        "      const launchBtn = document.getElementById('launchBtn');\n"
-        "      let launched = false;\n"
-        "      function setStatus(message) { statusEl.textContent = message; }\n"
-        "      function showManual() { manualEl.hidden = false; }\n"
-        "      function launch() {\n"
-        "        let popup;\n"
-        "        if (launched) return;\n"
-        "        launched = true;\n"
-        "        showManual();\n"
-        "        setStatus('Opening browser session handoff...');\n"
-        "        popup = window.open(authUrl, 'tweetaAdminPanelBridge');\n"
-        "        if (!popup) {\n"
-        "          setStatus('Popup blocked. Use the manual links below.');\n"
-        "          return;\n"
-        "        }\n"
-        "        window.setTimeout(function () {\n"
-        "          try {\n"
-        "            popup.location = adminUrl;\n"
-        "            setStatus('Admin panel opened in a new tab or window.');\n"
-        "          } catch (_err) {\n"
-        "            setStatus('Session handoff finished. If the admin panel did not open, use the manual links below.');\n"
-        "          }\n"
-        "        }, 2200);\n"
-        "        window.setTimeout(function () {\n"
-        "          try { window.close(); } catch (_err) {}\n"
-        "        }, 4000);\n"
-        "      }\n"
-        "      launchBtn.addEventListener('click', launch);\n"
-        "      window.addEventListener('load', function () {\n"
-        "        window.setTimeout(showManual, 700);\n"
-        "        launch();\n"
-        "      });\n"
-        "    }());\n"
-        "  </script>\n"
-        "</body>\n"
-        "</html>\n",
-        auth_url_html,
-        admin_url_html,
-        auth_url_js,
-        admin_url_js
-    );
-
-    g_free(auth_url_js);
-    g_free(admin_url_js);
-    g_free(auth_url_html);
-    g_free(admin_url_html);
-
-    return html;
-}
-
-static gchar *
-get_runtime_base_domain_for_browser(void)
-{
-    const gchar *base_domain = g_getenv("TWEETA_BASE_DOMAIN");
-    const gchar *api_base = g_getenv("TWEETA_API_BASE_URL");
-
-    if (base_domain && *base_domain) {
-        return g_strdup(base_domain);
-    }
-
-    if (api_base && *api_base) {
-        if (g_str_has_suffix(api_base, "/api")) {
-            return g_strndup(api_base, strlen(api_base) - 4);
-        }
-        if (g_str_has_suffix(api_base, "/api/")) {
-            return g_strndup(api_base, strlen(api_base) - 5);
-        }
-    }
-
-    return g_strdup(BASE_DOMAIN);
-}
-
-static gboolean
-launch_full_admin_panel(GError **error)
-{
-    gchar *token = get_auth_token_safe();
-    gchar *base_domain = NULL;
-    gchar *escaped_token = NULL;
-    gchar *auth_url = NULL;
-    gchar *admin_url = NULL;
-    gchar *html = NULL;
-    gchar *path = NULL;
-    gchar *uri = NULL;
-    gboolean success = FALSE;
-
-    if (!token || !*token) {
-        g_set_error_literal(error,
-                            G_IO_ERROR,
-                            G_IO_ERROR_PERMISSION_DENIED,
-                            "You must be logged in before opening the full admin panel.");
-        g_free(token);
-        return FALSE;
-    }
-
-    base_domain = get_runtime_base_domain_for_browser();
-    escaped_token = g_uri_escape_string(token, NULL, FALSE);
-    auth_url = g_strdup_printf("%s/?impersonate=%s", base_domain, escaped_token);
-    admin_url = g_strdup_printf("%s/admin", base_domain);
-    html = build_full_admin_launcher_html(auth_url, admin_url);
-    path = create_admin_launcher_file(html, error);
-    if (!path) {
-        goto cleanup;
-    }
-
-    uri = g_filename_to_uri(path, NULL, error);
-    if (!uri) {
-        g_remove(path);
-        goto cleanup;
-    }
-
-    if (!gtk_show_uri_on_window(NULL, uri, GDK_CURRENT_TIME, error)) {
-        g_remove(path);
-        goto cleanup;
-    }
-
-    g_timeout_add_seconds(120, cleanup_launcher_file_cb, g_strdup(path));
-    success = TRUE;
-
-cleanup:
-    g_free(uri);
-    g_free(path);
-    g_free(html);
-    g_free(admin_url);
-    g_free(auth_url);
-    g_free(escaped_token);
-    g_free(base_domain);
-    g_free(token);
-    return success;
 }
 
 static gboolean
@@ -428,6 +153,311 @@ perform_simple_json_request(const gchar *url, const gchar *method, const gchar *
     }
 
     return response;
+}
+
+static gchar *
+get_admin_auth_token_safe(void)
+{
+    gchar *token = NULL;
+
+    g_mutex_lock(&g_globals_mutex);
+    if (g_is_impersonating && g_impersonation_admin_token) {
+        token = g_strdup(g_impersonation_admin_token);
+    } else if (g_auth_token) {
+        token = g_strdup(g_auth_token);
+    }
+    g_mutex_unlock(&g_globals_mutex);
+
+    return token;
+}
+
+static gboolean
+has_admin_session_context(void)
+{
+    gboolean allowed = FALSE;
+
+    g_mutex_lock(&g_globals_mutex);
+    allowed = g_is_admin || (g_is_impersonating && g_impersonation_admin_token != NULL);
+    g_mutex_unlock(&g_globals_mutex);
+
+    return allowed;
+}
+
+static void
+clear_impersonation_state_locked(void)
+{
+    g_clear_pointer(&g_impersonation_admin_token, g_free);
+    g_clear_pointer(&g_impersonation_admin_username, g_free);
+    g_impersonation_admin_is_admin = FALSE;
+    g_is_impersonating = FALSE;
+}
+
+static gboolean
+perform_admin_fetch_url(const gchar *url,
+                        struct MemoryStruct *chunk,
+                        const gchar *payload,
+                        const gchar *method)
+{
+    gboolean success;
+    gchar *admin_token = get_admin_auth_token_safe();
+
+    success = fetch_url_with_auth_token(url, chunk, payload, method, admin_token);
+    g_free(admin_token);
+    return success;
+}
+
+static gchar *
+perform_admin_media_upload(const gchar *file_path)
+{
+    struct MemoryStruct chunk = {0};
+    gchar *admin_token;
+    gchar *file_url = NULL;
+
+    if (!file_path) {
+        return NULL;
+    }
+
+    admin_token = get_admin_auth_token_safe();
+    if (!admin_token) {
+        return NULL;
+    }
+
+    if (fetch_url_with_file_auth_token(UPLOAD_URL, &chunk, file_path, "file", admin_token)) {
+        file_url = parse_upload_response(chunk.memory);
+        g_free(chunk.memory);
+    }
+
+    g_free(admin_token);
+    return file_url;
+}
+
+static GPtrArray *
+split_identifier_text(const gchar *text)
+{
+    gchar **parts;
+    GPtrArray *items;
+
+    items = g_ptr_array_new_with_free_func(g_free);
+    if (!text || !*text) {
+        return items;
+    }
+
+    parts = g_strsplit_set(text, ",\n", -1);
+    for (guint i = 0; parts[i] != NULL; i++) {
+        gchar *trimmed = g_strstrip(parts[i]);
+        if (*trimmed) {
+            g_ptr_array_add(items, g_strdup(trimmed));
+        }
+    }
+    g_strfreev(parts);
+    return items;
+}
+
+static gboolean
+extract_user_from_admin_response(const gchar *json_data,
+                                 gchar **user_id_out,
+                                 gchar **username_out,
+                                 gboolean *is_admin_out,
+                                 gboolean *is_superadmin_out)
+{
+    JsonParser *parser;
+    JsonNode *root;
+    JsonObject *root_obj;
+    JsonObject *user_obj;
+    GError *error = NULL;
+    gboolean success = FALSE;
+
+    if (user_id_out) *user_id_out = NULL;
+    if (username_out) *username_out = NULL;
+    if (is_admin_out) *is_admin_out = FALSE;
+    if (is_superadmin_out) *is_superadmin_out = FALSE;
+
+    if (!json_data) {
+        return FALSE;
+    }
+
+    parser = json_parser_new();
+    if (!json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        return FALSE;
+    }
+
+    root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        g_object_unref(parser);
+        return FALSE;
+    }
+
+    root_obj = json_node_get_object(root);
+    if (!json_object_has_member(root_obj, "user") ||
+        !JSON_NODE_HOLDS_OBJECT(json_object_get_member(root_obj, "user"))) {
+        g_object_unref(parser);
+        return FALSE;
+    }
+
+    user_obj = json_object_get_object_member(root_obj, "user");
+    if (user_id_out && json_object_has_member(user_obj, "id") &&
+        !json_node_is_null(json_object_get_member(user_obj, "id"))) {
+        *user_id_out = g_strdup(json_object_get_string_member(user_obj, "id"));
+    }
+    if (username_out && json_object_has_member(user_obj, "username") &&
+        !json_node_is_null(json_object_get_member(user_obj, "username"))) {
+        *username_out = g_strdup(json_object_get_string_member(user_obj, "username"));
+    }
+    if (is_admin_out && json_object_has_member(user_obj, "admin")) {
+        JsonNode *node = json_object_get_member(user_obj, "admin");
+        *is_admin_out = JSON_NODE_HOLDS_VALUE(node) &&
+            (json_node_get_value_type(node) == G_TYPE_BOOLEAN ? json_node_get_boolean(node)
+                                                              : json_node_get_int(node) != 0);
+    }
+    if (is_superadmin_out && json_object_has_member(user_obj, "superadmin")) {
+        *is_superadmin_out = json_object_get_boolean_member(user_obj, "superadmin");
+    }
+
+    success = user_id_out == NULL || *user_id_out != NULL;
+    g_object_unref(parser);
+    return success;
+}
+
+static gboolean
+lookup_admin_user_identifier(const gchar *identifier,
+                             gchar **user_id_out,
+                             gchar **username_out,
+                             gboolean *is_admin_out,
+                             gboolean *is_superadmin_out,
+                             gchar **error_message_out)
+{
+    gchar *escaped;
+    gchar *url;
+    gchar *response = NULL;
+    gchar *error_message = NULL;
+    gboolean success = FALSE;
+
+    if (user_id_out) *user_id_out = NULL;
+    if (username_out) *username_out = NULL;
+    if (is_admin_out) *is_admin_out = FALSE;
+    if (is_superadmin_out) *is_superadmin_out = FALSE;
+    if (error_message_out) *error_message_out = NULL;
+
+    if (!identifier || !*identifier) {
+        if (error_message_out) {
+            *error_message_out = g_strdup("User identifier is required.");
+        }
+        return FALSE;
+    }
+
+    escaped = g_uri_escape_string(identifier, NULL, FALSE);
+    url = g_strdup_printf("%s/%s", ADMIN_USERS_URL, escaped);
+    if (!perform_admin_request(url, NULL, "GET", &response)) {
+        error_message = g_strdup("The user lookup request failed.");
+    } else {
+        error_message = extract_error_message(response);
+        if (!error_message) {
+            success = extract_user_from_admin_response(response,
+                                                       user_id_out,
+                                                       username_out,
+                                                       is_admin_out,
+                                                       is_superadmin_out);
+            if (!success) {
+                error_message = g_strdup("User not found.");
+            }
+        }
+    }
+
+    if (error_message_out) {
+        *error_message_out = error_message;
+    } else {
+        g_free(error_message);
+    }
+
+    g_free(response);
+    g_free(url);
+    g_free(escaped);
+    return success;
+}
+
+static gboolean
+parse_json_object_payload(const gchar *json_text, gchar **normalized_json_out, gchar **error_message_out)
+{
+    JsonParser *parser;
+    JsonGenerator *generator;
+    JsonNode *root;
+    GError *error = NULL;
+    if (normalized_json_out) *normalized_json_out = NULL;
+    if (error_message_out) *error_message_out = NULL;
+
+    if (!json_text || !*json_text) {
+        if (error_message_out) {
+            *error_message_out = g_strdup("A JSON object payload is required.");
+        }
+        return FALSE;
+    }
+
+    parser = json_parser_new();
+    if (!json_parser_load_from_data(parser, json_text, -1, &error)) {
+        if (error_message_out) {
+            *error_message_out = g_strdup(error ? error->message : "Invalid JSON payload.");
+        }
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        return FALSE;
+    }
+
+    root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        if (error_message_out) {
+            *error_message_out = g_strdup("Payload must be a JSON object.");
+        }
+        g_object_unref(parser);
+        return FALSE;
+    }
+
+    generator = json_generator_new();
+    json_generator_set_root(generator, root);
+    if (normalized_json_out) {
+        *normalized_json_out = json_generator_to_data(generator, NULL);
+    }
+    g_object_unref(generator);
+    g_object_unref(parser);
+    return TRUE;
+}
+
+static void
+update_admin_impersonation_status_label(void)
+{
+    gchar *current_username = NULL;
+    gchar *admin_username = NULL;
+    gboolean is_impersonating = FALSE;
+
+    if (!g_admin_impersonation_status_label) {
+        return;
+    }
+
+    g_mutex_lock(&g_globals_mutex);
+    if (g_current_username) {
+        current_username = g_strdup(g_current_username);
+    }
+    if (g_impersonation_admin_username) {
+        admin_username = g_strdup(g_impersonation_admin_username);
+    }
+    is_impersonating = g_is_impersonating;
+    g_mutex_unlock(&g_globals_mutex);
+
+    if (is_impersonating && current_username) {
+        gchar *text = g_strdup_printf("Impersonating @%s. Admin session preserved%s%s.",
+                                      current_username,
+                                      admin_username ? " from @" : "",
+                                      admin_username ? admin_username : "");
+        gtk_label_set_text(GTK_LABEL(g_admin_impersonation_status_label), text);
+        g_free(text);
+    } else {
+        gtk_label_set_text(GTK_LABEL(g_admin_impersonation_status_label),
+                           "Admin session active.");
+    }
+
+    g_free(admin_username);
+    g_free(current_username);
 }
 
 /* Memory Management Helpers */
@@ -514,6 +544,7 @@ free_async_data(struct AsyncData *data)
     g_free(data->query);
     g_free(data->conversation_id);
     g_free(data->community_id);
+    g_free(data->json_data);
     g_free(data->before_id);
 
     g_free(data);
@@ -930,13 +961,20 @@ void update_login_ui(void)
 {
     gchar *username = get_username_safe();
     gboolean is_admin;
+    gboolean is_impersonating;
     
     g_mutex_lock(&g_globals_mutex);
     is_admin = g_is_admin;
+    is_impersonating = g_is_impersonating;
     g_mutex_unlock(&g_globals_mutex);
     
     if (username) {
-        gchar *label_text = g_strdup_printf("Logged in as @%s", username);
+        gchar *label_text;
+        if (is_impersonating) {
+            label_text = g_strdup_printf("Impersonating @%s", username);
+        } else {
+            label_text = g_strdup_printf("Logged in as @%s", username);
+        }
         gtk_label_set_text(GTK_LABEL(g_user_label), label_text);
         gtk_widget_set_sensitive(g_compose_button, TRUE);
         if (g_header_auth_button) {
@@ -948,7 +986,7 @@ void update_login_ui(void)
         if (g_change_password_button) {
             gtk_widget_set_sensitive(g_change_password_button, TRUE);
         }
-        if (is_admin) {
+        if (is_admin || is_impersonating) {
             gtk_widget_show(g_admin_button);
         } else {
             gtk_widget_hide(g_admin_button);
@@ -972,6 +1010,7 @@ void update_login_ui(void)
     }
 
     update_settings_username_display();
+    update_admin_impersonation_status_label();
     g_free(username);
 }
 
@@ -988,6 +1027,7 @@ void perform_logout(void)
     g_free(g_current_username);
     g_current_username = NULL;
     g_is_admin = FALSE;
+    clear_impersonation_state_locked();
     g_mutex_unlock(&g_globals_mutex);
     update_login_ui();
 }
@@ -1022,6 +1062,7 @@ gboolean perform_login(const gchar *username, const gchar *password)
             g_free(g_current_username);
             g_current_username = uname;
             g_is_admin = is_admin;
+            clear_impersonation_state_locked();
             g_mutex_unlock(&g_globals_mutex);
             g_debug("perform_login: token set to g_auth_token");
             
@@ -2676,7 +2717,7 @@ fetch_admin_stats_thread(gpointer data)
     struct MemoryStruct chunk = {0};
     gchar *stats_text = NULL;
 
-    if (fetch_url(ADMIN_STATS_URL, &chunk, NULL, "GET")) {
+    if (perform_admin_fetch_url(ADMIN_STATS_URL, &chunk, NULL, "GET")) {
         stats_text = parse_admin_stats(chunk.memory);
         g_free(chunk.memory);
     }
@@ -2687,7 +2728,7 @@ fetch_admin_stats_thread(gpointer data)
 
 void start_loading_admin_stats(void)
 {
-    if (!g_auth_token || !g_is_admin) return;
+    if (!has_admin_session_context()) return;
     gtk_label_set_text(GTK_LABEL(g_admin_stats_label), "Loading admin statistics...");
     g_thread_new("admin-stats-loader", fetch_admin_stats_thread, NULL);
 }
@@ -2696,52 +2737,954 @@ void on_admin_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)widget;
     (void)user_data;
-    if (!g_is_admin) return;
+    if (!has_admin_session_context()) return;
 
     gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "admin");
     gtk_widget_show(g_back_button);
     start_loading_admin_stats();
     start_loading_admin_users(NULL);
     start_loading_admin_posts(NULL);
+    start_loading_admin_suspensions();
+    start_loading_admin_reports();
+    start_loading_admin_logs(NULL);
+    start_loading_admin_blocks();
+    start_loading_admin_emojis();
+    start_loading_admin_badges();
+    start_loading_admin_dms(NULL);
+    start_loading_admin_shop(NULL);
+    start_loading_admin_communities();
+    update_admin_impersonation_status_label();
 }
 
-void on_open_full_admin_panel_clicked(GtkWidget *widget, gpointer user_data)
+static void
+clear_list_box_rows(GtkWidget *list_box)
 {
-    GtkWidget *dialog;
-    GError *error = NULL;
-    gint response;
+    GList *children;
+    GList *iter;
 
+    if (!list_box) return;
+
+    children = gtk_container_get_children(GTK_CONTAINER(list_box));
+    for (iter = children; iter != NULL; iter = g_list_next(iter)) {
+        gtk_widget_destroy(GTK_WIDGET(iter->data));
+    }
+    g_list_free(children);
+}
+
+static void
+set_list_box_status(GtkWidget *list_box, const gchar *message)
+{
+    GtkWidget *label;
+
+    clear_list_box_rows(list_box);
+    label = gtk_label_new(message ? message : "");
+    gtk_label_set_xalign(GTK_LABEL(label), 0.0);
+    gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
+    gtk_list_box_insert(GTK_LIST_BOX(list_box), label, -1);
+    gtk_widget_show_all(list_box);
+}
+
+static GtkWidget *
+create_admin_row(const gchar *title, const gchar *body, GtkWidget *actions_box)
+{
+    GtkWidget *frame = gtk_frame_new(NULL);
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    GtkWidget *title_label = gtk_label_new(NULL);
+    GtkWidget *body_label = gtk_label_new(body ? body : "");
+    gchar *escaped_title = g_markup_escape_text(title ? title : "", -1);
+    gchar *title_markup = g_strdup_printf("<b>%s</b>", escaped_title ? escaped_title : "");
+
+    gtk_container_set_border_width(GTK_CONTAINER(box), 10);
+    gtk_label_set_markup(GTK_LABEL(title_label), title_markup);
+    gtk_label_set_xalign(GTK_LABEL(title_label), 0.0);
+    gtk_label_set_xalign(GTK_LABEL(body_label), 0.0);
+    gtk_label_set_line_wrap(GTK_LABEL(body_label), TRUE);
+
+    gtk_box_pack_start(GTK_BOX(box), title_label, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(box), body_label, FALSE, FALSE, 0);
+    if (actions_box) {
+        gtk_box_pack_start(GTK_BOX(box), actions_box, FALSE, FALSE, 0);
+    }
+
+    gtk_container_add(GTK_CONTAINER(frame), box);
+
+    g_free(title_markup);
+    g_free(escaped_title);
+    return frame;
+}
+
+static const gchar *
+json_get_string_or_empty(JsonObject *obj, const gchar *member)
+{
+    JsonNode *node;
+
+    if (!obj || !member || !json_object_has_member(obj, member)) {
+        return "";
+    }
+    node = json_object_get_member(obj, member);
+    if (!node || json_node_is_null(node)) {
+        return "";
+    }
+    return json_object_get_string_member(obj, member);
+}
+
+static gchar *
+json_node_to_string_compact(JsonNode *node)
+{
+    JsonGenerator *gen;
+    gchar *text;
+
+    if (!node || json_node_is_null(node)) {
+        return g_strdup("");
+    }
+
+    gen = json_generator_new();
+    json_generator_set_root(gen, node);
+    text = json_generator_to_data(gen, NULL);
+    g_object_unref(gen);
+    return text;
+}
+
+static gboolean
+perform_admin_request(const gchar *url, const gchar *payload, const gchar *method, gchar **response_out)
+{
+    struct MemoryStruct chunk = {0};
+
+    if (response_out) {
+        *response_out = NULL;
+    }
+
+    if (!perform_admin_fetch_url(url, &chunk, payload, method)) {
+        return FALSE;
+    }
+
+    if (response_out) {
+        *response_out = chunk.memory;
+    } else {
+        g_free(chunk.memory);
+    }
+    return TRUE;
+}
+
+static gchar *
+extract_error_message(const gchar *json_data)
+{
+    JsonParser *parser;
+    GError *error = NULL;
+    gchar *message = NULL;
+
+    if (!json_data) return NULL;
+
+    parser = json_parser_new();
+    if (json_parser_load_from_data(parser, json_data, -1, &error)) {
+        JsonNode *root = json_parser_get_root(parser);
+        if (JSON_NODE_HOLDS_OBJECT(root)) {
+            JsonObject *obj = json_node_get_object(root);
+            if (json_object_has_member(obj, "error") &&
+                !json_node_is_null(json_object_get_member(obj, "error"))) {
+                message = g_strdup(json_object_get_string_member(obj, "error"));
+            }
+        }
+    }
+    if (error) {
+        g_error_free(error);
+    }
+    g_object_unref(parser);
+    return message;
+}
+
+static void
+perform_admin_lift_user_action(const gchar *user_id, const gchar *lift_action)
+{
+    gchar *escaped_id;
+    gchar *url;
+    gchar *payload;
+    gchar *response = NULL;
+
+    if (!user_id || !lift_action) return;
+
+    escaped_id = g_uri_escape_string(user_id, NULL, FALSE);
+    url = g_strdup_printf("%s/%s/suspend", ADMIN_USERS_URL, escaped_id);
+    payload = g_strdup_printf("{\"action\":\"lift\",\"lift\":[\"%s\"]}", lift_action);
+
+    if (!perform_admin_request(url, payload, "POST", &response)) {
+        show_modal_message(GTK_MESSAGE_ERROR,
+                           "Failed to lift moderation action.",
+                           "The request could not be sent.");
+    } else {
+        gchar *error_message = extract_error_message(response);
+        if (error_message) {
+            show_modal_message(GTK_MESSAGE_ERROR, "Failed to lift moderation action.", error_message);
+            g_free(error_message);
+        } else {
+            start_loading_admin_suspensions();
+            start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
+        }
+    }
+
+    g_free(response);
+    g_free(payload);
+    g_free(url);
+    g_free(escaped_id);
+}
+
+static void
+perform_admin_report_resolution(const gchar *report_id, const gchar *action, const gchar *ban_action)
+{
+    gchar *escaped_id;
+    gchar *url;
+    gchar *payload;
+    gchar *response = NULL;
+
+    if (!report_id || !action) return;
+
+    escaped_id = g_uri_escape_string(report_id, NULL, FALSE);
+    url = g_strdup_printf("%s/%s/resolve", ADMIN_REPORTS_URL, escaped_id);
+    if (ban_action) {
+        payload = g_strdup_printf("{\"action\":\"%s\",\"banAction\":\"%s\"}", action, ban_action);
+    } else {
+        payload = g_strdup_printf("{\"action\":\"%s\"}", action);
+    }
+
+    if (!perform_admin_request(url, payload, "POST", &response)) {
+        show_modal_message(GTK_MESSAGE_ERROR,
+                           "Failed to resolve report.",
+                           "The request could not be sent.");
+    } else {
+        gchar *error_message = extract_error_message(response);
+        if (error_message) {
+            show_modal_message(GTK_MESSAGE_ERROR, "Failed to resolve report.", error_message);
+            g_free(error_message);
+        } else {
+            start_loading_admin_reports();
+            start_loading_admin_suspensions();
+            start_loading_admin_posts(gtk_entry_get_text(GTK_ENTRY(g_admin_posts_search)));
+        }
+    }
+
+    g_free(response);
+    g_free(payload);
+    g_free(url);
+    g_free(escaped_id);
+}
+
+static void
+perform_admin_delete_item(const gchar *url, const gchar *error_title, void (*refresh_fn)(void))
+{
+    gchar *response = NULL;
+
+    if (!url) return;
+
+    if (!perform_admin_request(url, NULL, "DELETE", &response)) {
+        show_modal_message(GTK_MESSAGE_ERROR,
+                           error_title ? error_title : "Delete failed.",
+                           "The request could not be sent.");
+    } else if (refresh_fn) {
+        gchar *error_message = extract_error_message(response);
+        if (error_message) {
+            show_modal_message(GTK_MESSAGE_ERROR, error_title ? error_title : "Delete failed.", error_message);
+            g_free(error_message);
+        } else {
+            refresh_fn();
+        }
+    }
+
+    g_free(response);
+}
+
+static void
+refresh_admin_emojis_only(void)
+{
+    start_loading_admin_emojis();
+}
+
+static void
+refresh_admin_badges_only(void)
+{
+    start_loading_admin_badges();
+}
+
+static void
+refresh_admin_dms_only(void)
+{
+    start_loading_admin_dms(gtk_entry_get_text(GTK_ENTRY(g_admin_dms_search)));
+    clear_list_box_rows(g_admin_dm_admin_messages_list);
+}
+
+static void
+refresh_admin_shop_only(void)
+{
+    start_loading_admin_shop(gtk_entry_get_text(GTK_ENTRY(g_admin_shop_search)));
+}
+
+static void
+on_admin_lift_clicked(GtkWidget *widget, gpointer user_data)
+{
+    gchar **parts;
     (void)widget;
+
+    parts = g_strsplit((const gchar *)user_data, "|", 2);
+    if (parts[0] && parts[1]) {
+        perform_admin_lift_user_action(parts[0], parts[1]);
+    }
+    g_strfreev(parts);
+}
+
+static void
+on_admin_report_ignore_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    perform_admin_report_resolution((const gchar *)user_data, "ignore", NULL);
+}
+
+static void
+on_admin_report_delete_post_clicked(GtkWidget *widget, gpointer user_data)
+{
+    (void)widget;
+    perform_admin_report_resolution((const gchar *)user_data, "delete_post", NULL);
+}
+
+static void
+on_admin_report_ban_user_clicked(GtkWidget *widget, gpointer user_data)
+{
+    gchar **parts;
+    (void)widget;
+
+    parts = g_strsplit((const gchar *)user_data, "|", 2);
+    if (parts[0] && parts[1]) {
+        perform_admin_report_resolution(parts[0], "ban_user", parts[1]);
+    }
+    g_strfreev(parts);
+}
+
+static void
+on_admin_delete_emoji_clicked(GtkWidget *widget, gpointer user_data)
+{
+    gchar *escaped_id;
+    gchar *url;
+    (void)widget;
+
+    escaped_id = g_uri_escape_string((const gchar *)user_data, NULL, FALSE);
+    url = g_strdup_printf("%s/%s", ADMIN_EMOJIS_URL, escaped_id);
+    perform_admin_delete_item(url, "Failed to delete emoji.", refresh_admin_emojis_only);
+    g_free(url);
+    g_free(escaped_id);
+}
+
+static void
+on_admin_delete_badge_clicked(GtkWidget *widget, gpointer user_data)
+{
+    gchar *escaped_id;
+    gchar *url;
+    (void)widget;
+
+    escaped_id = g_uri_escape_string((const gchar *)user_data, NULL, FALSE);
+    url = g_strdup_printf("%s/%s", ADMIN_BADGES_URL, escaped_id);
+    perform_admin_delete_item(url, "Failed to delete badge.", refresh_admin_badges_only);
+    g_free(url);
+    g_free(escaped_id);
+}
+
+static void
+on_admin_delete_conversation_clicked(GtkWidget *widget, gpointer user_data)
+{
+    gchar *escaped_id;
+    gchar *url;
+    (void)widget;
+
+    escaped_id = g_uri_escape_string((const gchar *)user_data, NULL, FALSE);
+    url = g_strdup_printf("%s/%s", ADMIN_DMS_URL, escaped_id);
+    perform_admin_delete_item(url, "Failed to delete conversation.", refresh_admin_dms_only);
+    g_free(url);
+    g_free(escaped_id);
+}
+
+static void
+on_admin_delete_dm_message_clicked(GtkWidget *widget, gpointer user_data)
+{
+    gchar *escaped_id;
+    gchar *url;
+    const gchar *conversation_id;
+    (void)widget;
+
+    escaped_id = g_uri_escape_string((const gchar *)user_data, NULL, FALSE);
+    url = g_strdup_printf("%s/messages/%s", ADMIN_DMS_URL, escaped_id);
+    conversation_id = g_object_get_data(G_OBJECT(g_admin_dm_admin_messages_list), "conversation_id");
+    perform_admin_delete_item(url, "Failed to delete DM message.", NULL);
+    if (conversation_id) {
+        start_loading_admin_dm_messages(conversation_id);
+    }
+    g_free(url);
+    g_free(escaped_id);
+}
+
+static void
+on_admin_delete_shop_product_clicked(GtkWidget *widget, gpointer user_data)
+{
+    gchar *escaped_id;
+    gchar *url;
+    (void)widget;
+
+    escaped_id = g_uri_escape_string((const gchar *)user_data, NULL, FALSE);
+    url = g_strdup_printf("%s/%s", ADMIN_SHOP_PRODUCTS_URL, escaped_id);
+    perform_admin_delete_item(url, "Failed to delete shop product.", refresh_admin_shop_only);
+    g_free(url);
+    g_free(escaped_id);
+}
+
+static void
+populate_admin_suspensions_from_json(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    guint i;
+
+    if (!g_admin_suspensions_list) {
+        g_object_unref(parser);
+        return;
+    }
+
+    if (!json_data || !json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        set_list_box_status(g_admin_suspensions_list, "Failed to load suspensions.");
+        return;
+    }
+
+    clear_list_box_rows(g_admin_suspensions_list);
+    if (JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+        JsonObject *root = json_node_get_object(json_parser_get_root(parser));
+        JsonArray *items = json_object_has_member(root, "suspensions") ?
+            json_object_get_array_member(root, "suspensions") : NULL;
+        if (!items || json_array_get_length(items) == 0) {
+            set_list_box_status(g_admin_suspensions_list, "No active suspensions.");
+            g_object_unref(parser);
+            return;
+        }
+
+        for (i = 0; i < json_array_get_length(items); i++) {
+            JsonObject *item = json_array_get_object_element(items, i);
+            const gchar *user_id = json_get_string_or_empty(item, "user_id");
+            const gchar *action = json_get_string_or_empty(item, "action");
+            gchar *title = g_strdup_printf("@%s", json_get_string_or_empty(item, "username"));
+            gchar *body = g_strdup_printf("Action: %s\nReason: %s\nBy: @%s\nCreated: %s\nExpires: %s",
+                                          action[0] ? action : "unknown",
+                                          json_get_string_or_empty(item, "reason"),
+                                          json_get_string_or_empty(item, "suspended_by_username"),
+                                          json_get_string_or_empty(item, "created_at"),
+                                          json_get_string_or_empty(item, "expires_at")[0] ?
+                                              json_get_string_or_empty(item, "expires_at") : "Permanent");
+            GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+            GtkWidget *lift_button = gtk_button_new_with_label("Lift");
+            gchar *payload = g_strdup_printf("%s|%s", user_id, action[0] ? action : "suspend");
+
+            g_signal_connect_data(lift_button, "clicked", G_CALLBACK(on_admin_lift_clicked), payload, free_wrapper, 0);
+            gtk_box_pack_start(GTK_BOX(actions), lift_button, FALSE, FALSE, 0);
+            gtk_list_box_insert(GTK_LIST_BOX(g_admin_suspensions_list), create_admin_row(title, body, actions), -1);
+            g_free(body);
+            g_free(title);
+        }
+    }
+    gtk_widget_show_all(g_admin_suspensions_list);
+    g_object_unref(parser);
+}
+
+static void
+populate_admin_reports_from_json(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    guint i;
+
+    if (!g_admin_reports_list) {
+        g_object_unref(parser);
+        return;
+    }
+
+    if (!json_data || !json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        set_list_box_status(g_admin_reports_list, "Failed to load reports.");
+        return;
+    }
+
+    clear_list_box_rows(g_admin_reports_list);
+    if (JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+        JsonObject *root = json_node_get_object(json_parser_get_root(parser));
+        JsonArray *items = json_object_has_member(root, "reports") ?
+            json_object_get_array_member(root, "reports") : NULL;
+        if (!items || json_array_get_length(items) == 0) {
+            set_list_box_status(g_admin_reports_list, "No reports.");
+            g_object_unref(parser);
+            return;
+        }
+
+        for (i = 0; i < json_array_get_length(items); i++) {
+            JsonObject *item = json_array_get_object_element(items, i);
+            JsonObject *reporter = json_object_has_member(item, "reporter") &&
+                                   JSON_NODE_HOLDS_OBJECT(json_object_get_member(item, "reporter")) ?
+                json_object_get_object_member(item, "reporter") : NULL;
+            JsonObject *reported = json_object_has_member(item, "reported") &&
+                                   JSON_NODE_HOLDS_OBJECT(json_object_get_member(item, "reported")) ?
+                json_object_get_object_member(item, "reported") : NULL;
+            const gchar *report_id = json_get_string_or_empty(item, "id");
+            const gchar *reported_type = json_get_string_or_empty(item, "reported_type");
+            gchar *title = g_strdup_printf("%s report on %s",
+                                           json_get_string_or_empty(item, "reason"),
+                                           reported_type[0] ? reported_type : "item");
+            gchar *body = g_strdup_printf("Reporter: @%s\nTarget: %s\nStatus: %s\nCreated: %s",
+                                          reporter ? json_get_string_or_empty(reporter, "username") : "unknown",
+                                          reported_type[0] && g_strcmp0(reported_type, "user") == 0 ?
+                                              (reported ? json_get_string_or_empty(reported, "username") : "unknown user") :
+                                              (reported ? json_get_string_or_empty(reported, "content") : "unknown post"),
+                                          json_get_string_or_empty(item, "status"),
+                                          json_get_string_or_empty(item, "created_at"));
+            GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+            GtkWidget *ignore_button = gtk_button_new_with_label("Ignore");
+
+            g_signal_connect_data(ignore_button, "clicked", G_CALLBACK(on_admin_report_ignore_clicked), g_strdup(report_id), free_wrapper, 0);
+            gtk_box_pack_start(GTK_BOX(actions), ignore_button, FALSE, FALSE, 0);
+
+            if (g_strcmp0(reported_type, "post") == 0) {
+                GtkWidget *delete_button = gtk_button_new_with_label("Delete Post");
+                g_signal_connect_data(delete_button, "clicked", G_CALLBACK(on_admin_report_delete_post_clicked), g_strdup(report_id), free_wrapper, 0);
+                gtk_box_pack_start(GTK_BOX(actions), delete_button, FALSE, FALSE, 0);
+            } else if (g_strcmp0(reported_type, "user") == 0) {
+                GtkWidget *suspend_button = gtk_button_new_with_label("Suspend");
+                GtkWidget *restrict_button = gtk_button_new_with_label("Restrict");
+                GtkWidget *shadowban_button = gtk_button_new_with_label("Shadowban");
+                gchar *suspend_payload = g_strdup_printf("%s|suspend", report_id);
+                gchar *restrict_payload = g_strdup_printf("%s|restrict", report_id);
+                gchar *shadowban_payload = g_strdup_printf("%s|shadowban", report_id);
+                g_signal_connect_data(suspend_button, "clicked", G_CALLBACK(on_admin_report_ban_user_clicked), suspend_payload, free_wrapper, 0);
+                g_signal_connect_data(restrict_button, "clicked", G_CALLBACK(on_admin_report_ban_user_clicked), restrict_payload, free_wrapper, 0);
+                g_signal_connect_data(shadowban_button, "clicked", G_CALLBACK(on_admin_report_ban_user_clicked), shadowban_payload, free_wrapper, 0);
+                gtk_box_pack_start(GTK_BOX(actions), suspend_button, FALSE, FALSE, 0);
+                gtk_box_pack_start(GTK_BOX(actions), restrict_button, FALSE, FALSE, 0);
+                gtk_box_pack_start(GTK_BOX(actions), shadowban_button, FALSE, FALSE, 0);
+            }
+
+            gtk_list_box_insert(GTK_LIST_BOX(g_admin_reports_list), create_admin_row(title, body, actions), -1);
+            g_free(body);
+            g_free(title);
+        }
+    }
+    gtk_widget_show_all(g_admin_reports_list);
+    g_object_unref(parser);
+}
+
+static void
+populate_admin_logs_from_json(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    guint i;
+
+    if (!g_admin_logs_list) {
+        g_object_unref(parser);
+        return;
+    }
+
+    if (!json_data || !json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        set_list_box_status(g_admin_logs_list, "Failed to load moderation logs.");
+        return;
+    }
+
+    clear_list_box_rows(g_admin_logs_list);
+    if (JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+        JsonObject *root = json_node_get_object(json_parser_get_root(parser));
+        JsonArray *items = json_object_has_member(root, "logs") ?
+            json_object_get_array_member(root, "logs") : NULL;
+        if (!items || json_array_get_length(items) == 0) {
+            set_list_box_status(g_admin_logs_list, "No moderation logs.");
+            g_object_unref(parser);
+            return;
+        }
+
+        for (i = 0; i < json_array_get_length(items); i++) {
+            JsonObject *item = json_array_get_object_element(items, i);
+            gchar *details = json_node_to_string_compact(json_object_get_member(item, "details"));
+            gchar *title = g_strdup_printf("%s by @%s",
+                                           json_get_string_or_empty(item, "action"),
+                                           json_get_string_or_empty(item, "moderator_username"));
+            gchar *body = g_strdup_printf("Target: %s %s\nCreated: %s\nDetails: %s",
+                                          json_get_string_or_empty(item, "target_type"),
+                                          json_get_string_or_empty(item, "target_id"),
+                                          json_get_string_or_empty(item, "created_at"),
+                                          details && details[0] ? details : "{}");
+            gtk_list_box_insert(GTK_LIST_BOX(g_admin_logs_list), create_admin_row(title, body, NULL), -1);
+            g_free(body);
+            g_free(title);
+            g_free(details);
+        }
+    }
+    gtk_widget_show_all(g_admin_logs_list);
+    g_object_unref(parser);
+}
+
+static void
+populate_admin_blocks_from_json(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    guint i;
+
+    if (!g_admin_blocks_list) {
+        g_object_unref(parser);
+        return;
+    }
+
+    if (!json_data || !json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        set_list_box_status(g_admin_blocks_list, "Failed to load blocks.");
+        return;
+    }
+
+    clear_list_box_rows(g_admin_blocks_list);
+    if (JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+        JsonObject *root = json_node_get_object(json_parser_get_root(parser));
+        JsonArray *items = json_object_has_member(root, "blocks") ?
+            json_object_get_array_member(root, "blocks") : NULL;
+        if (!items || json_array_get_length(items) == 0) {
+            set_list_box_status(g_admin_blocks_list, "No blocking relationships.");
+            g_object_unref(parser);
+            return;
+        }
+
+        for (i = 0; i < json_array_get_length(items); i++) {
+            JsonObject *item = json_array_get_object_element(items, i);
+            gchar *title = g_strdup_printf("@%s blocked @%s",
+                                           json_get_string_or_empty(item, "blocker_username"),
+                                           json_get_string_or_empty(item, "blocked_username"));
+            gchar *body = g_strdup_printf("Created: %s",
+                                          json_get_string_or_empty(item, "created_at"));
+            gtk_list_box_insert(GTK_LIST_BOX(g_admin_blocks_list), create_admin_row(title, body, NULL), -1);
+            g_free(body);
+            g_free(title);
+        }
+    }
+    gtk_widget_show_all(g_admin_blocks_list);
+    g_object_unref(parser);
+}
+
+static void
+populate_admin_emojis_from_json(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    guint i;
+
+    if (!g_admin_emojis_list) {
+        g_object_unref(parser);
+        return;
+    }
+
+    if (!json_data || !json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        set_list_box_status(g_admin_emojis_list, "Failed to load emojis.");
+        return;
+    }
+
+    clear_list_box_rows(g_admin_emojis_list);
+    if (JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+        JsonObject *root = json_node_get_object(json_parser_get_root(parser));
+        JsonArray *items = json_object_has_member(root, "emojis") ?
+            json_object_get_array_member(root, "emojis") : NULL;
+        if (!items || json_array_get_length(items) == 0) {
+            set_list_box_status(g_admin_emojis_list, "No custom emojis.");
+            g_object_unref(parser);
+            return;
+        }
+
+        for (i = 0; i < json_array_get_length(items); i++) {
+            JsonObject *item = json_array_get_object_element(items, i);
+            GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+            GtkWidget *delete_button = gtk_button_new_with_label("Delete");
+            gchar *title = g_strdup_printf(":%s:", json_get_string_or_empty(item, "name"));
+            gchar *body = g_strdup_printf("URL: %s\nCreated: %s",
+                                          json_get_string_or_empty(item, "file_url"),
+                                          json_get_string_or_empty(item, "created_at"));
+            g_signal_connect_data(delete_button, "clicked", G_CALLBACK(on_admin_delete_emoji_clicked), g_strdup(json_get_string_or_empty(item, "id")), free_wrapper, 0);
+            gtk_box_pack_start(GTK_BOX(actions), delete_button, FALSE, FALSE, 0);
+            gtk_list_box_insert(GTK_LIST_BOX(g_admin_emojis_list), create_admin_row(title, body, actions), -1);
+            g_free(body);
+            g_free(title);
+        }
+    }
+    gtk_widget_show_all(g_admin_emojis_list);
+    g_object_unref(parser);
+}
+
+static void
+populate_admin_badges_from_json(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    guint i;
+
+    if (!g_admin_badges_list) {
+        g_object_unref(parser);
+        return;
+    }
+
+    if (!json_data || !json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        set_list_box_status(g_admin_badges_list, "Failed to load badges.");
+        return;
+    }
+
+    clear_list_box_rows(g_admin_badges_list);
+    if (JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+        JsonObject *root = json_node_get_object(json_parser_get_root(parser));
+        JsonArray *items = json_object_has_member(root, "badges") ?
+            json_object_get_array_member(root, "badges") : NULL;
+        if (!items || json_array_get_length(items) == 0) {
+            set_list_box_status(g_admin_badges_list, "No badges.");
+            g_object_unref(parser);
+            return;
+        }
+
+        for (i = 0; i < json_array_get_length(items); i++) {
+            JsonObject *item = json_array_get_object_element(items, i);
+            GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+            GtkWidget *delete_button = gtk_button_new_with_label("Delete");
+            gchar *title = g_strdup(json_get_string_or_empty(item, "name"));
+            gchar *body = g_strdup_printf("Action: %s\nColor: %s\nDescription: %s",
+                                          json_get_string_or_empty(item, "action_type"),
+                                          json_get_string_or_empty(item, "color"),
+                                          json_get_string_or_empty(item, "description"));
+            g_signal_connect_data(delete_button, "clicked", G_CALLBACK(on_admin_delete_badge_clicked), g_strdup(json_get_string_or_empty(item, "id")), free_wrapper, 0);
+            gtk_box_pack_start(GTK_BOX(actions), delete_button, FALSE, FALSE, 0);
+            gtk_list_box_insert(GTK_LIST_BOX(g_admin_badges_list), create_admin_row(title, body, actions), -1);
+            g_free(body);
+            g_free(title);
+        }
+    }
+    gtk_widget_show_all(g_admin_badges_list);
+    g_object_unref(parser);
+}
+
+static void
+populate_admin_dms_from_json(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    guint i;
+
+    if (!g_admin_dms_list) {
+        g_object_unref(parser);
+        return;
+    }
+
+    if (!json_data || !json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        set_list_box_status(g_admin_dms_list, "Failed to load conversations.");
+        return;
+    }
+
+    clear_list_box_rows(g_admin_dms_list);
+    if (JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+        JsonObject *root = json_node_get_object(json_parser_get_root(parser));
+        JsonArray *items = json_object_has_member(root, "conversations") ?
+            json_object_get_array_member(root, "conversations") : NULL;
+        if (!items || json_array_get_length(items) == 0) {
+            set_list_box_status(g_admin_dms_list, "No conversations.");
+            g_object_unref(parser);
+            return;
+        }
+
+        for (i = 0; i < json_array_get_length(items); i++) {
+            JsonObject *item = json_array_get_object_element(items, i);
+            GtkWidget *row_widget;
+            GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+            GtkWidget *delete_button = gtk_button_new_with_label("Delete Conversation");
+            gchar *title = g_strdup_printf("Conversation %s", json_get_string_or_empty(item, "id"));
+            gchar *body = g_strdup_printf("Participants: %s\nMessages: %d\nLast message: %s",
+                                          json_get_string_or_empty(item, "participants"),
+                                          (int)json_object_get_int_member(item, "message_count"),
+                                          json_get_string_or_empty(item, "last_message_at"));
+            g_signal_connect_data(delete_button, "clicked", G_CALLBACK(on_admin_delete_conversation_clicked), g_strdup(json_get_string_or_empty(item, "id")), free_wrapper, 0);
+            gtk_box_pack_start(GTK_BOX(actions), delete_button, FALSE, FALSE, 0);
+            row_widget = create_admin_row(title, body, actions);
+            g_object_set_data_full(G_OBJECT(row_widget), "conversation_id", g_strdup(json_get_string_or_empty(item, "id")), g_free);
+            gtk_list_box_insert(GTK_LIST_BOX(g_admin_dms_list), row_widget, -1);
+            g_free(body);
+            g_free(title);
+        }
+    }
+    gtk_widget_show_all(g_admin_dms_list);
+    g_object_unref(parser);
+}
+
+static void
+populate_admin_dm_messages_from_json(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    guint i;
+
+    if (!g_admin_dm_admin_messages_list) {
+        g_object_unref(parser);
+        return;
+    }
+
+    if (!json_data || !json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        set_list_box_status(g_admin_dm_admin_messages_list, "Failed to load DM messages.");
+        return;
+    }
+
+    clear_list_box_rows(g_admin_dm_admin_messages_list);
+    if (JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+        JsonObject *root = json_node_get_object(json_parser_get_root(parser));
+        JsonArray *items = json_object_has_member(root, "messages") ?
+            json_object_get_array_member(root, "messages") : NULL;
+        if (!items || json_array_get_length(items) == 0) {
+            set_list_box_status(g_admin_dm_admin_messages_list, "No messages in this conversation.");
+            g_object_unref(parser);
+            return;
+        }
+
+        for (i = 0; i < json_array_get_length(items); i++) {
+            JsonObject *item = json_array_get_object_element(items, i);
+            GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+            GtkWidget *delete_button = gtk_button_new_with_label("Delete Message");
+            gchar *title = g_strdup_printf("@%s", json_get_string_or_empty(item, "username"));
+            gchar *body = g_strdup_printf("%s\nCreated: %s",
+                                          json_get_string_or_empty(item, "content"),
+                                          json_get_string_or_empty(item, "created_at"));
+            g_signal_connect_data(delete_button, "clicked", G_CALLBACK(on_admin_delete_dm_message_clicked), g_strdup(json_get_string_or_empty(item, "id")), free_wrapper, 0);
+            gtk_box_pack_start(GTK_BOX(actions), delete_button, FALSE, FALSE, 0);
+            gtk_list_box_insert(GTK_LIST_BOX(g_admin_dm_admin_messages_list), create_admin_row(title, body, actions), -1);
+            g_free(body);
+            g_free(title);
+        }
+    }
+    gtk_widget_show_all(g_admin_dm_admin_messages_list);
+    g_object_unref(parser);
+}
+
+static void
+populate_admin_shop_products_from_json(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    guint i;
+
+    if (!g_admin_shop_products_list) {
+        g_object_unref(parser);
+        return;
+    }
+
+    if (!json_data || !json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        set_list_box_status(g_admin_shop_products_list, "Failed to load shop products.");
+        return;
+    }
+
+    clear_list_box_rows(g_admin_shop_products_list);
+    if (JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+        JsonObject *root = json_node_get_object(json_parser_get_root(parser));
+        JsonArray *items = json_object_has_member(root, "products") ?
+            json_object_get_array_member(root, "products") : NULL;
+        if (!items || json_array_get_length(items) == 0) {
+            set_list_box_status(g_admin_shop_products_list, "No shop products.");
+            g_object_unref(parser);
+            return;
+        }
+
+        for (i = 0; i < json_array_get_length(items); i++) {
+            JsonObject *item = json_array_get_object_element(items, i);
+            GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+            GtkWidget *delete_button = gtk_button_new_with_label("Delete Product");
+            gchar *title = g_strdup_printf("%s by @%s",
+                                           json_get_string_or_empty(item, "title"),
+                                           json_get_string_or_empty(item, "owner_username"));
+            gchar *body = g_strdup_printf("Price: %s INR\nType: %s\nCreated: %s\nDescription: %s",
+                                          json_get_string_or_empty(item, "price_inr"),
+                                          json_get_string_or_empty(item, "content_type"),
+                                          json_get_string_or_empty(item, "created_at"),
+                                          json_get_string_or_empty(item, "description"));
+            g_signal_connect_data(delete_button, "clicked", G_CALLBACK(on_admin_delete_shop_product_clicked), g_strdup(json_get_string_or_empty(item, "id")), free_wrapper, 0);
+            gtk_box_pack_start(GTK_BOX(actions), delete_button, FALSE, FALSE, 0);
+            gtk_list_box_insert(GTK_LIST_BOX(g_admin_shop_products_list), create_admin_row(title, body, actions), -1);
+            g_free(body);
+            g_free(title);
+        }
+    }
+    gtk_widget_show_all(g_admin_shop_products_list);
+    g_object_unref(parser);
+}
+
+static void
+populate_admin_shop_purchases_from_json(const gchar *json_data)
+{
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    guint i;
+
+    if (!g_admin_shop_purchases_list) {
+        g_object_unref(parser);
+        return;
+    }
+
+    if (!json_data || !json_parser_load_from_data(parser, json_data, -1, &error)) {
+        if (error) g_error_free(error);
+        g_object_unref(parser);
+        set_list_box_status(g_admin_shop_purchases_list, "Failed to load shop purchases.");
+        return;
+    }
+
+    clear_list_box_rows(g_admin_shop_purchases_list);
+    if (JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+        JsonObject *root = json_node_get_object(json_parser_get_root(parser));
+        JsonArray *items = json_object_has_member(root, "purchases") ?
+            json_object_get_array_member(root, "purchases") : NULL;
+        if (!items || json_array_get_length(items) == 0) {
+            set_list_box_status(g_admin_shop_purchases_list, "No purchases.");
+            g_object_unref(parser);
+            return;
+        }
+
+        for (i = 0; i < json_array_get_length(items); i++) {
+            JsonObject *item = json_array_get_object_element(items, i);
+            gchar *title = g_strdup_printf("%s",
+                                           json_get_string_or_empty(item, "product_title"));
+            gchar *body = g_strdup_printf("Buyer: @%s\nSeller: @%s\nPrice: %s INR\nCreated: %s",
+                                          json_get_string_or_empty(item, "buyer_username"),
+                                          json_get_string_or_empty(item, "seller_username"),
+                                          json_get_string_or_empty(item, "price"),
+                                          json_get_string_or_empty(item, "created_at"));
+            gtk_list_box_insert(GTK_LIST_BOX(g_admin_shop_purchases_list), create_admin_row(title, body, NULL), -1);
+            g_free(body);
+            g_free(title);
+        }
+    }
+    gtk_widget_show_all(g_admin_shop_purchases_list);
+    g_object_unref(parser);
+}
+
+void
+on_admin_dm_conversation_selected(GtkListBox *box, GtkListBoxRow *row, gpointer user_data)
+{
+    GtkWidget *child;
+    const gchar *conversation_id;
+    (void)box;
     (void)user_data;
 
-    if (!g_is_admin) {
-        show_modal_message(GTK_MESSAGE_ERROR,
-                           "Admin access is required.",
-                           "Log into an administrator account before opening the full Tweetapus admin panel.");
-        return;
-    }
-
-    dialog = gtk_message_dialog_new(NULL,
-                                    GTK_DIALOG_MODAL,
-                                    GTK_MESSAGE_INFO,
-                                    GTK_BUTTONS_OK_CANCEL,
-                                    "Open the full Tweetapus admin panel in your browser?");
-    gtk_message_dialog_format_secondary_text(
-        GTK_MESSAGE_DIALOG(dialog),
-        "Tweeta Desktop will sync the browser session for the current instance to the same "
-        "account used in the desktop client, then hand off to /admin."
-    );
-    response = gtk_dialog_run(GTK_DIALOG(dialog));
-    gtk_widget_destroy(dialog);
-    if (response != GTK_RESPONSE_OK) {
-        return;
-    }
-
-    if (!launch_full_admin_panel(&error)) {
-        show_modal_message(GTK_MESSAGE_ERROR,
-                           "Failed to open the full admin panel.",
-                           error ? error->message : "The browser handoff could not be created.");
-        g_clear_error(&error);
+    if (!row) return;
+    child = gtk_bin_get_child(GTK_BIN(row));
+    conversation_id = g_object_get_data(G_OBJECT(child), "conversation_id");
+    if (conversation_id) {
+        start_loading_admin_dm_messages(conversation_id);
     }
 }
 
@@ -2764,7 +3707,6 @@ static gpointer
 fetch_admin_users_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk = {0};
     gchar *url;
     if (async_data->query && strlen(async_data->query) > 0) {
         gchar *escaped = g_uri_escape_string(async_data->query, NULL, FALSE);
@@ -2774,10 +3716,9 @@ fetch_admin_users_thread(gpointer data)
         url = g_strdup(ADMIN_USERS_URL);
     }
 
-    if (fetch_url(url, &chunk, NULL, "GET")) {
-        async_data->users = parse_admin_users(chunk.memory);
+    if (perform_admin_request(url, NULL, "GET", &async_data->json_data)) {
+        async_data->users = parse_admin_users(async_data->json_data);
         async_data->success = TRUE;
-        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -2810,7 +3751,6 @@ static gpointer
 fetch_admin_posts_thread(gpointer data)
 {
     struct AsyncData *async_data = (struct AsyncData *)data;
-    struct MemoryStruct chunk = {0};
     gchar *url;
     if (async_data->query && strlen(async_data->query) > 0) {
         gchar *escaped = g_uri_escape_string(async_data->query, NULL, FALSE);
@@ -2820,10 +3760,9 @@ fetch_admin_posts_thread(gpointer data)
         url = g_strdup(ADMIN_POSTS_URL);
     }
 
-    if (fetch_url(url, &chunk, NULL, "GET")) {
-        async_data->tweets = parse_admin_posts(chunk.memory);
+    if (perform_admin_request(url, NULL, "GET", &async_data->json_data)) {
+        async_data->tweets = parse_admin_posts(async_data->json_data);
         async_data->success = TRUE;
-        g_free(chunk.memory);
     } else {
         async_data->success = FALSE;
     }
@@ -2839,13 +3778,1166 @@ void start_loading_admin_posts(const gchar *search)
     g_thread_new("admin-posts-loader", fetch_admin_posts_thread, data);
 }
 
+static gboolean
+on_admin_suspensions_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    populate_admin_suspensions_from_json(async_data->json_data);
+    free_async_data(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_suspensions_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    async_data->success = perform_admin_request(ADMIN_SUSPENSIONS_URL, NULL, "GET", &async_data->json_data);
+    g_idle_add(on_admin_suspensions_loaded, async_data);
+    return NULL;
+}
+
+void
+start_loading_admin_suspensions(void)
+{
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    set_list_box_status(g_admin_suspensions_list, "Loading suspensions...");
+    g_thread_new("admin-suspensions-loader", fetch_admin_suspensions_thread, data);
+}
+
+static gboolean
+on_admin_reports_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    populate_admin_reports_from_json(async_data->json_data);
+    free_async_data(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_reports_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    async_data->success = perform_admin_request(ADMIN_REPORTS_URL, NULL, "GET", &async_data->json_data);
+    g_idle_add(on_admin_reports_loaded, async_data);
+    return NULL;
+}
+
+void
+start_loading_admin_reports(void)
+{
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    set_list_box_status(g_admin_reports_list, "Loading reports...");
+    g_thread_new("admin-reports-loader", fetch_admin_reports_thread, data);
+}
+
+static gboolean
+on_admin_logs_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    populate_admin_logs_from_json(async_data->json_data);
+    free_async_data(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_logs_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    gchar *url;
+
+    if (async_data->query && *async_data->query) {
+        gchar *escaped = g_uri_escape_string(async_data->query, NULL, FALSE);
+        url = g_strdup_printf("%s?search=%s", ADMIN_LOGS_URL, escaped);
+        g_free(escaped);
+    } else {
+        url = g_strdup(ADMIN_LOGS_URL);
+    }
+
+    async_data->success = perform_admin_request(url, NULL, "GET", &async_data->json_data);
+    g_free(url);
+    g_idle_add(on_admin_logs_loaded, async_data);
+    return NULL;
+}
+
+void
+start_loading_admin_logs(const gchar *search)
+{
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->query = g_strdup(search);
+    set_list_box_status(g_admin_logs_list, "Loading moderation logs...");
+    g_thread_new("admin-logs-loader", fetch_admin_logs_thread, data);
+}
+
+static gboolean
+on_admin_blocks_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    populate_admin_blocks_from_json(async_data->json_data);
+    free_async_data(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_blocks_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    async_data->success = perform_admin_request(ADMIN_BLOCKS_URL, NULL, "GET", &async_data->json_data);
+    g_idle_add(on_admin_blocks_loaded, async_data);
+    return NULL;
+}
+
+void
+start_loading_admin_blocks(void)
+{
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    set_list_box_status(g_admin_blocks_list, "Loading blocks...");
+    g_thread_new("admin-blocks-loader", fetch_admin_blocks_thread, data);
+}
+
+static gboolean
+on_admin_emojis_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    populate_admin_emojis_from_json(async_data->json_data);
+    free_async_data(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_emojis_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    async_data->success = perform_admin_request(ADMIN_EMOJIS_URL, NULL, "GET", &async_data->json_data);
+    g_idle_add(on_admin_emojis_loaded, async_data);
+    return NULL;
+}
+
+void
+start_loading_admin_emojis(void)
+{
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    set_list_box_status(g_admin_emojis_list, "Loading emojis...");
+    g_thread_new("admin-emojis-loader", fetch_admin_emojis_thread, data);
+}
+
+static gboolean
+on_admin_badges_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    populate_admin_badges_from_json(async_data->json_data);
+    free_async_data(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_badges_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    async_data->success = perform_admin_request(ADMIN_BADGES_URL, NULL, "GET", &async_data->json_data);
+    g_idle_add(on_admin_badges_loaded, async_data);
+    return NULL;
+}
+
+void
+start_loading_admin_badges(void)
+{
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    set_list_box_status(g_admin_badges_list, "Loading badges...");
+    g_thread_new("admin-badges-loader", fetch_admin_badges_thread, data);
+}
+
+static gboolean
+on_admin_dms_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    populate_admin_dms_from_json(async_data->json_data);
+    free_async_data(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_dms_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    gchar *url;
+
+    if (async_data->query && *async_data->query) {
+        gchar *escaped = g_uri_escape_string(async_data->query, NULL, FALSE);
+        url = g_strdup_printf("%s?username=%s", ADMIN_DMS_SEARCH_URL, escaped);
+        g_free(escaped);
+    } else {
+        url = g_strdup(ADMIN_DMS_URL);
+    }
+
+    async_data->success = perform_admin_request(url, NULL, "GET", &async_data->json_data);
+    g_free(url);
+    g_idle_add(on_admin_dms_loaded, async_data);
+    return NULL;
+}
+
+void
+start_loading_admin_dms(const gchar *search)
+{
+    struct AsyncData *data = g_new0(struct AsyncData, 1);
+    data->query = g_strdup(search);
+    set_list_box_status(g_admin_dms_list, "Loading conversations...");
+    g_thread_new("admin-dms-loader", fetch_admin_dms_thread, data);
+}
+
+static gboolean
+on_admin_dm_messages_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    populate_admin_dm_messages_from_json(async_data->json_data);
+    free_async_data(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_dm_messages_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    gchar *escaped = g_uri_escape_string(async_data->conversation_id, NULL, FALSE);
+    gchar *url = g_strdup_printf("%s/%s/messages", ADMIN_DMS_URL, escaped);
+
+    async_data->success = perform_admin_request(url, NULL, "GET", &async_data->json_data);
+    g_free(url);
+    g_free(escaped);
+    g_idle_add(on_admin_dm_messages_loaded, async_data);
+    return NULL;
+}
+
+void
+start_loading_admin_dm_messages(const gchar *conversation_id)
+{
+    struct AsyncData *data;
+
+    if (!conversation_id) return;
+
+    g_object_set_data_full(G_OBJECT(g_admin_dm_admin_messages_list), "conversation_id", g_strdup(conversation_id), g_free);
+    data = g_new0(struct AsyncData, 1);
+    data->conversation_id = g_strdup(conversation_id);
+    set_list_box_status(g_admin_dm_admin_messages_list, "Loading messages...");
+    g_thread_new("admin-dm-messages-loader", fetch_admin_dm_messages_thread, data);
+}
+
+static gboolean
+on_admin_shop_products_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    populate_admin_shop_products_from_json(async_data->json_data);
+    free_async_data(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_shop_products_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    gchar *url;
+
+    if (async_data->query && *async_data->query) {
+        gchar *escaped = g_uri_escape_string(async_data->query, NULL, FALSE);
+        url = g_strdup_printf("%s?q=%s", ADMIN_SHOP_PRODUCTS_URL, escaped);
+        g_free(escaped);
+    } else {
+        url = g_strdup(ADMIN_SHOP_PRODUCTS_URL);
+    }
+
+    async_data->success = perform_admin_request(url, NULL, "GET", &async_data->json_data);
+    g_free(url);
+    g_idle_add(on_admin_shop_products_loaded, async_data);
+    return NULL;
+}
+
+static gboolean
+on_admin_shop_purchases_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    populate_admin_shop_purchases_from_json(async_data->json_data);
+    free_async_data(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_shop_purchases_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+    async_data->success = perform_admin_request(ADMIN_SHOP_PURCHASES_URL, NULL, "GET", &async_data->json_data);
+    g_idle_add(on_admin_shop_purchases_loaded, async_data);
+    return NULL;
+}
+
+void
+start_loading_admin_shop(const gchar *search)
+{
+    struct AsyncData *products = g_new0(struct AsyncData, 1);
+    struct AsyncData *purchases = g_new0(struct AsyncData, 1);
+
+    products->query = g_strdup(search);
+
+    set_list_box_status(g_admin_shop_products_list, "Loading shop products...");
+    set_list_box_status(g_admin_shop_purchases_list, "Loading purchases...");
+
+    g_thread_new("admin-shop-products-loader", fetch_admin_shop_products_thread, products);
+    g_thread_new("admin-shop-purchases-loader", fetch_admin_shop_purchases_thread, purchases);
+}
+
+static gboolean
+on_admin_communities_loaded(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+
+    if (async_data->success && async_data->communities) {
+        populate_community_list(GTK_LIST_BOX(g_admin_communities_list), async_data->communities);
+        free_communities(async_data->communities);
+        async_data->communities = NULL;
+    } else {
+        populate_community_list(GTK_LIST_BOX(g_admin_communities_list), NULL);
+    }
+
+    free_async_data(async_data);
+    return G_SOURCE_REMOVE;
+}
+
+static gpointer
+fetch_admin_communities_thread(gpointer data)
+{
+    struct AsyncData *async_data = (struct AsyncData *)data;
+
+    if (perform_admin_request(COMMUNITIES_LIST_URL, NULL, "GET", &async_data->json_data)) {
+        async_data->communities = parse_communities(async_data->json_data);
+        async_data->success = async_data->communities != NULL;
+    } else {
+        async_data->success = FALSE;
+    }
+
+    g_idle_add(on_admin_communities_loaded, async_data);
+    return NULL;
+}
+
+void
+start_loading_admin_communities(void)
+{
+    struct AsyncData *data;
+
+    if (!g_admin_communities_list) {
+        return;
+    }
+
+    populate_community_list(GTK_LIST_BOX(g_admin_communities_list), NULL);
+    data = g_new0(struct AsyncData, 1);
+    g_thread_new("admin-communities-loader", fetch_admin_communities_thread, data);
+}
+
+void
+on_admin_send_notification_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkTextBuffer *buffer;
+    GtkTextIter start;
+    GtkTextIter end;
+    const gchar *targets_text;
+    const gchar *type_text;
+    const gchar *title_text;
+    const gchar *subtitle_text;
+    const gchar *url_text;
+    gchar *message_text;
+    GPtrArray *targets;
+    JsonBuilder *builder;
+    JsonGenerator *generator;
+    gchar *payload;
+    gchar *response = NULL;
+
+    (void)widget;
+    (void)user_data;
+
+    targets_text = gtk_entry_get_text(GTK_ENTRY(g_admin_notifications_target_entry));
+    type_text = gtk_entry_get_text(GTK_ENTRY(g_admin_notifications_type_entry));
+    title_text = gtk_entry_get_text(GTK_ENTRY(g_admin_notifications_title_entry));
+    subtitle_text = gtk_entry_get_text(GTK_ENTRY(g_admin_notifications_subtitle_entry));
+    url_text = gtk_entry_get_text(GTK_ENTRY(g_admin_notifications_url_entry));
+    buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(g_admin_notifications_message_view));
+    gtk_text_buffer_get_bounds(buffer, &start, &end);
+    message_text = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+    targets = split_identifier_text(targets_text);
+
+    if (targets->len == 0 && g_strcmp0(targets_text, "all") != 0) {
+        gtk_label_set_text(GTK_LABEL(g_admin_notifications_result_label), "Enter at least one target.");
+        g_ptr_array_free(targets, TRUE);
+        g_free(message_text);
+        return;
+    }
+
+    if ((!title_text || !*title_text) &&
+        (!subtitle_text || !*subtitle_text) &&
+        (!message_text || !*message_text)) {
+        gtk_label_set_text(GTK_LABEL(g_admin_notifications_result_label),
+                           "Provide a title, subtitle, or message.");
+        g_ptr_array_free(targets, TRUE);
+        g_free(message_text);
+        return;
+    }
+
+    builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "target");
+    if (g_strcmp0(targets_text, "all") == 0) {
+        json_builder_add_string_value(builder, "all");
+    } else if (targets->len == 1) {
+        json_builder_add_string_value(builder, g_ptr_array_index(targets, 0));
+    } else {
+        json_builder_begin_array(builder);
+        for (guint i = 0; i < targets->len; i++) {
+            json_builder_add_string_value(builder, g_ptr_array_index(targets, i));
+        }
+        json_builder_end_array(builder);
+    }
+    if (type_text && *type_text) {
+        json_builder_set_member_name(builder, "type");
+        json_builder_add_string_value(builder, type_text);
+    }
+    if (title_text && *title_text) {
+        json_builder_set_member_name(builder, "title");
+        json_builder_add_string_value(builder, title_text);
+    }
+    if (subtitle_text && *subtitle_text) {
+        json_builder_set_member_name(builder, "subtitle");
+        json_builder_add_string_value(builder, subtitle_text);
+    }
+    if (message_text && *message_text) {
+        json_builder_set_member_name(builder, "message");
+        json_builder_add_string_value(builder, message_text);
+    }
+    if (url_text && *url_text) {
+        json_builder_set_member_name(builder, "url");
+        json_builder_add_string_value(builder, url_text);
+    }
+    json_builder_end_object(builder);
+
+    generator = json_generator_new();
+    json_generator_set_root(generator, json_builder_get_root(builder));
+    payload = json_generator_to_data(generator, NULL);
+
+    if (!perform_admin_request(ADMIN_FAKE_NOTIFICATION_URL, payload, "POST", &response)) {
+        gtk_label_set_text(GTK_LABEL(g_admin_notifications_result_label), "Notification request failed.");
+    } else {
+        gchar *error_message = extract_error_message(response);
+        if (error_message) {
+            gtk_label_set_text(GTK_LABEL(g_admin_notifications_result_label), error_message);
+            g_free(error_message);
+        } else {
+            gtk_label_set_text(GTK_LABEL(g_admin_notifications_result_label), "Notification sent.");
+        }
+    }
+
+    g_free(response);
+    g_free(payload);
+    g_object_unref(generator);
+    g_object_unref(builder);
+    g_ptr_array_free(targets, TRUE);
+    g_free(message_text);
+}
+
+void
+on_admin_clone_user_clicked(GtkWidget *widget, gpointer user_data)
+{
+    const gchar *source_id;
+    const gchar *username;
+    const gchar *name;
+    gchar *escaped_source = NULL;
+    gchar *url = NULL;
+    JsonBuilder *builder;
+    JsonGenerator *generator;
+    gchar *payload = NULL;
+    gchar *response = NULL;
+
+    (void)widget;
+    (void)user_data;
+
+    source_id = gtk_entry_get_text(GTK_ENTRY(g_admin_clone_source_entry));
+    username = gtk_entry_get_text(GTK_ENTRY(g_admin_clone_username_entry));
+    name = gtk_entry_get_text(GTK_ENTRY(g_admin_clone_name_entry));
+
+    if (!source_id || !*source_id || !username || !*username) {
+        gtk_label_set_text(GTK_LABEL(g_admin_clone_result_label),
+                           "Source and new username are required.");
+        return;
+    }
+
+    escaped_source = g_uri_escape_string(source_id, NULL, FALSE);
+    url = g_strdup_printf("%s/%s/clone", ADMIN_USERS_URL, escaped_source);
+    builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "username");
+    json_builder_add_string_value(builder, username);
+    if (name && *name) {
+        json_builder_set_member_name(builder, "name");
+        json_builder_add_string_value(builder, name);
+    }
+    json_builder_set_member_name(builder, "cloneRelations");
+    json_builder_add_boolean_value(builder, gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(g_admin_clone_relations_check)));
+    json_builder_set_member_name(builder, "cloneGhosts");
+    json_builder_add_boolean_value(builder, gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(g_admin_clone_ghosts_check)));
+    json_builder_set_member_name(builder, "cloneTweets");
+    json_builder_add_boolean_value(builder, gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(g_admin_clone_tweets_check)));
+    json_builder_set_member_name(builder, "cloneReplies");
+    json_builder_add_boolean_value(builder, gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(g_admin_clone_replies_check)));
+    json_builder_set_member_name(builder, "cloneRetweets");
+    json_builder_add_boolean_value(builder, gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(g_admin_clone_retweets_check)));
+    json_builder_set_member_name(builder, "cloneReactions");
+    json_builder_add_boolean_value(builder, gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(g_admin_clone_reactions_check)));
+    json_builder_set_member_name(builder, "cloneCommunities");
+    json_builder_add_boolean_value(builder, gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(g_admin_clone_communities_check)));
+    json_builder_set_member_name(builder, "cloneMedia");
+    json_builder_add_boolean_value(builder, gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(g_admin_clone_media_check)));
+    json_builder_set_member_name(builder, "cloneAffiliate");
+    json_builder_add_boolean_value(builder, gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(g_admin_clone_affiliate_check)));
+    json_builder_end_object(builder);
+    generator = json_generator_new();
+    json_generator_set_root(generator, json_builder_get_root(builder));
+    payload = json_generator_to_data(generator, NULL);
+
+    if (!perform_admin_request(url, payload, "POST", &response)) {
+        gtk_label_set_text(GTK_LABEL(g_admin_clone_result_label), "Clone request failed.");
+    } else {
+        gchar *error_message = extract_error_message(response);
+        if (error_message) {
+            gtk_label_set_text(GTK_LABEL(g_admin_clone_result_label), error_message);
+            g_free(error_message);
+        } else {
+            gchar *result = g_strdup_printf("Cloned user created: @%s", username);
+            gtk_label_set_text(GTK_LABEL(g_admin_clone_result_label), result);
+            g_free(result);
+            start_loading_admin_users(username);
+        }
+    }
+
+    g_free(response);
+    g_free(payload);
+    g_object_unref(generator);
+    g_object_unref(builder);
+    g_free(url);
+    g_free(escaped_source);
+}
+
+void
+on_admin_impersonate_clicked(GtkWidget *widget, gpointer user_data)
+{
+    const gchar *identifier;
+    gchar *user_id = NULL;
+    gchar *user_username = NULL;
+    gchar *lookup_error = NULL;
+    gchar *url = NULL;
+    gchar *response = NULL;
+    JsonParser *parser = NULL;
+    GError *error = NULL;
+
+    (void)widget;
+    (void)user_data;
+
+    identifier = gtk_entry_get_text(GTK_ENTRY(g_admin_impersonation_entry));
+    if (!lookup_admin_user_identifier(identifier, &user_id, &user_username, NULL, NULL, &lookup_error)) {
+        gtk_label_set_text(GTK_LABEL(g_admin_impersonation_status_label),
+                           lookup_error ? lookup_error : "User lookup failed.");
+        g_free(lookup_error);
+        g_free(user_username);
+        g_free(user_id);
+        return;
+    }
+
+    url = g_strdup_printf(API_BASE_URL "/admin/impersonate/%s", user_id);
+    if (!perform_admin_request(url, "{}", "POST", &response)) {
+        gtk_label_set_text(GTK_LABEL(g_admin_impersonation_status_label), "Impersonation request failed.");
+        goto cleanup;
+    }
+
+    {
+        gchar *error_message = extract_error_message(response);
+        if (error_message) {
+            gtk_label_set_text(GTK_LABEL(g_admin_impersonation_status_label), error_message);
+            g_free(error_message);
+            goto cleanup;
+        }
+    }
+
+    parser = json_parser_new();
+    if (!json_parser_load_from_data(parser, response, -1, &error)) {
+        gtk_label_set_text(GTK_LABEL(g_admin_impersonation_status_label), error ? error->message : "Invalid impersonation response.");
+        if (error) g_error_free(error);
+        goto cleanup;
+    }
+
+    {
+        JsonNode *root = json_parser_get_root(parser);
+        JsonObject *root_obj;
+        const gchar *token;
+        const gchar *response_username;
+
+        if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+            gtk_label_set_text(GTK_LABEL(g_admin_impersonation_status_label), "Invalid impersonation response.");
+            goto cleanup;
+        }
+
+        root_obj = json_node_get_object(root);
+        token = json_object_get_string_member(root_obj, "token");
+        response_username = user_username;
+        if (json_object_has_member(root_obj, "user") &&
+            JSON_NODE_HOLDS_OBJECT(json_object_get_member(root_obj, "user"))) {
+            JsonObject *user_obj = json_object_get_object_member(root_obj, "user");
+            if (json_object_has_member(user_obj, "username") &&
+                !json_node_is_null(json_object_get_member(user_obj, "username"))) {
+                response_username = json_object_get_string_member(user_obj, "username");
+            }
+        }
+
+        g_mutex_lock(&g_globals_mutex);
+        if (!g_is_impersonating) {
+            g_free(g_impersonation_admin_token);
+            g_impersonation_admin_token = g_auth_token ? g_strdup(g_auth_token) : NULL;
+            g_free(g_impersonation_admin_username);
+            g_impersonation_admin_username = g_current_username ? g_strdup(g_current_username) : NULL;
+            g_impersonation_admin_is_admin = g_is_admin;
+        }
+        g_free(g_auth_token);
+        g_auth_token = g_strdup(token);
+        g_free(g_current_username);
+        g_current_username = g_strdup(response_username);
+        g_is_admin = FALSE;
+        g_is_impersonating = TRUE;
+        g_mutex_unlock(&g_globals_mutex);
+    }
+
+    save_session(g_auth_token, g_current_username, g_is_admin);
+    update_login_ui();
+    start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+
+cleanup:
+    if (parser) g_object_unref(parser);
+    g_free(response);
+    g_free(url);
+    g_free(lookup_error);
+    g_free(user_username);
+    g_free(user_id);
+}
+
+void
+on_admin_restore_admin_clicked(GtkWidget *widget, gpointer user_data)
+{
+    gchar *restored_username = NULL;
+
+    (void)widget;
+    (void)user_data;
+
+    g_mutex_lock(&g_globals_mutex);
+    if (!g_is_impersonating || !g_impersonation_admin_token) {
+        g_mutex_unlock(&g_globals_mutex);
+        gtk_label_set_text(GTK_LABEL(g_admin_impersonation_status_label), "No impersonation session is active.");
+        return;
+    }
+
+    g_free(g_auth_token);
+    g_auth_token = g_strdup(g_impersonation_admin_token);
+    g_free(g_current_username);
+    g_current_username = g_strdup(g_impersonation_admin_username);
+    g_is_admin = g_impersonation_admin_is_admin;
+    restored_username = g_strdup(g_current_username);
+    clear_impersonation_state_locked();
+    g_mutex_unlock(&g_globals_mutex);
+
+    save_session(g_auth_token, g_current_username, g_is_admin);
+    update_login_ui();
+    start_loading_tweets(GTK_LIST_BOX(g_main_list_box));
+
+    if (restored_username) {
+        gchar *text = g_strdup_printf("Restored admin session for @%s.", restored_username);
+        gtk_label_set_text(GTK_LABEL(g_admin_impersonation_status_label), text);
+        g_free(text);
+        g_free(restored_username);
+    }
+}
+
+void
+on_admin_post_as_user_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkTextBuffer *buffer;
+    GtkTextIter start;
+    GtkTextIter end;
+    gchar *content;
+    GPtrArray *targets;
+    const gchar *reply_to;
+    const gchar *source;
+    const gchar *created_at;
+    gboolean no_char_limit;
+    guint succeeded = 0;
+    gchar *failure_message = NULL;
+
+    (void)widget;
+    (void)user_data;
+
+    targets = split_identifier_text(gtk_entry_get_text(GTK_ENTRY(g_admin_tools_post_targets_entry)));
+    if (targets->len == 0) {
+        show_modal_message(GTK_MESSAGE_ERROR, "No target users.", "Enter one or more user IDs or usernames.");
+        g_ptr_array_free(targets, TRUE);
+        return;
+    }
+
+    buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(g_admin_tools_post_content_view));
+    gtk_text_buffer_get_bounds(buffer, &start, &end);
+    content = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+    if (!content || !*content) {
+        show_modal_message(GTK_MESSAGE_ERROR, "Content is required.", "Enter post text before submitting.");
+        g_ptr_array_free(targets, TRUE);
+        g_free(content);
+        return;
+    }
+
+    reply_to = gtk_entry_get_text(GTK_ENTRY(g_admin_tools_post_reply_to_entry));
+    source = gtk_entry_get_text(GTK_ENTRY(g_admin_tools_post_source_entry));
+    created_at = gtk_entry_get_text(GTK_ENTRY(g_admin_tools_post_created_at_entry));
+    no_char_limit = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(g_admin_tools_post_no_char_limit_check));
+
+    for (guint i = 0; i < targets->len; i++) {
+        gchar *user_id = NULL;
+        gchar *username = NULL;
+        gchar *lookup_error = NULL;
+        JsonBuilder *builder;
+        JsonGenerator *generator;
+        gchar *payload;
+        gchar *response = NULL;
+
+        if (!lookup_admin_user_identifier(g_ptr_array_index(targets, i),
+                                          &user_id,
+                                          &username,
+                                          NULL,
+                                          NULL,
+                                          &lookup_error)) {
+            failure_message = g_strdup(lookup_error ? lookup_error : "User lookup failed.");
+            g_free(lookup_error);
+            g_free(username);
+            g_free(user_id);
+            break;
+        }
+
+        builder = json_builder_new();
+        json_builder_begin_object(builder);
+        json_builder_set_member_name(builder, "userId");
+        json_builder_add_string_value(builder, user_id);
+        json_builder_set_member_name(builder, "content");
+        json_builder_add_string_value(builder, content);
+        json_builder_set_member_name(builder, "noCharLimit");
+        json_builder_add_boolean_value(builder, no_char_limit);
+        if (reply_to && *reply_to) {
+            json_builder_set_member_name(builder, "replyTo");
+            json_builder_add_string_value(builder, reply_to);
+        }
+        if (source && *source) {
+            json_builder_set_member_name(builder, "source");
+            json_builder_add_string_value(builder, source);
+        }
+        if (created_at && *created_at) {
+            json_builder_set_member_name(builder, "created_at");
+            json_builder_add_string_value(builder, created_at);
+        }
+        if (targets->len > 1) {
+            json_builder_set_member_name(builder, "massTweet");
+            json_builder_add_boolean_value(builder, TRUE);
+        }
+        json_builder_end_object(builder);
+
+        generator = json_generator_new();
+        json_generator_set_root(generator, json_builder_get_root(builder));
+        payload = json_generator_to_data(generator, NULL);
+
+        if (!perform_admin_request(ADMIN_TWEETS_URL, payload, "POST", &response)) {
+            failure_message = g_strdup("The create-post request failed.");
+        } else {
+            failure_message = extract_error_message(response);
+        }
+
+        g_free(response);
+        g_free(payload);
+        g_object_unref(generator);
+        g_object_unref(builder);
+        g_free(lookup_error);
+        g_free(username);
+        g_free(user_id);
+
+        if (failure_message) {
+            break;
+        }
+        succeeded++;
+    }
+
+    if (failure_message) {
+        show_modal_message(GTK_MESSAGE_ERROR, "Failed to create posts.", failure_message);
+        g_free(failure_message);
+    } else {
+        gchar *summary = g_strdup_printf("Created %u admin post%s.",
+                                         succeeded,
+                                         succeeded == 1 ? "" : "s");
+        show_modal_message(GTK_MESSAGE_INFO, "Posts created.", summary);
+        g_free(summary);
+        start_loading_admin_posts(NULL);
+    }
+
+    g_ptr_array_free(targets, TRUE);
+    g_free(content);
+}
+
+void
+on_admin_bulk_edit_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkTextBuffer *buffer;
+    GtkTextIter start;
+    GtkTextIter end;
+    gchar *payload_text;
+    gchar *normalized_payload = NULL;
+    gchar *parse_error = NULL;
+    GPtrArray *targets;
+    guint updated_count = 0;
+    gchar *failure_message = NULL;
+
+    (void)widget;
+    (void)user_data;
+
+    targets = split_identifier_text(gtk_entry_get_text(GTK_ENTRY(g_admin_tools_bulk_targets_entry)));
+    if (targets->len == 0) {
+        show_modal_message(GTK_MESSAGE_ERROR, "No target users.", "Enter one or more user IDs or usernames.");
+        g_ptr_array_free(targets, TRUE);
+        return;
+    }
+
+    buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(g_admin_tools_bulk_payload_view));
+    gtk_text_buffer_get_bounds(buffer, &start, &end);
+    payload_text = gtk_text_buffer_get_text(buffer, &start, &end, FALSE);
+    if (!parse_json_object_payload(payload_text, &normalized_payload, &parse_error)) {
+        show_modal_message(GTK_MESSAGE_ERROR, "Invalid bulk edit payload.", parse_error);
+        g_free(parse_error);
+        g_free(payload_text);
+        g_ptr_array_free(targets, TRUE);
+        return;
+    }
+
+    for (guint i = 0; i < targets->len; i++) {
+        gchar *user_id = NULL;
+        gchar *username = NULL;
+        gchar *lookup_error = NULL;
+        gchar *escaped_id = NULL;
+        gchar *url = NULL;
+        gchar *response = NULL;
+
+        if (!lookup_admin_user_identifier(g_ptr_array_index(targets, i),
+                                          &user_id,
+                                          &username,
+                                          NULL,
+                                          NULL,
+                                          &lookup_error)) {
+            failure_message = g_strdup(lookup_error ? lookup_error : "User lookup failed.");
+            g_free(lookup_error);
+            g_free(username);
+            g_free(user_id);
+            break;
+        }
+
+        escaped_id = g_uri_escape_string(user_id, NULL, FALSE);
+        url = g_strdup_printf("%s/%s", ADMIN_USERS_URL, escaped_id);
+        if (!perform_admin_request(url, normalized_payload, "PATCH", &response)) {
+            failure_message = g_strdup("A bulk edit request failed.");
+        } else {
+            failure_message = extract_error_message(response);
+        }
+
+        g_free(response);
+        g_free(url);
+        g_free(escaped_id);
+        g_free(lookup_error);
+        g_free(username);
+        g_free(user_id);
+
+        if (failure_message) {
+            break;
+        }
+        updated_count++;
+    }
+
+    if (failure_message) {
+        show_modal_message(GTK_MESSAGE_ERROR, "Bulk edit failed.", failure_message);
+        g_free(failure_message);
+    } else {
+        gchar *summary = g_strdup_printf("Updated %u user account%s.",
+                                         updated_count,
+                                         updated_count == 1 ? "" : "s");
+        show_modal_message(GTK_MESSAGE_INFO, "Bulk edit complete.", summary);
+        g_free(summary);
+        start_loading_admin_users(NULL);
+    }
+
+    g_free(normalized_payload);
+    g_free(payload_text);
+    g_ptr_array_free(targets, TRUE);
+}
+
+void
+on_admin_create_community_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkWidget *dialog;
+    GtkWidget *content_area;
+    GtkWidget *grid;
+    GtkWidget *name_entry;
+    GtkWidget *description_entry;
+    GtkWidget *rules_entry;
+    GtkWidget *access_combo;
+    GtkWidget *owner_entry;
+    gchar *response = NULL;
+
+    (void)user_data;
+
+    dialog = gtk_dialog_new_with_buttons("Create Community",
+                                         GTK_WINDOW(gtk_widget_get_toplevel(widget)),
+                                         GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                         "_Cancel", GTK_RESPONSE_CANCEL,
+                                         "_Create", GTK_RESPONSE_ACCEPT,
+                                         NULL);
+    content_area = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    grid = gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+    gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
+    gtk_container_set_border_width(GTK_CONTAINER(grid), 10);
+
+    name_entry = gtk_entry_new();
+    description_entry = gtk_entry_new();
+    rules_entry = gtk_entry_new();
+    owner_entry = gtk_entry_new();
+    access_combo = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(access_combo), "Open");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(access_combo), "Locked");
+    gtk_combo_box_set_active(GTK_COMBO_BOX(access_combo), 0);
+
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Name:"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), name_entry, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Description:"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), description_entry, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Rules:"), 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), rules_entry, 1, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Access:"), 0, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), access_combo, 1, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Owner Username:"), 0, 4, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), owner_entry, 1, 4, 1, 1);
+
+    gtk_box_pack_start(GTK_BOX(content_area), grid, TRUE, TRUE, 0);
+    gtk_widget_show_all(dialog);
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        const gchar *name = gtk_entry_get_text(GTK_ENTRY(name_entry));
+        const gchar *description = gtk_entry_get_text(GTK_ENTRY(description_entry));
+        const gchar *rules = gtk_entry_get_text(GTK_ENTRY(rules_entry));
+        const gchar *owner_username = gtk_entry_get_text(GTK_ENTRY(owner_entry));
+        const gchar *access_mode = gtk_combo_box_get_active(GTK_COMBO_BOX(access_combo)) == 1 ? "locked" : "open";
+        JsonBuilder *builder;
+        JsonGenerator *generator;
+        gchar *payload;
+
+        builder = json_builder_new();
+        json_builder_begin_object(builder);
+        json_builder_set_member_name(builder, "name");
+        json_builder_add_string_value(builder, name);
+        json_builder_set_member_name(builder, "description");
+        json_builder_add_string_value(builder, description ? description : "");
+        json_builder_set_member_name(builder, "rules");
+        json_builder_add_string_value(builder, rules ? rules : "");
+        json_builder_set_member_name(builder, "access_mode");
+        json_builder_add_string_value(builder, access_mode);
+        if (owner_username && *owner_username) {
+            json_builder_set_member_name(builder, "owner_username");
+            json_builder_add_string_value(builder, owner_username);
+        }
+        json_builder_end_object(builder);
+
+        generator = json_generator_new();
+        json_generator_set_root(generator, json_builder_get_root(builder));
+        payload = json_generator_to_data(generator, NULL);
+
+        if (!perform_admin_request(COMMUNITIES_LIST_URL, payload, "POST", &response)) {
+            show_modal_message(GTK_MESSAGE_ERROR, "Community creation failed.", "The request could not be sent.");
+        } else {
+            gchar *error_message = extract_error_message(response);
+            if (error_message) {
+                show_modal_message(GTK_MESSAGE_ERROR, "Community creation failed.", error_message);
+                g_free(error_message);
+            } else {
+                start_loading_admin_communities();
+            }
+        }
+
+        g_free(payload);
+        g_object_unref(generator);
+        g_object_unref(builder);
+    }
+
+    gtk_widget_destroy(dialog);
+    g_free(response);
+}
+
+void
+on_admin_upload_emoji_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkWidget *dialog;
+    GtkWidget *name_dialog;
+    GtkWidget *content;
+    GtkWidget *name_entry;
+    gchar *filename = NULL;
+    gchar *upload_url = NULL;
+    gchar *response = NULL;
+    gint result;
+    (void)user_data;
+
+    dialog = gtk_file_chooser_dialog_new("Select Emoji Image",
+                                         GTK_WINDOW(gtk_widget_get_toplevel(widget)),
+                                         GTK_FILE_CHOOSER_ACTION_OPEN,
+                                         "_Cancel", GTK_RESPONSE_CANCEL,
+                                         "_Open", GTK_RESPONSE_ACCEPT,
+                                         NULL);
+    result = gtk_dialog_run(GTK_DIALOG(dialog));
+    if (result == GTK_RESPONSE_ACCEPT) {
+        filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+    }
+    gtk_widget_destroy(dialog);
+    if (!filename) {
+        return;
+    }
+
+    name_dialog = gtk_dialog_new_with_buttons("Emoji Name",
+                                              GTK_WINDOW(gtk_widget_get_toplevel(widget)),
+                                              GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                              "_Cancel", GTK_RESPONSE_CANCEL,
+                                              "_Create", GTK_RESPONSE_ACCEPT,
+                                              NULL);
+    content = gtk_dialog_get_content_area(GTK_DIALOG(name_dialog));
+    name_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(name_entry), "emoji_name");
+    gtk_box_pack_start(GTK_BOX(content), name_entry, FALSE, FALSE, 10);
+    gtk_widget_show_all(name_dialog);
+    if (gtk_dialog_run(GTK_DIALOG(name_dialog)) == GTK_RESPONSE_ACCEPT) {
+        const gchar *emoji_name = gtk_entry_get_text(GTK_ENTRY(name_entry));
+        if (emoji_name && *emoji_name) {
+            gchar *escaped_name = g_strescape(emoji_name, NULL);
+            upload_url = perform_admin_media_upload(filename);
+            if (!upload_url) {
+                show_modal_message(GTK_MESSAGE_ERROR, "Emoji upload failed.", "The image could not be uploaded.");
+            } else {
+                gchar *payload = g_strdup_printf("{\"name\":\"%s\",\"file_url\":\"%s\"}", escaped_name, upload_url);
+                if (!perform_admin_request(ADMIN_EMOJIS_URL, payload, "POST", &response)) {
+                    show_modal_message(GTK_MESSAGE_ERROR, "Emoji creation failed.", "The admin API request could not be sent.");
+                } else {
+                    gchar *error_message = extract_error_message(response);
+                    if (error_message) {
+                        show_modal_message(GTK_MESSAGE_ERROR, "Emoji creation failed.", error_message);
+                        g_free(error_message);
+                    } else {
+                        start_loading_admin_emojis();
+                    }
+                }
+                g_free(payload);
+            }
+            g_free(escaped_name);
+        }
+    }
+    gtk_widget_destroy(name_dialog);
+    g_free(response);
+    g_free(upload_url);
+    g_free(filename);
+}
+
+void
+on_admin_create_badge_clicked(GtkWidget *widget, gpointer user_data)
+{
+    GtkWidget *dialog;
+    GtkWidget *content;
+    GtkWidget *grid;
+    GtkWidget *name_entry;
+    GtkWidget *image_entry;
+    GtkWidget *color_entry;
+    GtkWidget *description_entry;
+    gchar *response = NULL;
+    (void)user_data;
+
+    dialog = gtk_dialog_new_with_buttons("Create Badge",
+                                         GTK_WINDOW(gtk_widget_get_toplevel(widget)),
+                                         GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                                         "_Cancel", GTK_RESPONSE_CANCEL,
+                                         "_Create", GTK_RESPONSE_ACCEPT,
+                                         NULL);
+    content = gtk_dialog_get_content_area(GTK_DIALOG(dialog));
+    grid = gtk_grid_new();
+    gtk_grid_set_row_spacing(GTK_GRID(grid), 6);
+    gtk_grid_set_column_spacing(GTK_GRID(grid), 6);
+    gtk_container_set_border_width(GTK_CONTAINER(grid), 10);
+
+    name_entry = gtk_entry_new();
+    image_entry = gtk_entry_new();
+    color_entry = gtk_entry_new();
+    description_entry = gtk_entry_new();
+
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Name:"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), name_entry, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Image URL:"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), image_entry, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Color:"), 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), color_entry, 1, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Description:"), 0, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), description_entry, 1, 3, 1, 1);
+
+    gtk_box_pack_start(GTK_BOX(content), grid, FALSE, FALSE, 0);
+    gtk_widget_show_all(dialog);
+
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        const gchar *name = gtk_entry_get_text(GTK_ENTRY(name_entry));
+        const gchar *image_url = gtk_entry_get_text(GTK_ENTRY(image_entry));
+        const gchar *color = gtk_entry_get_text(GTK_ENTRY(color_entry));
+        const gchar *description = gtk_entry_get_text(GTK_ENTRY(description_entry));
+
+        if (name && *name && image_url && *image_url) {
+            gchar *escaped_name = g_strescape(name, NULL);
+            gchar *escaped_image = g_strescape(image_url, NULL);
+            gchar *escaped_color = g_strescape(color, NULL);
+            gchar *escaped_description = g_strescape(description, NULL);
+            gchar *payload = g_strdup_printf(
+                "{\"name\":\"%s\",\"image_url\":\"%s\",\"color\":\"%s\",\"description\":\"%s\",\"action_type\":\"none\"}",
+                escaped_name,
+                escaped_image,
+                escaped_color,
+                escaped_description
+            );
+            if (!perform_admin_request(ADMIN_BADGES_URL, payload, "POST", &response)) {
+                show_modal_message(GTK_MESSAGE_ERROR, "Badge creation failed.", "The admin API request could not be sent.");
+            } else {
+                gchar *error_message = extract_error_message(response);
+                if (error_message) {
+                    show_modal_message(GTK_MESSAGE_ERROR, "Badge creation failed.", error_message);
+                    g_free(error_message);
+                } else {
+                    start_loading_admin_badges();
+                }
+            }
+            g_free(payload);
+            g_free(escaped_description);
+            g_free(escaped_color);
+            g_free(escaped_image);
+            g_free(escaped_name);
+        }
+    }
+
+    gtk_widget_destroy(dialog);
+    g_free(response);
+}
+
 void perform_admin_verify(const gchar *username, gboolean verify)
 {
-    if (!g_is_admin) return;
+    if (!has_admin_session_context()) return;
     gchar *url = g_strdup_printf("%s/%s", ADMIN_USERS_URL, username);
     gchar *post_data = g_strdup_printf("{\"verified\": %s}", verify ? "true" : "false");
     struct MemoryStruct chunk = {0};
-    if (fetch_url(url, &chunk, post_data, "PATCH")) {
+    if (perform_admin_fetch_url(url, &chunk, post_data, "PATCH")) {
         g_free(chunk.memory);
         start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
     }
@@ -2855,11 +4947,11 @@ void perform_admin_verify(const gchar *username, gboolean verify)
 
 void perform_admin_suspend(const gchar *username, const gchar *reason)
 {
-    if (!g_is_admin) return;
+    if (!has_admin_session_context()) return;
     gchar *url = g_strdup_printf("%s/%s/suspend", ADMIN_USERS_URL, username);
     gchar *post_data = g_strdup_printf("{\"reason\": \"%s\", \"action\": \"suspend\"}", reason);
     struct MemoryStruct chunk = {0};
-    if (fetch_url(url, &chunk, post_data, "POST")) {
+    if (perform_admin_fetch_url(url, &chunk, post_data, "POST")) {
         g_free(chunk.memory);
         start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
     }
@@ -2869,10 +4961,10 @@ void perform_admin_suspend(const gchar *username, const gchar *reason)
 
 void perform_admin_delete_user(const gchar *username)
 {
-    if (!g_is_admin) return;
+    if (!has_admin_session_context()) return;
     gchar *url = g_strdup_printf("%s/%s", ADMIN_USERS_URL, username);
     struct MemoryStruct chunk = {0};
-    if (fetch_url(url, &chunk, NULL, "DELETE")) {
+    if (perform_admin_fetch_url(url, &chunk, NULL, "DELETE")) {
         g_free(chunk.memory);
         start_loading_admin_users(gtk_entry_get_text(GTK_ENTRY(g_admin_users_search)));
     }
@@ -2881,10 +4973,10 @@ void perform_admin_delete_user(const gchar *username)
 
 void perform_admin_delete_post(const gchar *post_id)
 {
-    if (!g_is_admin) return;
+    if (!has_admin_session_context()) return;
     gchar *url = g_strdup_printf("%s/%s", ADMIN_POSTS_URL, post_id);
     struct MemoryStruct chunk = {0};
-    if (fetch_url(url, &chunk, NULL, "DELETE")) {
+    if (perform_admin_fetch_url(url, &chunk, NULL, "DELETE")) {
         g_free(chunk.memory);
         start_loading_admin_posts(gtk_entry_get_text(GTK_ENTRY(g_admin_posts_search)));
     }

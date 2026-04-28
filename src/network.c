@@ -10,12 +10,28 @@
 #define TWEETA_DESKTOP_CLIENT_HEADER "Tweeta Desktop; 1.0.0"
 #define TWEETA_DESKTOP_USER_AGENT "TweetaDesktop/1.0.0"
 
+static gboolean fetch_url_internal_with_auth(const gchar *url,
+                                             struct MemoryStruct *chunk,
+                                             const gchar *post_data,
+                                             const gchar *method,
+                                             long *response_code,
+                                             const gchar *auth_token_override);
+
 static inline gchar* get_auth_token_safe(void) {
     g_mutex_lock(&g_globals_mutex);
     gchar *token = g_auth_token ? g_strdup(g_auth_token) : NULL;
     g_debug("get_auth_token_safe: token=%s (length=%d)", token ? token : "(null)", token ? (int)strlen(token) : 0);
     g_mutex_unlock(&g_globals_mutex);
     return token;
+}
+
+static gchar *
+dup_effective_auth_token(const gchar *auth_token_override)
+{
+    if (auth_token_override && *auth_token_override) {
+        return g_strdup(auth_token_override);
+    }
+    return get_auth_token_safe();
 }
 
 static size_t
@@ -77,6 +93,17 @@ rewrite_url_for_runtime_base(const gchar *url)
 gboolean
 fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, const gchar *method, long *response_code)
 {
+    return fetch_url_internal_with_auth(url, chunk, post_data, method, response_code, NULL);
+}
+
+gboolean
+fetch_url_internal_with_auth(const gchar *url,
+                             struct MemoryStruct *chunk,
+                             const gchar *post_data,
+                             const gchar *method,
+                             long *response_code,
+                             const gchar *auth_token_override)
+{
     CURL *curl_handle;
     CURLcode res;
     struct curl_slist *headers = NULL;
@@ -116,7 +143,7 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "Accept: application/json");
     headers = curl_slist_append(headers, "X-Tweetapus-Client: " TWEETA_DESKTOP_CLIENT_HEADER);
-    gchar *auth_token = get_auth_token_safe();
+    gchar *auth_token = dup_effective_auth_token(auth_token_override);
     g_debug("fetch_url_internal: url=%s, request_url=%s, method=%s, has_auth_token=%d",
             url,
             request_url,
@@ -163,11 +190,26 @@ fetch_url_internal(const gchar *url, struct MemoryStruct *chunk, const gchar *po
 gboolean
 fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, const gchar *method)
 {
+    return fetch_url_with_auth_token(url, chunk, post_data, method, NULL);
+}
+
+gboolean
+fetch_url_with_auth_token(const gchar *url,
+                          struct MemoryStruct *chunk,
+                          const gchar *post_data,
+                          const gchar *method,
+                          const gchar *auth_token_override)
+{
     long response_code = 0;
     chunk->memory = NULL;
     chunk->size = 0;
 
-    if (!fetch_url_internal(url, chunk, post_data, method, &response_code)) {
+    if (!fetch_url_internal_with_auth(url,
+                                      chunk,
+                                      post_data,
+                                      method,
+                                      &response_code,
+                                      auth_token_override)) {
         return FALSE;
     }
 
@@ -202,7 +244,12 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
             g_object_unref(builder);
         }
 
-        gboolean success = fetch_url_internal(url, chunk, new_post_data, method ? method : "POST", &response_code);
+        gboolean success = fetch_url_internal_with_auth(url,
+                                                        chunk,
+                                                        new_post_data,
+                                                        method ? method : "POST",
+                                                        &response_code,
+                                                        auth_token_override);
         g_free(new_post_data);
         g_free(cap_token);
         return success;
@@ -232,7 +279,12 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
             struct MemoryStruct challenge_chunk;
             challenge_chunk.memory = NULL;
             challenge_chunk.size = 0;
-            if (fetch_url_internal(CAP_CHALLENGE_URL, &challenge_chunk, "{}", "POST", &response_code)) {
+            if (fetch_url_internal_with_auth(CAP_CHALLENGE_URL,
+                                             &challenge_chunk,
+                                             "{}",
+                                             "POST",
+                                             &response_code,
+                                             auth_token_override)) {
                 cap_token = check_and_solve_challenge(challenge_chunk.memory);
                 g_free(challenge_chunk.memory);
                 
@@ -244,7 +296,12 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
                         bypass_chunk.memory = NULL;
                         bypass_chunk.size = 0;
                         gchar *bypass_data = g_strdup_printf("{\"capToken\": \"%s\"}", cap_token);
-                        fetch_url_internal(API_BASE_URL "/auth/cap/rate-limit-bypass", &bypass_chunk, bypass_data, "POST", &response_code);
+                        fetch_url_internal_with_auth(API_BASE_URL "/auth/cap/rate-limit-bypass",
+                                                     &bypass_chunk,
+                                                     bypass_data,
+                                                     "POST",
+                                                     &response_code,
+                                                     auth_token_override);
                         g_free(bypass_data);
                         if (bypass_chunk.memory) g_free(bypass_chunk.memory);
                     }
@@ -266,7 +323,12 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
                         g_object_unref(parser2);
                     }
 
-                    gboolean success = fetch_url_internal(url, chunk, new_post_data, method, &response_code);
+                    gboolean success = fetch_url_internal_with_auth(url,
+                                                                    chunk,
+                                                                    new_post_data,
+                                                                    method,
+                                                                    &response_code,
+                                                                    auth_token_override);
                     g_free(new_post_data);
                     g_free(cap_token);
                     return success;
@@ -279,6 +341,16 @@ fetch_url(const gchar *url, struct MemoryStruct *chunk, const gchar *post_data, 
 }
 gboolean
 fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *file_path, const gchar *field_name)
+{
+    return fetch_url_with_file_auth_token(url, chunk, file_path, field_name, NULL);
+}
+
+gboolean
+fetch_url_with_file_auth_token(const gchar *url,
+                               struct MemoryStruct *chunk,
+                               const gchar *file_path,
+                               const gchar *field_name,
+                               const gchar *auth_token_override)
 {
     CURL *curl_handle;
     CURLcode res;
@@ -335,7 +407,7 @@ fetch_url_with_file(const gchar *url, struct MemoryStruct *chunk, const gchar *f
     curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl_handle, CURLOPT_MIMEPOST, mime);
 
-    gchar *auth_token = get_auth_token_safe();
+    gchar *auth_token = dup_effective_auth_token(auth_token_override);
     if (auth_token) {
         gchar *auth_header = g_strdup_printf("Authorization: Bearer %s", auth_token);
         headers = curl_slist_append(headers, auth_header);

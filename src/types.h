@@ -171,6 +171,7 @@ struct AsyncData {
     gchar *query;
     gchar *conversation_id;
     gchar *community_id;
+    gchar *json_data;
     guint request_id;       /* Used to cancel stale requests */
     gboolean is_append;     /* TRUE when loading more (infinite scroll) */
     gchar *before_id;       /* Pagination cursor */

@@ -1411,6 +1411,27 @@ on_admin_posts_search_activated(GtkEntry *entry, gpointer user_data)
     start_loading_admin_posts(query);
 }
 
+static void
+on_admin_logs_search_activated(GtkEntry *entry, gpointer user_data)
+{
+    (void)user_data;
+    start_loading_admin_logs(gtk_entry_get_text(entry));
+}
+
+static void
+on_admin_dms_search_activated(GtkEntry *entry, gpointer user_data)
+{
+    (void)user_data;
+    start_loading_admin_dms(gtk_entry_get_text(entry));
+}
+
+static void
+on_admin_shop_search_activated(GtkEntry *entry, gpointer user_data)
+{
+    (void)user_data;
+    start_loading_admin_shop(gtk_entry_get_text(entry));
+}
+
 static void on_communities_clicked(GtkWidget *widget, gpointer user_data)
 {
     (void)widget;
@@ -1808,36 +1829,9 @@ GtkWidget*
 create_admin_view(void)
 {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-
-    GtkWidget *launcher_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-    gtk_container_set_border_width(GTK_CONTAINER(launcher_box), 14);
-
-    GtkWidget *launcher_title = gtk_label_new(NULL);
-    gtk_label_set_markup(GTK_LABEL(launcher_title), "<b>Full Tweetapus Admin Panel</b>");
-    gtk_label_set_xalign(GTK_LABEL(launcher_title), 0.0);
-    gtk_box_pack_start(GTK_BOX(launcher_box), launcher_title, FALSE, FALSE, 0);
-
-    GtkWidget *launcher_desc = gtk_label_new(
-        "Open the upstream web admin panel in your default browser for full feature coverage, "
-        "including reports, moderation logs, DMs, badges, emojis, shop tools, impersonation, "
-        "and other admin-only workflows not exposed in the native GTK tabs.\n\n"
-        "This syncs the browser session for the current instance to the same account used in "
-        "Tweeta Desktop."
-    );
-    gtk_label_set_xalign(GTK_LABEL(launcher_desc), 0.0);
-    gtk_label_set_line_wrap(GTK_LABEL(launcher_desc), TRUE);
-    gtk_box_pack_start(GTK_BOX(launcher_box), launcher_desc, FALSE, FALSE, 0);
-
-    GtkWidget *launcher_button = gtk_button_new_with_label("Open Full Panel in Browser");
-    g_signal_connect(launcher_button, "clicked", G_CALLBACK(on_open_full_admin_panel_clicked), NULL);
-    gtk_box_pack_start(GTK_BOX(launcher_box), launcher_button, FALSE, FALSE, 0);
-
-    gtk_box_pack_start(GTK_BOX(box), launcher_box, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
-
     GtkWidget *notebook = gtk_notebook_new();
 
-    // Stats Tab
+    /* Stats Tab */
     GtkWidget *stats_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
     gtk_container_set_border_width(GTK_CONTAINER(stats_box), 20);
     
@@ -1853,7 +1847,7 @@ create_admin_view(void)
     
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), stats_box, gtk_label_new("Stats"));
 
-    // Users Tab
+    /* Users Tab */
     GtkWidget *users_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     g_admin_users_search = gtk_search_entry_new();
     gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_users_search), "Search users...");
@@ -1868,7 +1862,7 @@ create_admin_view(void)
     
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), users_vbox, gtk_label_new("Users"));
 
-    // Posts Tab
+    /* Posts Tab */
     GtkWidget *posts_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     g_admin_posts_search = gtk_search_entry_new();
     gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_posts_search), "Search posts...");
@@ -1882,6 +1876,339 @@ create_admin_view(void)
     gtk_box_pack_start(GTK_BOX(posts_vbox), posts_scroll, TRUE, TRUE, 0);
 
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), posts_vbox, gtk_label_new("Posts"));
+
+    /* Suspensions Tab */
+    GtkWidget *suspensions_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *suspensions_refresh = gtk_button_new_with_label("Refresh Suspensions");
+    GtkWidget *suspensions_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_admin_suspensions_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_suspensions_list), GTK_SELECTION_NONE);
+    g_signal_connect(suspensions_refresh, "clicked", G_CALLBACK(start_loading_admin_suspensions), NULL);
+    gtk_box_pack_start(GTK_BOX(suspensions_vbox), suspensions_refresh, FALSE, FALSE, 5);
+    gtk_container_add(GTK_CONTAINER(suspensions_scroll), g_admin_suspensions_list);
+    gtk_box_pack_start(GTK_BOX(suspensions_vbox), suspensions_scroll, TRUE, TRUE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), suspensions_vbox, gtk_label_new("Suspensions"));
+
+    /* Reports Tab */
+    GtkWidget *reports_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *reports_refresh = gtk_button_new_with_label("Refresh Reports");
+    GtkWidget *reports_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_admin_reports_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_reports_list), GTK_SELECTION_NONE);
+    g_signal_connect(reports_refresh, "clicked", G_CALLBACK(start_loading_admin_reports), NULL);
+    gtk_box_pack_start(GTK_BOX(reports_vbox), reports_refresh, FALSE, FALSE, 5);
+    gtk_container_add(GTK_CONTAINER(reports_scroll), g_admin_reports_list);
+    gtk_box_pack_start(GTK_BOX(reports_vbox), reports_scroll, TRUE, TRUE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), reports_vbox, gtk_label_new("Reports"));
+
+    /* Logs Tab */
+    GtkWidget *logs_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    g_admin_logs_search = gtk_search_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_logs_search), "Search moderation logs...");
+    g_signal_connect(g_admin_logs_search, "activate", G_CALLBACK(on_admin_logs_search_activated), NULL);
+    GtkWidget *logs_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_admin_logs_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_logs_list), GTK_SELECTION_NONE);
+    gtk_box_pack_start(GTK_BOX(logs_vbox), g_admin_logs_search, FALSE, FALSE, 5);
+    gtk_container_add(GTK_CONTAINER(logs_scroll), g_admin_logs_list);
+    gtk_box_pack_start(GTK_BOX(logs_vbox), logs_scroll, TRUE, TRUE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), logs_vbox, gtk_label_new("Logs"));
+
+    /* DMs Tab */
+    GtkWidget *dms_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *dms_paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+    GtkWidget *dms_left = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *dms_right = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *dms_left_scroll = gtk_scrolled_window_new(NULL, NULL);
+    GtkWidget *dms_right_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_admin_dms_search = gtk_search_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_dms_search), "Search DM conversations by username...");
+    g_signal_connect(g_admin_dms_search, "activate", G_CALLBACK(on_admin_dms_search_activated), NULL);
+    g_admin_dms_list = gtk_list_box_new();
+    g_admin_dm_admin_messages_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_dms_list), GTK_SELECTION_SINGLE);
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_dm_admin_messages_list), GTK_SELECTION_NONE);
+    g_signal_connect(g_admin_dms_list, "row-selected", G_CALLBACK(on_admin_dm_conversation_selected), NULL);
+    gtk_box_pack_start(GTK_BOX(dms_vbox), g_admin_dms_search, FALSE, FALSE, 5);
+    gtk_container_add(GTK_CONTAINER(dms_left_scroll), g_admin_dms_list);
+    gtk_container_add(GTK_CONTAINER(dms_right_scroll), g_admin_dm_admin_messages_list);
+    gtk_box_pack_start(GTK_BOX(dms_left), dms_left_scroll, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(dms_right), dms_right_scroll, TRUE, TRUE, 0);
+    gtk_paned_pack1(GTK_PANED(dms_paned), dms_left, TRUE, FALSE);
+    gtk_paned_pack2(GTK_PANED(dms_paned), dms_right, TRUE, FALSE);
+    gtk_box_pack_start(GTK_BOX(dms_vbox), dms_paned, TRUE, TRUE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), dms_vbox, gtk_label_new("DMs"));
+
+    /* Blocks Tab */
+    GtkWidget *blocks_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *blocks_refresh = gtk_button_new_with_label("Refresh Blocks");
+    GtkWidget *blocks_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_admin_blocks_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_blocks_list), GTK_SELECTION_NONE);
+    g_signal_connect(blocks_refresh, "clicked", G_CALLBACK(start_loading_admin_blocks), NULL);
+    gtk_box_pack_start(GTK_BOX(blocks_vbox), blocks_refresh, FALSE, FALSE, 5);
+    gtk_container_add(GTK_CONTAINER(blocks_scroll), g_admin_blocks_list);
+    gtk_box_pack_start(GTK_BOX(blocks_vbox), blocks_scroll, TRUE, TRUE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), blocks_vbox, gtk_label_new("Blocks"));
+
+    /* Emojis Tab */
+    GtkWidget *emojis_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *emojis_actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    GtkWidget *emojis_refresh = gtk_button_new_with_label("Refresh Emojis");
+    GtkWidget *emojis_upload = gtk_button_new_with_label("Upload Emoji");
+    GtkWidget *emojis_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_admin_emojis_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_emojis_list), GTK_SELECTION_NONE);
+    g_signal_connect(emojis_refresh, "clicked", G_CALLBACK(start_loading_admin_emojis), NULL);
+    g_signal_connect(emojis_upload, "clicked", G_CALLBACK(on_admin_upload_emoji_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(emojis_actions), emojis_refresh, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(emojis_actions), emojis_upload, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(emojis_vbox), emojis_actions, FALSE, FALSE, 5);
+    gtk_container_add(GTK_CONTAINER(emojis_scroll), g_admin_emojis_list);
+    gtk_box_pack_start(GTK_BOX(emojis_vbox), emojis_scroll, TRUE, TRUE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), emojis_vbox, gtk_label_new("Emojis"));
+
+    /* Badges Tab */
+    GtkWidget *badges_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *badges_actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    GtkWidget *badges_refresh = gtk_button_new_with_label("Refresh Badges");
+    GtkWidget *badges_create = gtk_button_new_with_label("Create Badge");
+    GtkWidget *badges_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_admin_badges_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_badges_list), GTK_SELECTION_NONE);
+    g_signal_connect(badges_refresh, "clicked", G_CALLBACK(start_loading_admin_badges), NULL);
+    g_signal_connect(badges_create, "clicked", G_CALLBACK(on_admin_create_badge_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(badges_actions), badges_refresh, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(badges_actions), badges_create, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(badges_vbox), badges_actions, FALSE, FALSE, 5);
+    gtk_container_add(GTK_CONTAINER(badges_scroll), g_admin_badges_list);
+    gtk_box_pack_start(GTK_BOX(badges_vbox), badges_scroll, TRUE, TRUE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), badges_vbox, gtk_label_new("Badges"));
+
+    /* Shop Tab */
+    GtkWidget *shop_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *shop_paned = gtk_paned_new(GTK_ORIENTATION_VERTICAL);
+    GtkWidget *shop_products_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *shop_purchases_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *shop_products_scroll = gtk_scrolled_window_new(NULL, NULL);
+    GtkWidget *shop_purchases_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_admin_shop_search = gtk_search_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_shop_search), "Search shop products...");
+    g_signal_connect(g_admin_shop_search, "activate", G_CALLBACK(on_admin_shop_search_activated), NULL);
+    g_admin_shop_products_list = gtk_list_box_new();
+    g_admin_shop_purchases_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_shop_products_list), GTK_SELECTION_NONE);
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_shop_purchases_list), GTK_SELECTION_NONE);
+    gtk_box_pack_start(GTK_BOX(shop_vbox), g_admin_shop_search, FALSE, FALSE, 5);
+    gtk_container_add(GTK_CONTAINER(shop_products_scroll), g_admin_shop_products_list);
+    gtk_container_add(GTK_CONTAINER(shop_purchases_scroll), g_admin_shop_purchases_list);
+    gtk_box_pack_start(GTK_BOX(shop_products_box), gtk_label_new("Products"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(shop_products_box), shop_products_scroll, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(shop_purchases_box), gtk_label_new("Purchases"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(shop_purchases_box), shop_purchases_scroll, TRUE, TRUE, 0);
+    gtk_paned_pack1(GTK_PANED(shop_paned), shop_products_box, TRUE, FALSE);
+    gtk_paned_pack2(GTK_PANED(shop_paned), shop_purchases_box, TRUE, FALSE);
+    gtk_box_pack_start(GTK_BOX(shop_vbox), shop_paned, TRUE, TRUE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), shop_vbox, gtk_label_new("Shop"));
+
+    /* Communities Tab */
+    GtkWidget *communities_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+    GtkWidget *communities_actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    GtkWidget *communities_refresh = gtk_button_new_with_label("Refresh");
+    GtkWidget *communities_create = gtk_button_new_with_label("Create Community");
+    GtkWidget *communities_scroll = gtk_scrolled_window_new(NULL, NULL);
+    g_admin_communities_list = gtk_list_box_new();
+    gtk_list_box_set_selection_mode(GTK_LIST_BOX(g_admin_communities_list), GTK_SELECTION_NONE);
+    g_signal_connect(communities_refresh, "clicked", G_CALLBACK(start_loading_admin_communities), NULL);
+    g_signal_connect(communities_create, "clicked", G_CALLBACK(on_admin_create_community_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(communities_actions), communities_refresh, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(communities_actions), communities_create, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(communities_vbox), communities_actions, FALSE, FALSE, 5);
+    gtk_container_add(GTK_CONTAINER(communities_scroll), g_admin_communities_list);
+    gtk_box_pack_start(GTK_BOX(communities_vbox), communities_scroll, TRUE, TRUE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), communities_vbox, gtk_label_new("Communities"));
+
+    /* Notifications Tab */
+    GtkWidget *notifications_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    GtkWidget *notifications_grid = gtk_grid_new();
+    GtkWidget *notifications_message_scroll = gtk_scrolled_window_new(NULL, NULL);
+    GtkWidget *notifications_send = gtk_button_new_with_label("Send Notification");
+    gtk_container_set_border_width(GTK_CONTAINER(notifications_vbox), 12);
+    gtk_grid_set_row_spacing(GTK_GRID(notifications_grid), 6);
+    gtk_grid_set_column_spacing(GTK_GRID(notifications_grid), 6);
+    g_admin_notifications_target_entry = gtk_entry_new();
+    g_admin_notifications_type_entry = gtk_entry_new();
+    g_admin_notifications_title_entry = gtk_entry_new();
+    g_admin_notifications_subtitle_entry = gtk_entry_new();
+    g_admin_notifications_url_entry = gtk_entry_new();
+    g_admin_notifications_message_view = gtk_text_view_new();
+    g_admin_notifications_result_label = gtk_label_new("");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_notifications_target_entry), "username, username2, or all");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_notifications_type_entry), "default");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_notifications_title_entry), "Title");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_notifications_subtitle_entry), "Subtitle");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_notifications_url_entry), "https://...");
+    gtk_widget_set_size_request(notifications_message_scroll, -1, 180);
+    gtk_container_add(GTK_CONTAINER(notifications_message_scroll), g_admin_notifications_message_view);
+    gtk_label_set_xalign(GTK_LABEL(g_admin_notifications_result_label), 0.0);
+    gtk_label_set_line_wrap(GTK_LABEL(g_admin_notifications_result_label), TRUE);
+    gtk_grid_attach(GTK_GRID(notifications_grid), gtk_label_new("Targets"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(notifications_grid), g_admin_notifications_target_entry, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(notifications_grid), gtk_label_new("Type"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(notifications_grid), g_admin_notifications_type_entry, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(notifications_grid), gtk_label_new("Title"), 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(notifications_grid), g_admin_notifications_title_entry, 1, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(notifications_grid), gtk_label_new("Subtitle"), 0, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(notifications_grid), g_admin_notifications_subtitle_entry, 1, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(notifications_grid), gtk_label_new("URL"), 0, 4, 1, 1);
+    gtk_grid_attach(GTK_GRID(notifications_grid), g_admin_notifications_url_entry, 1, 4, 1, 1);
+    gtk_grid_attach(GTK_GRID(notifications_grid), gtk_label_new("Message"), 0, 5, 1, 1);
+    gtk_grid_attach(GTK_GRID(notifications_grid), notifications_message_scroll, 1, 5, 1, 1);
+    g_signal_connect(notifications_send, "clicked", G_CALLBACK(on_admin_send_notification_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(notifications_vbox), notifications_grid, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(notifications_vbox), notifications_send, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(notifications_vbox), g_admin_notifications_result_label, FALSE, FALSE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), notifications_vbox, gtk_label_new("Notifications"));
+
+    /* Clone Tab */
+    GtkWidget *clone_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    GtkWidget *clone_grid = gtk_grid_new();
+    GtkWidget *clone_checks_a = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *clone_checks_b = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *clone_checks_c = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *clone_submit = gtk_button_new_with_label("Clone User");
+    gtk_container_set_border_width(GTK_CONTAINER(clone_vbox), 12);
+    gtk_grid_set_row_spacing(GTK_GRID(clone_grid), 6);
+    gtk_grid_set_column_spacing(GTK_GRID(clone_grid), 6);
+    g_admin_clone_source_entry = gtk_entry_new();
+    g_admin_clone_username_entry = gtk_entry_new();
+    g_admin_clone_name_entry = gtk_entry_new();
+    g_admin_clone_relations_check = gtk_check_button_new_with_label("Relations");
+    g_admin_clone_ghosts_check = gtk_check_button_new_with_label("Ghosts");
+    g_admin_clone_tweets_check = gtk_check_button_new_with_label("Tweets");
+    g_admin_clone_replies_check = gtk_check_button_new_with_label("Replies");
+    g_admin_clone_retweets_check = gtk_check_button_new_with_label("Retweets");
+    g_admin_clone_reactions_check = gtk_check_button_new_with_label("Reactions");
+    g_admin_clone_communities_check = gtk_check_button_new_with_label("Communities");
+    g_admin_clone_media_check = gtk_check_button_new_with_label("Media");
+    g_admin_clone_affiliate_check = gtk_check_button_new_with_label("Affiliate");
+    g_admin_clone_result_label = gtk_label_new("");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(g_admin_clone_relations_check), TRUE);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(g_admin_clone_ghosts_check), TRUE);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(g_admin_clone_tweets_check), TRUE);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(g_admin_clone_replies_check), TRUE);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(g_admin_clone_retweets_check), TRUE);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(g_admin_clone_reactions_check), TRUE);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(g_admin_clone_communities_check), TRUE);
+    gtk_label_set_xalign(GTK_LABEL(g_admin_clone_result_label), 0.0);
+    gtk_label_set_line_wrap(GTK_LABEL(g_admin_clone_result_label), TRUE);
+    gtk_grid_attach(GTK_GRID(clone_grid), gtk_label_new("Source"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(clone_grid), g_admin_clone_source_entry, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(clone_grid), gtk_label_new("New Username"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(clone_grid), g_admin_clone_username_entry, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(clone_grid), gtk_label_new("Display Name"), 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(clone_grid), g_admin_clone_name_entry, 1, 2, 1, 1);
+    gtk_box_pack_start(GTK_BOX(clone_checks_a), g_admin_clone_relations_check, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_checks_a), g_admin_clone_ghosts_check, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_checks_a), g_admin_clone_tweets_check, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_checks_b), g_admin_clone_replies_check, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_checks_b), g_admin_clone_retweets_check, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_checks_b), g_admin_clone_reactions_check, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_checks_c), g_admin_clone_communities_check, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_checks_c), g_admin_clone_media_check, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_checks_c), g_admin_clone_affiliate_check, FALSE, FALSE, 0);
+    g_signal_connect(clone_submit, "clicked", G_CALLBACK(on_admin_clone_user_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(clone_vbox), clone_grid, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_vbox), clone_checks_a, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_vbox), clone_checks_b, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_vbox), clone_checks_c, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_vbox), clone_submit, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(clone_vbox), g_admin_clone_result_label, FALSE, FALSE, 0);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), clone_vbox, gtk_label_new("Clone"));
+
+    /* Tools Tab */
+    GtkWidget *tools_scroll = gtk_scrolled_window_new(NULL, NULL);
+    GtkWidget *tools_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+    GtkWidget *impersonation_grid = gtk_grid_new();
+    GtkWidget *impersonation_actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *impersonate_button = gtk_button_new_with_label("Impersonate");
+    GtkWidget *restore_button = gtk_button_new_with_label("Restore Admin");
+    GtkWidget *post_grid = gtk_grid_new();
+    GtkWidget *post_scroll = gtk_scrolled_window_new(NULL, NULL);
+    GtkWidget *post_button = gtk_button_new_with_label("Create Post");
+    GtkWidget *bulk_grid = gtk_grid_new();
+    GtkWidget *bulk_scroll = gtk_scrolled_window_new(NULL, NULL);
+    GtkWidget *bulk_button = gtk_button_new_with_label("Apply Bulk Edit");
+    gtk_container_set_border_width(GTK_CONTAINER(tools_vbox), 12);
+    gtk_grid_set_row_spacing(GTK_GRID(impersonation_grid), 6);
+    gtk_grid_set_column_spacing(GTK_GRID(impersonation_grid), 6);
+    gtk_grid_set_row_spacing(GTK_GRID(post_grid), 6);
+    gtk_grid_set_column_spacing(GTK_GRID(post_grid), 6);
+    gtk_grid_set_row_spacing(GTK_GRID(bulk_grid), 6);
+    gtk_grid_set_column_spacing(GTK_GRID(bulk_grid), 6);
+    g_admin_impersonation_entry = gtk_entry_new();
+    g_admin_impersonation_status_label = gtk_label_new("Admin session active.");
+    g_admin_tools_post_targets_entry = gtk_entry_new();
+    g_admin_tools_post_reply_to_entry = gtk_entry_new();
+    g_admin_tools_post_source_entry = gtk_entry_new();
+    g_admin_tools_post_created_at_entry = gtk_entry_new();
+    g_admin_tools_post_no_char_limit_check = gtk_check_button_new_with_label("No Character Limit");
+    g_admin_tools_post_content_view = gtk_text_view_new();
+    g_admin_tools_bulk_targets_entry = gtk_entry_new();
+    g_admin_tools_bulk_payload_view = gtk_text_view_new();
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(g_admin_tools_post_no_char_limit_check), TRUE);
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_tools_post_targets_entry), "username, username2");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_tools_bulk_targets_entry), "username, username2");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_impersonation_entry), "username or user id");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_tools_post_reply_to_entry), "Optional post ID");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_tools_post_source_entry), "Tweeta Desktop");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(g_admin_tools_post_created_at_entry), "2026-04-28T12:00:00.000Z");
+    gtk_widget_set_size_request(post_scroll, -1, 180);
+    gtk_widget_set_size_request(bulk_scroll, -1, 220);
+    gtk_container_add(GTK_CONTAINER(post_scroll), g_admin_tools_post_content_view);
+    gtk_container_add(GTK_CONTAINER(bulk_scroll), g_admin_tools_bulk_payload_view);
+    gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(g_admin_tools_bulk_payload_view)),
+                             "{\n  \"verified\": true\n}",
+                             -1);
+    gtk_label_set_xalign(GTK_LABEL(g_admin_impersonation_status_label), 0.0);
+    gtk_label_set_line_wrap(GTK_LABEL(g_admin_impersonation_status_label), TRUE);
+    gtk_grid_attach(GTK_GRID(impersonation_grid), gtk_label_new("Impersonation"), 0, 0, 2, 1);
+    gtk_grid_attach(GTK_GRID(impersonation_grid), gtk_label_new("Target"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(impersonation_grid), g_admin_impersonation_entry, 1, 1, 1, 1);
+    gtk_box_pack_start(GTK_BOX(impersonation_actions), impersonate_button, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(impersonation_actions), restore_button, FALSE, FALSE, 0);
+    gtk_grid_attach(GTK_GRID(impersonation_grid), impersonation_actions, 1, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(impersonation_grid), g_admin_impersonation_status_label, 0, 3, 2, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), gtk_label_new("Posting"), 0, 0, 2, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), gtk_label_new("Targets"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), g_admin_tools_post_targets_entry, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), gtk_label_new("Reply To"), 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), g_admin_tools_post_reply_to_entry, 1, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), gtk_label_new("Source"), 0, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), g_admin_tools_post_source_entry, 1, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), gtk_label_new("Created At"), 0, 4, 1, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), g_admin_tools_post_created_at_entry, 1, 4, 1, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), gtk_label_new("Content"), 0, 5, 1, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), post_scroll, 1, 5, 1, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), g_admin_tools_post_no_char_limit_check, 1, 6, 1, 1);
+    gtk_grid_attach(GTK_GRID(post_grid), post_button, 1, 7, 1, 1);
+    gtk_grid_attach(GTK_GRID(bulk_grid), gtk_label_new("Bulk Edit"), 0, 0, 2, 1);
+    gtk_grid_attach(GTK_GRID(bulk_grid), gtk_label_new("Targets"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(bulk_grid), g_admin_tools_bulk_targets_entry, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(bulk_grid), gtk_label_new("Payload"), 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(bulk_grid), bulk_scroll, 1, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(bulk_grid), bulk_button, 1, 3, 1, 1);
+    g_signal_connect(impersonate_button, "clicked", G_CALLBACK(on_admin_impersonate_clicked), NULL);
+    g_signal_connect(restore_button, "clicked", G_CALLBACK(on_admin_restore_admin_clicked), NULL);
+    g_signal_connect(post_button, "clicked", G_CALLBACK(on_admin_post_as_user_clicked), NULL);
+    g_signal_connect(bulk_button, "clicked", G_CALLBACK(on_admin_bulk_edit_clicked), NULL);
+    gtk_box_pack_start(GTK_BOX(tools_vbox), impersonation_grid, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(tools_vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(tools_vbox), post_grid, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(tools_vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(tools_vbox), bulk_grid, FALSE, FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(tools_scroll), tools_vbox);
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), tools_scroll, gtk_label_new("Tools"));
 
     gtk_box_pack_start(GTK_BOX(box), notebook, TRUE, TRUE, 0);
 

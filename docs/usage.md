@@ -126,9 +126,12 @@ View and participate in private conversations:
 
 ## Session Persistence
 
-Tweeta Desktop automatically saves your session when you log in. Your credentials (auth token and username) are stored in `~/.config/tweeta-desktop/session.json`. When you start the application again, it will attempt to log you in automatically. Logging out will delete this file.
+Tweeta Desktop automatically saves your session when you log in. Your credentials (auth token and username) are stored in `~/.config/tweeta-desktop/session.json`. When you start the application again, it will attempt to log you in automatically. Logging out will delete this file. If you are impersonating a user from the admin panel, the desktop client also preserves the original admin session so you can restore it later.
 
 ## Admin Features
 
 If you are logged in as a site administrator:
+- **Native Admin Tabs**: Use the desktop admin tabs for stats, users, posts, suspensions, reports, moderation logs, DMs, blocks, emojis, badges, shop data, communities, fake notifications, clone-user workflows, impersonation, post-as-user, mass posting, and bulk user edits.
+- **Impersonation Restore**: The tools tab can impersonate a user account while keeping the original admin session available for restore.
+- **Bulk User Edits**: The tools tab accepts a JSON patch payload and applies it across one or more user IDs or usernames through the upstream admin API.
 - **Add Note**: You will see a "Note" button on tweets. Click it to add a public "Note" or fact check to the post. This note will be visible to all users.
