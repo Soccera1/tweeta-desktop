@@ -8,3 +8,4 @@ tweetapus/
 build/
 .cache/
 .codex
+.build-use-fido2-*

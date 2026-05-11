@@ -110,7 +110,7 @@ gchar* solve_challenge(const gchar *challenge_json, const gchar *token) {
     }
 
     JsonNode *root = json_parser_get_root(parser);
-    if (!JSON_NODE_HOLDS_OBJECT(root)) {
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
         g_object_unref(parser);
         return NULL;
     }
@@ -137,7 +137,7 @@ gchar* check_and_solve_challenge(const gchar *response_json) {
     }
     
     JsonNode *root = json_parser_get_root(parser);
-    if (!JSON_NODE_HOLDS_OBJECT(root)) {
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
         g_object_unref(parser);
         return NULL;
     }
@@ -170,9 +170,11 @@ gchar* check_and_solve_challenge(const gchar *response_json) {
             JsonParser *redeem_parser = json_parser_new();
             if (json_parser_load_from_data(redeem_parser, chunk.memory, -1, NULL)) {
                 JsonNode *r_root = json_parser_get_root(redeem_parser);
-                JsonObject *r_obj = json_node_get_object(r_root);
-                if (json_object_has_member(r_obj, "success") && json_object_get_boolean_member(r_obj, "success")) {
-                    redeemed_token = g_strdup(json_object_get_string_member(r_obj, "token"));
+                if (r_root && JSON_NODE_HOLDS_OBJECT(r_root)) {
+                    JsonObject *r_obj = json_node_get_object(r_root);
+                    if (json_object_has_member(r_obj, "success") && json_object_get_boolean_member(r_obj, "success")) {
+                        redeemed_token = g_strdup(json_object_get_string_member(r_obj, "token"));
+                    }
                 }
             }
             g_object_unref(redeem_parser);

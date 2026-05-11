@@ -2,6 +2,7 @@
 #define TYPES_H
 
 #include <gtk/gtk.h>
+#include <json-glib/json-glib.h>
 
 typedef enum {
     TIMELINE_PUBLIC,
@@ -47,6 +48,9 @@ struct Tweet {
     gchar *content_type;
     gchar *retweet_created_at;
     gchar *original_post_id;
+    gchar *article_title;
+    gchar *article_body_markdown;
+    gchar *created_at;
 };
 
 struct Emoji {
@@ -117,6 +121,13 @@ struct DirectMessage {
     gchar *created_at;
     gchar *edited_at;
     gchar *reactions_summary;
+    gchar *mpi_kind;
+    gchar *mpi_status;
+    gchar *mpi_net;
+    gchar *mpi_gross;
+    gchar *mpi_note;
+    gchar *mpi_order_id;
+    gchar *mpi_payment_link_url;
     GList *attachments;
 };
 
@@ -163,10 +174,12 @@ struct AsyncData {
     GList *conversations;
     GList *messages;
     GList *communities;
+    GList *lists;
     gboolean success;
     gboolean has_more;
     struct Profile *profile;
     struct Conversation *conversation;
+    struct TweetaList *list;
     gchar *username;
     gchar *query;
     gchar *conversation_id;
@@ -188,6 +201,8 @@ struct UploadContext {
     GtkWidget *file_label;
     gchar *file_path;
     gchar *file_type;
+    gchar *remote_url;
+    gchar *remote_type;
 };
 
 struct ReplyContext {
@@ -231,10 +246,15 @@ struct PollOption {
 struct Poll {
     gchar *id;
     gchar *question;
+    gchar *kind;
+    JsonNode *steps;
     GList *options;         /* List of PollOption* */
     gboolean is_active;
     gchar *expires_at;
     int total_votes;
+    gboolean has_user_answers;
+    int user_score;
+    int user_total;
 };
 
 struct InteractionState {
@@ -258,6 +278,22 @@ struct Community {
     gboolean tag_enabled;
     gchar *tag_emoji;
     gchar *tag_text;
+};
+
+struct TweetaList {
+    gchar *id;
+    gchar *user_id;
+    gchar *name;
+    gchar *description;
+    gchar *owner_username;
+    gchar *owner_name;
+    gint member_count;
+    gint follower_count;
+    gboolean is_private;
+    gboolean is_following;
+    gboolean is_owner;
+    GList *members;
+    GList *followers;
 };
 
 struct P2PContact {

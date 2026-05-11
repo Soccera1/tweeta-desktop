@@ -57,6 +57,42 @@ get_object_element_if_valid(JsonArray *array, guint index)
     return json_node_get_object(node);
 }
 
+static gboolean
+object_member_holds_value(JsonObject *obj, const gchar *key)
+{
+    JsonNode *node;
+
+    if (!obj || !key || !json_object_has_member(obj, key))
+        return FALSE;
+
+    node = json_object_get_member(obj, key);
+    return node && JSON_NODE_HOLDS_VALUE(node);
+}
+
+static gboolean
+object_member_has_non_null_node(JsonObject *obj, const gchar *key)
+{
+    JsonNode *node;
+
+    if (!obj || !key || !json_object_has_member(obj, key))
+        return FALSE;
+
+    node = json_object_get_member(obj, key);
+    return node &&
+        (JSON_NODE_HOLDS_VALUE(node) ||
+         JSON_NODE_HOLDS_OBJECT(node) ||
+         JSON_NODE_HOLDS_ARRAY(node));
+}
+
+static gchar*
+dup_string_member_if_valid(JsonObject *obj, const gchar *key)
+{
+    if (!object_member_holds_value(obj, key))
+        return NULL;
+
+    return g_strdup(json_object_get_string_member(obj, key));
+}
+
 static JsonArray*
 get_first_array_member(JsonObject *obj, const gchar * const *keys)
 {
@@ -154,10 +190,16 @@ parse_community_from_object(JsonObject *comm_obj)
     if (json_object_has_member(comm_obj, "icon_url") &&
         !json_node_is_null(json_object_get_member(comm_obj, "icon_url")))
         comm->icon_url = g_strdup(json_object_get_string_member(comm_obj, "icon_url"));
+    else if (json_object_has_member(comm_obj, "icon") &&
+             !json_node_is_null(json_object_get_member(comm_obj, "icon")))
+        comm->icon_url = g_strdup(json_object_get_string_member(comm_obj, "icon"));
 
     if (json_object_has_member(comm_obj, "banner_url") &&
         !json_node_is_null(json_object_get_member(comm_obj, "banner_url")))
         comm->banner_url = g_strdup(json_object_get_string_member(comm_obj, "banner_url"));
+    else if (json_object_has_member(comm_obj, "banner") &&
+             !json_node_is_null(json_object_get_member(comm_obj, "banner")))
+        comm->banner_url = g_strdup(json_object_get_string_member(comm_obj, "banner"));
 
     if (json_object_has_member(comm_obj, "access_mode"))
         comm->access_mode = g_strdup(json_object_get_string_member(comm_obj, "access_mode"));
@@ -373,27 +415,37 @@ parse_poll(JsonObject *poll_object)
 
     struct Poll *poll = g_new0(struct Poll, 1);
     
-    if (json_object_has_member(poll_object, "id"))
-        poll->id = g_strdup(json_object_get_string_member(poll_object, "id"));
+    poll->id = dup_string_member_if_valid(poll_object, "id");
     
-    if (json_object_has_member(poll_object, "question"))
-        poll->question = g_strdup(json_object_get_string_member(poll_object, "question"));
+    poll->question = dup_string_member_if_valid(poll_object, "question");
+
+    poll->kind = dup_string_member_if_valid(poll_object, "kind");
+    if (!poll->kind)
+        poll->kind = g_strdup("single");
+
+    if (json_object_has_member(poll_object, "steps")) {
+        JsonNode *steps = json_object_get_member(poll_object, "steps");
+        if (steps && JSON_NODE_HOLDS_ARRAY(steps))
+            poll->steps = json_node_copy(steps);
+    }
+
+    if (object_member_has_non_null_node(poll_object, "userAnswers"))
+        poll->has_user_answers = TRUE;
+
+    if (object_member_holds_value(poll_object, "userScore"))
+        poll->user_score = json_object_get_int_member(poll_object, "userScore");
+
+    if (object_member_holds_value(poll_object, "userTotal"))
+        poll->user_total = json_object_get_int_member(poll_object, "userTotal");
     
+    poll->is_active = TRUE;
     if (json_object_has_member(poll_object, "isExpired")) {
         poll->is_active = !json_object_get_boolean_member(poll_object, "isExpired");
     } else if (json_object_has_member(poll_object, "is_active")) {
-        JsonNode *node = json_object_get_member(poll_object, "is_active");
-        if (node && JSON_NODE_HOLDS_VALUE(node)) {
-            if (json_node_get_value_type(node) == G_TYPE_BOOLEAN)
-                poll->is_active = json_node_get_boolean(node);
-            else
-                poll->is_active = json_node_get_int(node) != 0;
-        }
+        poll->is_active = json_object_get_boolean_member(poll_object, "is_active");
     }
     
-    if (json_object_has_member(poll_object, "expires_at") && 
-        !json_node_is_null(json_object_get_member(poll_object, "expires_at")))
-        poll->expires_at = g_strdup(json_object_get_string_member(poll_object, "expires_at"));
+    poll->expires_at = dup_string_member_if_valid(poll_object, "expires_at");
     
     if (json_object_has_member(poll_object, "totalVotes"))
         poll->total_votes = json_object_get_int_member(poll_object, "totalVotes");
@@ -412,11 +464,9 @@ parse_poll(JsonObject *poll_object)
                     continue;
                 }
 
-                if (json_object_has_member(option_obj, "id"))
-                    option->id = g_strdup(json_object_get_string_member(option_obj, "id"));
+                option->id = dup_string_member_if_valid(option_obj, "id");
 
-                if (json_object_has_member(option_obj, "option_text"))
-                    option->option_text = g_strdup(json_object_get_string_member(option_obj, "option_text"));
+                option->option_text = dup_string_member_if_valid(option_obj, "option_text");
 
                 if (json_object_has_member(option_obj, "vote_count"))
                     option->vote_count = json_object_get_int_member(option_obj, "vote_count");
@@ -427,7 +477,7 @@ parse_poll(JsonObject *poll_object)
                 if (json_object_has_member(option_obj, "voted"))
                     option->voted = json_object_get_boolean_member(option_obj, "voted");
 
-                if (json_object_has_member(poll_object, "userVote") && !json_node_is_null(json_object_get_member(poll_object, "userVote"))) {
+                if (object_member_holds_value(poll_object, "userVote")) {
                     const gchar *user_vote = json_object_get_string_member(poll_object, "userVote");
                     if (user_vote && option->id && g_strcmp0(user_vote, option->id) == 0) {
                         option->user_vote = g_strdup(user_vote);
@@ -495,6 +545,12 @@ parse_tweets(const gchar *json_data)
     } else if (json_object_has_member(root_object, "tweets")) {
         posts = get_array_member_if_valid(root_object, "tweets");
         key = "tweets";
+    } else if (json_object_has_member(root_object, "articles")) {
+        posts = get_array_member_if_valid(root_object, "articles");
+        key = "articles";
+    } else if (json_object_has_member(root_object, "highlights")) {
+        posts = get_array_member_if_valid(root_object, "highlights");
+        key = "highlights";
     }
 
     if (posts && key) {
@@ -533,10 +589,9 @@ parse_tweet_from_object(JsonObject *post_object)
 
     struct Tweet *tweet = g_new0(struct Tweet, 1);
     
-    if (json_object_has_member(post_object, "id"))
-        tweet->id = g_strdup(json_object_get_string_member(post_object, "id"));
+    tweet->id = dup_string_member_if_valid(post_object, "id");
 
-    tweet->content = g_strdup(json_object_get_string_member(post_object, "content"));
+    tweet->content = dup_string_member_if_valid(post_object, "content");
     if (json_object_has_member(post_object, "pinned")) {
         JsonNode *node = json_object_get_member(post_object, "pinned");
         if (node && JSON_NODE_HOLDS_VALUE(node)) {
@@ -548,13 +603,10 @@ parse_tweet_from_object(JsonObject *post_object)
     }
 
     if (author_object) {
-        if (json_object_has_member(author_object, "id") && !json_node_is_null(json_object_get_member(author_object, "id")))
-            tweet->author_id = g_strdup(json_object_get_string_member(author_object, "id"));
-        tweet->author_name = g_strdup(json_object_get_string_member(author_object, "name"));
-        tweet->author_username = g_strdup(json_object_get_string_member(author_object, "username"));
-        if (json_object_has_member(author_object, "avatar") && !json_node_is_null(json_object_get_member(author_object, "avatar"))) {
-            tweet->author_avatar = g_strdup(json_object_get_string_member(author_object, "avatar"));
-        }
+        tweet->author_id = dup_string_member_if_valid(author_object, "id");
+        tweet->author_name = dup_string_member_if_valid(author_object, "name");
+        tweet->author_username = dup_string_member_if_valid(author_object, "username");
+        tweet->author_avatar = dup_string_member_if_valid(author_object, "avatar");
         if (json_object_has_member(author_object, "verified")) {
             JsonNode *node = json_object_get_member(author_object, "verified");
             if (node && JSON_NODE_HOLDS_VALUE(node)) {
@@ -583,28 +635,21 @@ parse_tweet_from_object(JsonObject *post_object)
             }
         }
     } else {
-        if (json_object_has_member(post_object, "user_id") && !json_node_is_null(json_object_get_member(post_object, "user_id")))
-            tweet->author_id = g_strdup(json_object_get_string_member(post_object, "user_id"));
-        if (json_object_has_member(post_object, "username"))
-            tweet->author_username = g_strdup(json_object_get_string_member(post_object, "username"));
-        if (json_object_has_member(post_object, "name"))
-            tweet->author_name = g_strdup(json_object_get_string_member(post_object, "name"));
-        if (json_object_has_member(post_object, "avatar") && !json_node_is_null(json_object_get_member(post_object, "avatar")))
-            tweet->author_avatar = g_strdup(json_object_get_string_member(post_object, "avatar"));
+        tweet->author_id = dup_string_member_if_valid(post_object, "user_id");
+        tweet->author_username = dup_string_member_if_valid(post_object, "username");
+        tweet->author_name = dup_string_member_if_valid(post_object, "name");
+        tweet->author_avatar = dup_string_member_if_valid(post_object, "avatar");
     }
 
     {
         JsonObject *fact_check = get_object_member_if_valid(post_object, "fact_check");
         if (fact_check) {
-            if (json_object_has_member(fact_check, "note"))
-                tweet->note = g_strdup(json_object_get_string_member(fact_check, "note"));
-            if (json_object_has_member(fact_check, "severity"))
-                tweet->note_severity = g_strdup(json_object_get_string_member(fact_check, "severity"));
+            tweet->note = dup_string_member_if_valid(fact_check, "note");
+            tweet->note_severity = dup_string_member_if_valid(fact_check, "severity");
         }
     }
 
-    if (json_object_has_member(post_object, "edited_at") && !json_node_is_null(json_object_get_member(post_object, "edited_at")))
-        tweet->edited_at = g_strdup(json_object_get_string_member(post_object, "edited_at"));
+    tweet->edited_at = dup_string_member_if_valid(post_object, "edited_at");
 
     tweet->attachments = parse_attachments(post_object);
     parse_interaction_state(post_object, tweet);
@@ -633,14 +678,17 @@ parse_tweet_from_object(JsonObject *post_object)
     if (json_object_has_member(post_object, "reaction_count"))
         tweet->reaction_count = json_object_get_int_member(post_object, "reaction_count");
 
-    if (json_object_has_member(post_object, "content_type"))
-        tweet->content_type = g_strdup(json_object_get_string_member(post_object, "content_type"));
+    tweet->content_type = dup_string_member_if_valid(post_object, "content_type");
 
-    if (json_object_has_member(post_object, "retweet_created_at") && !json_node_is_null(json_object_get_member(post_object, "retweet_created_at")))
-        tweet->retweet_created_at = g_strdup(json_object_get_string_member(post_object, "retweet_created_at"));
+    tweet->retweet_created_at = dup_string_member_if_valid(post_object, "retweet_created_at");
 
-    if (json_object_has_member(post_object, "original_post_id") && !json_node_is_null(json_object_get_member(post_object, "original_post_id")))
-        tweet->original_post_id = g_strdup(json_object_get_string_member(post_object, "original_post_id"));
+    tweet->original_post_id = dup_string_member_if_valid(post_object, "original_post_id");
+
+    tweet->article_title = dup_string_member_if_valid(post_object, "article_title");
+
+    tweet->article_body_markdown = dup_string_member_if_valid(post_object, "article_body_markdown");
+
+    tweet->created_at = dup_string_member_if_valid(post_object, "created_at");
 
     {
         JsonObject *quote_obj = get_object_member_if_valid(post_object, "quoted_tweet");
@@ -942,7 +990,7 @@ parse_users(const gchar *json_data)
     if (!error) {
         JsonNode *root = json_parser_get_root(parser);
         JsonObject *obj = json_node_get_object(root);
-        static const gchar * const user_keys[] = {"users", "followers", "following", "mutuals", "members", NULL};
+        static const gchar * const user_keys[] = {"users", "followers", "following", "mutuals", "members", "followersYouKnow", "affiliates", NULL};
         JsonArray *users_array = get_first_array_member(obj, user_keys);
         if (users_array) {
             for (guint i = 0; i < json_array_get_length(users_array); i++) {
@@ -1194,6 +1242,27 @@ parse_messages(const gchar *json_data)
 
                 if (json_object_has_member(msg_obj, "message_type") && !json_node_is_null(json_object_get_member(msg_obj, "message_type")))
                     msg->message_type = g_strdup(json_object_get_string_member(msg_obj, "message_type"));
+
+                if (json_object_has_member(msg_obj, "mpi_payment") &&
+                    !json_node_is_null(json_object_get_member(msg_obj, "mpi_payment"))) {
+                    JsonObject *payment = json_object_get_object_member(msg_obj, "mpi_payment");
+                    if (payment) {
+                        if (json_object_has_member(payment, "kind") && !json_node_is_null(json_object_get_member(payment, "kind")))
+                            msg->mpi_kind = g_strdup(json_object_get_string_member(payment, "kind"));
+                        if (json_object_has_member(payment, "status") && !json_node_is_null(json_object_get_member(payment, "status")))
+                            msg->mpi_status = g_strdup(json_object_get_string_member(payment, "status"));
+                        if (json_object_has_member(payment, "net") && !json_node_is_null(json_object_get_member(payment, "net")))
+                            msg->mpi_net = g_strdup(json_object_get_string_member(payment, "net"));
+                        if (json_object_has_member(payment, "gross") && !json_node_is_null(json_object_get_member(payment, "gross")))
+                            msg->mpi_gross = g_strdup(json_object_get_string_member(payment, "gross"));
+                        if (json_object_has_member(payment, "note") && !json_node_is_null(json_object_get_member(payment, "note")))
+                            msg->mpi_note = g_strdup(json_object_get_string_member(payment, "note"));
+                        if (json_object_has_member(payment, "order_id") && !json_node_is_null(json_object_get_member(payment, "order_id")))
+                            msg->mpi_order_id = g_strdup(json_object_get_string_member(payment, "order_id"));
+                        if (json_object_has_member(payment, "payment_link_url") && !json_node_is_null(json_object_get_member(payment, "payment_link_url")))
+                            msg->mpi_payment_link_url = g_strdup(json_object_get_string_member(payment, "payment_link_url"));
+                    }
+                }
 
                 if (json_object_has_member(msg_obj, "reply_to") && !json_node_is_null(json_object_get_member(msg_obj, "reply_to")))
                     msg->reply_to = g_strdup(json_object_get_string_member(msg_obj, "reply_to"));
@@ -1593,6 +1662,9 @@ free_tweet(gpointer data)
     g_free(tweet->content_type);
     g_free(tweet->retweet_created_at);
     g_free(tweet->original_post_id);
+    g_free(tweet->article_title);
+    g_free(tweet->article_body_markdown);
+    g_free(tweet->created_at);
     if (tweet->quote_tweet) {
         free_tweet(tweet->quote_tweet);
     }
@@ -1708,6 +1780,13 @@ free_message(gpointer data)
         g_free(msg->created_at);
         g_free(msg->edited_at);
         g_free(msg->reactions_summary);
+        g_free(msg->mpi_kind);
+        g_free(msg->mpi_status);
+        g_free(msg->mpi_net);
+        g_free(msg->mpi_gross);
+        g_free(msg->mpi_note);
+        g_free(msg->mpi_order_id);
+        g_free(msg->mpi_payment_link_url);
         if (msg->attachments) {
             g_list_free_full(msg->attachments, free_attachment);
         }
@@ -1739,7 +1818,10 @@ free_poll_data(struct Poll *poll)
     if (poll) {
         g_free(poll->id);
         g_free(poll->question);
+        g_free(poll->kind);
         g_free(poll->expires_at);
+        if (poll->steps)
+            json_node_free(poll->steps);
         if (poll->options) {
             g_list_free_full(poll->options, free_poll_option);
         }

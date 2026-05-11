@@ -39,7 +39,8 @@ fetch_avatar_thread(gpointer data)
         full_url = g_strdup_printf("%s%s", BASE_DOMAIN, avatar_data->url);
     }
 
-    if (fetch_url(full_url, &chunk, NULL, "GET")) {
+    long response_code = 0;
+    if (fetch_url_internal(full_url, &chunk, NULL, "GET", &response_code)) {
         GInputStream *stream = g_memory_input_stream_new_from_data(chunk.memory, chunk.size, NULL);
         GdkPixbuf *pixbuf = gdk_pixbuf_new_from_stream_at_scale(stream, avatar_data->size, avatar_data->size, TRUE, NULL, NULL);
         

@@ -8,6 +8,12 @@ void start_loading_tweets(GtkListBox *list_box);
 void start_loading_notifications(GtkListBox *list_box);
 void start_loading_conversations(GtkListBox *list_box);
 void start_loading_messages(GtkListBox *list_box, const gchar *conversation_id);
+void on_dm_invite_clicked(GtkWidget *widget, gpointer user_data);
+void on_dm_join_invite_clicked(GtkWidget *widget, gpointer user_data);
+void on_dm_permissions_clicked(GtkWidget *widget, gpointer user_data);
+void on_dm_roles_clicked(GtkWidget *widget, gpointer user_data);
+void on_dm_pinned_clicked(GtkWidget *widget, gpointer user_data);
+void on_dm_pin_message_clicked(GtkWidget *widget, gpointer user_data);
 void start_loading_admin_stats(void);
 void start_loading_admin_users(const gchar *search);
 void start_loading_admin_posts(const gchar *search);
@@ -71,6 +77,23 @@ gchar* fetch_tweet_edit_history_text(const gchar *tweet_id);
 gchar* fetch_tweet_reactions_text(const gchar *tweet_id);
 GList* fetch_emojis(void);
 void free_emojis(GList *emojis);
+gboolean perform_report(const gchar *reported_type,
+                        const gchar *reported_id,
+                        const gchar *reason,
+                        const gchar *additional_info,
+                        gchar **error_out);
+void on_report_tweet_clicked(GtkWidget *widget, gpointer user_data);
+void on_report_profile_clicked(GtkWidget *widget, gpointer user_data);
+void on_translate_tweet_clicked(GtkWidget *widget, gpointer user_data);
+void on_request_affiliate_clicked(GtkWidget *widget, gpointer user_data);
+void on_profile_shop_clicked(GtkWidget *widget, gpointer user_data);
+void on_profile_donate_clicked(GtkWidget *widget, gpointer user_data);
+void on_profile_algorithm_stats_clicked(GtkWidget *widget, gpointer user_data);
+void on_profile_spam_score_clicked(GtkWidget *widget, gpointer user_data);
+void on_profile_analytics_clicked(GtkWidget *widget, gpointer user_data);
+void on_profile_common_followers_clicked(GtkWidget *widget, gpointer user_data);
+void on_profile_top_posts_clicked(GtkWidget *widget, gpointer user_data);
+void on_profile_communities_clicked(GtkWidget *widget, gpointer user_data);
 
 gboolean perform_follow(const gchar *username, gboolean follow);
 gboolean perform_profile_notify_tweets(const gchar *username, gboolean notify);
@@ -80,9 +103,21 @@ gboolean perform_toggle_pin_tweet(const gchar *tweet_id, gboolean pin);
 void start_loading_followers(const gchar *username);
 void start_loading_following(const gchar *username);
 void start_loading_profile_media(const gchar *username);
+void start_loading_profile_highlights(const gchar *username);
 void start_loading_profile_mutuals(const gchar *username);
+void start_loading_profile_followers_you_know(const gchar *username);
+void start_loading_profile_affiliates(const gchar *username);
 
 void start_loading_bookmarks(GtkListBox *list_box);
+
+void start_loading_lists(void);
+void show_list_details(const gchar *list_id);
+void on_lists_clicked(GtkWidget *widget, gpointer user_data);
+void on_create_list_clicked(GtkWidget *widget, gpointer user_data);
+void on_list_follow_clicked(GtkWidget *widget, gpointer user_data);
+void on_list_edit_clicked(GtkWidget *widget, gpointer user_data);
+void on_list_delete_clicked(GtkWidget *widget, gpointer user_data);
+void on_list_add_member_clicked(GtkWidget *widget, gpointer user_data);
 
 gboolean perform_block(const gchar *username, gboolean block);
 gboolean perform_mute(const gchar *username, gboolean mute);
@@ -94,8 +129,16 @@ TimelineType get_current_timeline_type(void);
 void start_loading_timeline(GtkListBox *list_box);
 
 gboolean perform_poll_vote(const gchar *tweet_id, const gchar *option_id);
+gboolean perform_poll_multi_vote(const gchar *tweet_id, JsonNode *answers, gchar **message_out);
 void free_poll(struct Poll *poll);
 void free_poll_option(gpointer data);
+void on_manage_passkeys_clicked(GtkWidget *widget, gpointer user_data);
+void on_push_notifications_clicked(GtkWidget *widget, gpointer user_data);
+void on_moderation_history_clicked(GtkWidget *widget, gpointer user_data);
+void on_blocking_causes_clicked(GtkWidget *widget, gpointer user_data);
+void on_validate_accounts_clicked(GtkWidget *widget, gpointer user_data);
+void on_add_account_clicked(GtkWidget *widget, gpointer user_data);
+void on_switch_primary_clicked(GtkWidget *widget, gpointer user_data);
 
 gboolean perform_update_profile(const gchar *username,
                                 const gchar *name,
@@ -115,9 +158,19 @@ gboolean perform_upload_banner(const gchar *username, const gchar *file_path);
 gchar* perform_media_upload(const gchar *file_path);
 
 void start_loading_communities(GtkListBox *list_box);
+void start_loading_communities_search(GtkListBox *list_box, const gchar *query);
+void start_loading_communities_trending(GtkListBox *list_box);
+void start_loading_communities_recommended(GtkListBox *list_box);
+void start_loading_my_communities(GtkListBox *list_box);
 void start_loading_community_tweets(GtkListBox *list_box, const gchar *community_id);
 void start_loading_community_members(const gchar *community_id, GtkListBox *list_box);
 void start_loading_community_details(const gchar *community_id);
+void on_community_create_invite_clicked(GtkWidget *widget, gpointer user_data);
+void on_community_accept_invite_clicked(GtkWidget *widget, gpointer user_data);
+void on_community_manage_invites_clicked(GtkWidget *widget, gpointer user_data);
+void on_community_moderation_clicked(GtkWidget *widget, gpointer user_data);
+void on_community_style_clicked(GtkWidget *widget, gpointer user_data);
+void on_community_pin_post_clicked(GtkWidget *widget, gpointer user_data);
 gboolean perform_join_community(const gchar *community_id);
 gboolean perform_leave_community(const gchar *community_id);
 gboolean perform_create_community(const gchar *name,
@@ -145,7 +198,35 @@ void on_notifications_enabled_toggled(GtkSwitch *switch_widget, gboolean state, 
 void on_clear_cache_clicked(GtkWidget *widget, gpointer user_data);
 void on_clear_history_clicked(GtkWidget *widget, gpointer user_data);
 void on_change_password_clicked(GtkWidget *widget, gpointer user_data);
+void on_change_username_clicked(GtkWidget *widget, gpointer user_data);
+void on_account_private_toggled(GtkSwitch *switch_widget, gboolean state, gpointer user_data);
+void on_transparency_location_toggled(GtkSwitch *switch_widget, gboolean state, gpointer user_data);
+void on_update_community_tag_clicked(GtkWidget *widget, gpointer user_data);
+void on_clear_community_tag_clicked(GtkWidget *widget, gpointer user_data);
+void on_update_outlines_clicked(GtkWidget *widget, gpointer user_data);
+void on_delete_account_clicked(GtkWidget *widget, gpointer user_data);
+void on_bulk_delete_posts_clicked(GtkWidget *widget, gpointer user_data);
+void start_loading_account_requests(void);
+void on_remove_affiliate_clicked(GtkWidget *widget, gpointer user_data);
+void start_loading_my_shop(void);
+void on_create_shop_product_clicked(GtkWidget *widget, gpointer user_data);
+void start_loading_for_you_interests(void);
+void on_clear_for_you_interests_clicked(GtkWidget *widget, gpointer user_data);
 void on_logout_clicked(GtkWidget *widget, gpointer user_data);
+void start_loading_muted_words(void);
+void start_loading_muted_conversations(void);
+void on_add_muted_word_clicked(GtkWidget *widget, gpointer user_data);
+void on_mute_conversation_clicked(GtkWidget *widget, gpointer user_data);
+void start_loading_delegates(void);
+void on_invite_delegate_clicked(GtkWidget *widget, gpointer user_data);
+void start_loading_scheduled_posts(void);
+void on_schedule_post_clicked(GtkWidget *widget, gpointer user_data);
+void on_explore_clicked(GtkWidget *widget, gpointer user_data);
+void on_explore_category_changed(GtkComboBox *combo, gpointer user_data);
+void start_loading_explore(void);
+void on_articles_clicked(GtkWidget *widget, gpointer user_data);
+void on_compose_article_clicked(GtkWidget *widget, gpointer user_data);
+void start_loading_articles(void);
 
 void update_settings_username_display(void);
 void refresh_cache_size_display(void);
