@@ -67,13 +67,13 @@ jobs:
         env:
           ARCH: x86_64
         run: |
-          ./appimagetool-x86_64.AppImage AppDir Tweeta_Desktop-x86_64.AppImage
+          ./appimagetool-x86_64.AppImage AppDir Tweeta_Desktop-amd64.AppImage
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
           name: tweeta-desktop-appimage
-          path: Tweeta_Desktop-x86_64.AppImage
+          path: Tweeta_Desktop-amd64.AppImage
 
   build_macos_dmg:
     runs-on: macos-latest
@@ -173,6 +173,42 @@ jobs:
         with:
           name: tweeta-desktop-macos-dmg
           path: Tweeta_Desktop-macos.dmg
+
+  build_macos_amd64:
+    runs-on: macos-15-intel
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          cat <<EOF > Brewfile
+          brew "gtk+3"
+          brew "json-glib"
+          brew "pkg-config"
+          brew "curl"
+          brew "gpgme"
+          brew "gettext"
+          brew "libffi"
+          EOF
+          brew bundle install
+          echo "PKG_CONFIG_PATH=$(brew --prefix curl)/lib/pkgconfig:$(brew --prefix libffi)/lib/pkgconfig:$(brew --prefix gettext)/lib/pkgconfig:$(brew --prefix gpgme)/lib/pkgconfig" >> $GITHUB_ENV
+
+      - name: Build amd64 binary
+        run: |
+          export MACOSX_DEPLOYMENT_TARGET=10.13
+          make all
+          file tweeta-desktop
+          file tweeta-desktop | grep -q "x86_64"
+        working-directory: ${{ github.workspace }}
+
+      - name: Upload amd64 binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tweeta-desktop-macos-amd64
+          path: tweeta-desktop
 
 #  build_windows:
 #    runs-on: windows-latest
@@ -310,7 +346,7 @@ jobs:
 
   create_release_and_upload_assets:
     runs-on: ubuntu-latest
-    needs: [build_linux_appimage, build_macos_dmg]
+    needs: [build_linux_appimage, build_macos_dmg, build_macos_amd64]
     permissions:
       contents: write
 
@@ -358,8 +394,9 @@ jobs:
       - name: Prepare assets for release
         run: |
           mkdir release_assets
-          cp ./artifacts/tweeta-desktop-appimage/Tweeta_Desktop-x86_64.AppImage release_assets/Tweeta_Desktop-${{ env.NEW_TAG }}-x86_64.AppImage
+          cp ./artifacts/tweeta-desktop-appimage/Tweeta_Desktop-amd64.AppImage release_assets/Tweeta_Desktop-${{ env.NEW_TAG }}-amd64.AppImage
           cp ./artifacts/tweeta-desktop-macos-dmg/Tweeta_Desktop-macos.dmg release_assets/Tweeta_Desktop-${{ env.NEW_TAG }}-macos.dmg
+          cp ./artifacts/tweeta-desktop-macos-amd64/tweeta-desktop release_assets/Tweeta_Desktop-${{ env.NEW_TAG }}-macos-amd64
 
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
@@ -392,4 +429,3 @@ jobs:
 #          asset_path: ./artifacts/tweeta-desktop-windows/Tweeta_Desktop-portable-x64.exe
 #          asset_name: Tweeta_Desktop-${{ env.NEW_TAG }}-portable-x64.exe
 #          asset_content_type: application/octet-stream
-
