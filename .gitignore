@@ -6,6 +6,8 @@ tweeta-desktop.info
 .tweetapus/
 tweetapus/
 build/
+zig-out/
+.zig-cache/
 .cache/
 .codex
 .build-use-fido2-*

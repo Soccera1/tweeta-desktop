@@ -1,6 +1,6 @@
 # Tweeta Desktop Documentation
 
-Welcome to the documentation for **Tweeta Desktop**, a minimal GTK3 X11 client written in C for the Tweetapus social media platform.
+Welcome to the documentation for **Tweeta Desktop**, a minimal GTK3 X11 client built with Zig 0.15.1 for the Tweetapus social media platform.
 
 ## Overview
 

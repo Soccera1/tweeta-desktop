@@ -1,114 +1,53 @@
 .POSIX:
 
 #
-# Makefile for Tweeta Desktop in C
+# Makefile wrapper for Tweeta Desktop's Zig build.
 #
 # (c)2025 Lily
 # Licensed under the AGPLv3 license
 #
 
-CC      ?= gcc
-PREFIX  ?= /usr/local
-SRCDIR  = .
-
-# Dependencies (backticks are evaluated by shell in rules)
-GTK_CFLAGS = `pkg-config --cflags gtk+-3.0 json-glib-1.0 gpgme`
-GTK_LIBS   = `pkg-config --libs gtk+-3.0 json-glib-1.0 libcurl gpgme`
+ZIG ?= zig-0.15.1
+PREFIX ?= /usr/local
+DESTDIR ?=
 USE_FIDO2 ?= 0
-BUILD_CONFIG = .build-use-fido2-$(USE_FIDO2)
+MAKEINFO ?= makeinfo
+ZIG_CACHE_ARGS ?= --global-cache-dir build/zig-global-cache --cache-dir build/zig-local-cache
+ZIG_OPTIMIZE ?= -Doptimize=ReleaseFast
 
-CFLAGS  = -Wall -Wextra -pedantic-errors -std=c99 -O3 -Isrc
+ZIG_FIDO2 = $(shell [ "$(USE_FIDO2)" = "1" ] && printf '%s' '-Dfido2=true')
+ZIG_PREFIX = --prefix $(PREFIX)
 
-ifeq ($(USE_FIDO2),1)
-GTK_CFLAGS += `pkg-config --cflags libfido2`
-GTK_LIBS   += `pkg-config --libs libfido2`
-CFLAGS     += -DUSE_FIDO2
-endif
+all:
+	$(ZIG) build $(ZIG_CACHE_ARGS) $(ZIG_OPTIMIZE) $(ZIG_FIDO2)
 
-# Let pkg-config provide library paths via GTK_LIBS
-LDFLAGS =
-
-TARGET      = tweeta-desktop
-TEST_TARGET = test_runner
-INFO_SOURCE = tweeta-desktop.texi
-INFO_TARGET = tweeta-desktop.info
-MAKEINFO   ?= makeinfo
-
-# Define source files (all in src/ directory)
-MAIN_SRC = src/main.c
-CORE_SRCS = src/globals.c src/network.c src/json_utils.c \
-            src/session.c src/ui_utils.c src/ui_components.c \
-            src/views.c src/actions.c src/challenge.c src/p2p_crypto.c \
-            src/p2p_network.c src/actions_p2p_network.c src/webauthn_fido2.c
-
-# Object files with src/ prefix
-MAIN_OBJ = $(patsubst %.c,%.o,$(MAIN_SRC))
-CORE_OBJS = $(patsubst %.c,%.o,$(CORE_SRCS))
-OBJS = $(MAIN_OBJ) $(CORE_OBJS)
-
-TEST_SRC = test_main.c
-TEST_OBJ = $(patsubst %.c,%.o,$(TEST_SRC))
-TEST_OBJS = $(TEST_OBJ) $(CORE_OBJS)
-
-all: $(TARGET)
-
-$(BUILD_CONFIG):
-	rm -f .build-use-fido2-*
-	touch $(BUILD_CONFIG)
-
-$(OBJS) $(TEST_OBJS): $(BUILD_CONFIG)
-
-info: $(INFO_TARGET)
-
-$(TARGET): $(OBJS)
-	$(CC) $(LDFLAGS) -o $(TARGET) $(OBJS) $(GTK_LIBS)
-
-static: $(OBJS)
+static:
 	@echo "WARNING: Static linking with GTK3 may not work correctly due to dynamic loading"
-	-$(CC) $(LDFLAGS) -static -o $(TARGET)-static $(OBJS) $(GTK_LIBS)
+	-$(ZIG) build $(ZIG_CACHE_ARGS) $(ZIG_OPTIMIZE) $(ZIG_FIDO2) -Dstatic=true
+	-cp zig-out/bin/tweeta-desktop-static tweeta-desktop-static
 
-# Generic rule for .c -> .o
-%.o: %.c
-	$(CC) $(CFLAGS) $(GTK_CFLAGS) -c $< -o $@
+info: tweeta-desktop.info
 
-clean:
-	rm -f src/*.o *.o $(TARGET) $(TARGET)-static $(TEST_TARGET) $(INFO_TARGET) .build-use-fido2-*
+tweeta-desktop.info: tweeta-desktop.texi
+	$(MAKEINFO) -o tweeta-desktop.info tweeta-desktop.texi
 
-$(INFO_TARGET): $(INFO_SOURCE)
-	$(MAKEINFO) -o $(INFO_TARGET) $(INFO_SOURCE)
-
-install: all
-	@if [ ! -d "$(DESTDIR)$(PREFIX)" ]; then \
-		echo "Creating $(DESTDIR)$(PREFIX)"; \
-		mkdir -p "$(DESTDIR)$(PREFIX)"; \
-	fi
-	@mkdir -p $(DESTDIR)$(PREFIX)/bin
-	@cp $(TARGET) $(DESTDIR)$(PREFIX)/bin/$(TARGET)
-	@chmod 755 $(DESTDIR)$(PREFIX)/bin/$(TARGET)
-	@mkdir -p $(DESTDIR)$(PREFIX)/share/applications
-	@cp $(SRCDIR)/tweeta-desktop.desktop $(DESTDIR)$(PREFIX)/share/applications/tweeta-desktop.desktop
-	@chmod 644 $(DESTDIR)$(PREFIX)/share/applications/tweeta-desktop.desktop
-	@mkdir -p $(DESTDIR)$(PREFIX)/share/pixmaps
-	@cp $(SRCDIR)/logo.png $(DESTDIR)$(PREFIX)/share/pixmaps/tweeta-desktop.png
-	@chmod 644 $(DESTDIR)$(PREFIX)/share/pixmaps/tweeta-desktop.png
-	@mkdir -p $(DESTDIR)$(PREFIX)/share/man/man1
-	@cp $(SRCDIR)/tweeta-desktop.1 $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
-	@chmod 644 $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
+install:
+	$(ZIG) build install $(ZIG_CACHE_ARGS) $(ZIG_OPTIMIZE) $(ZIG_FIDO2) $(ZIG_PREFIX)
 	@mkdir -p $(DESTDIR)$(PREFIX)/share/info
-	@$(MAKEINFO) -o $(DESTDIR)$(PREFIX)/share/info/$(INFO_TARGET) $(SRCDIR)/$(INFO_SOURCE)
-	@chmod 644 $(DESTDIR)$(PREFIX)/share/info/$(INFO_TARGET)
+	@$(MAKEINFO) -o $(DESTDIR)$(PREFIX)/share/info/tweeta-desktop.info tweeta-desktop.texi
+	@chmod 644 $(DESTDIR)$(PREFIX)/share/info/tweeta-desktop.info
 
 uninstall:
-	rm -f $(DESTDIR)$(PREFIX)/bin/$(TARGET)
+	rm -f $(DESTDIR)$(PREFIX)/bin/tweeta-desktop
 	rm -f $(DESTDIR)$(PREFIX)/share/applications/tweeta-desktop.desktop
 	rm -f $(DESTDIR)$(PREFIX)/share/pixmaps/tweeta-desktop.png
 	rm -f $(DESTDIR)$(PREFIX)/share/man/man1/tweeta-desktop.1
-	rm -f $(DESTDIR)$(PREFIX)/share/info/$(INFO_TARGET)
+	rm -f $(DESTDIR)$(PREFIX)/share/info/tweeta-desktop.info
 
-test: $(TEST_TARGET)
-	./$(TEST_TARGET)
+test:
+	$(ZIG) build test $(ZIG_CACHE_ARGS) $(ZIG_OPTIMIZE) $(ZIG_FIDO2)
 
-$(TEST_TARGET): $(TEST_OBJS)
-	$(CC) $(LDFLAGS) -o $(TEST_TARGET) $(TEST_OBJS) $(GTK_LIBS)
+clean:
+	rm -rf .zig-cache zig-out build/zig-global-cache build/zig-local-cache tweeta-desktop.info tweeta-desktop-static
 
-.PHONY: all info static clean install uninstall test
+.PHONY: all static info install uninstall test clean

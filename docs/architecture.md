@@ -1,20 +1,20 @@
 # Architecture Documentation
 
-Tweeta Desktop is a modular C application using GTK3, libcurl, and json-glib. It follows a procedural style with a focus on asynchronous operations to keep the UI responsive.
+Tweeta Desktop is a modular GTK3 application built with Zig 0.15.1, libcurl, and json-glib. It follows a procedural style with a focus on asynchronous operations to keep the UI responsive.
 
 ## Project Structure
 
 The codebase is organized into a `src/` directory with the following modules:
 
-- **`main.c`**: The application entry point and main loop.
-- **`actions.c` / `actions.h`**: Core application logic and event handlers (login, search, posting).
-- **`views.c` / `views.h`**: Definitions for the main window and primary views (Timeline, Profile, Search).
-- **`ui_components.c` / `ui_components.h`**: Specialized widget creation (e.g., tweet and user list items).
-- **`json_utils.c` / `json_utils.h`**: JSON parsing for API responses and payload construction.
-- **`network.c` / `network.h`**: libcurl wrappers and networking utilities.
-- **`session.c` / `session.h`**: User session persistence and configuration management.
-- **`globals.c` / `globals.h`**: Global shared state and widget references.
-- **`ui_utils.c` / `ui_utils.h`**: General UI utilities like asynchronous avatar loading.
+- **`main.zig`**: The application entry point and main loop.
+- **`actions.zig` / `actions.h`**: Core application logic and event handlers (login, search, posting).
+- **`views.zig` / `views.h`**: Definitions for the main window and primary views (Timeline, Profile, Search).
+- **`ui_components.zig` / `ui_components.h`**: Specialized widget creation (e.g., tweet and user list items).
+- **`json_utils.zig` / `json_utils.h`**: JSON parsing for API responses and payload construction.
+- **`network.zig` / `network.h`**: libcurl wrappers and networking utilities.
+- **`session.zig` / `session.h`**: User session persistence and configuration management.
+- **`globals.zig` / `globals.h`**: Global shared state and widget references.
+- **`ui_utils.zig` / `ui_utils.h`**: General UI utilities like asynchronous avatar loading.
 - **`types.h`**: Shared data structures.
 - **`constants.h`**: API endpoints and configuration constants.
 
@@ -94,7 +94,8 @@ Key endpoints used:
 ## File Structure
 
 - `src/`: Directory containing all application source code and headers.
-- `test_main.c`: Unit tests that link against the modular application components.
-- `Makefile`: Defines the modular build process and dependencies.
+- `src/test_main.zig`: Unit tests that link against the modular application components.
+- `build.zig`: Defines the Zig 0.15.1 build process, linked GTK modules, install artifacts, and test runner.
+- `Makefile`: Compatibility wrapper around the Zig build.
 - `tweeta-desktop.desktop`: Desktop integration file.
 - `tweeta-desktop.1`: Man page source.

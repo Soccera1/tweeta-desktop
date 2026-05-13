@@ -7,18 +7,18 @@ This document provides information for developers who wish to contribute to Twee
 
 ## Running Tests
 
-Tweeta Desktop uses GLib's testing framework. Tests are located in `test_main.c` and are linked against the modular components in the `src/` directory.
+Tweeta Desktop uses GLib's testing framework. Tests are located in `src/test_main.zig` and are linked by the Zig 0.15.1 build against the modular components in the `src/` directory.
 
 To run the tests, use the following command:
 
 ```bash
-make test
+zig-0.15.1 build test
 ```
 
-If you are using a dedicated build directory, run:
+The Makefile delegates to the same Zig command, so this also works:
 
 ```bash
-make -f ../Makefile SRCDIR=.. test
+make test
 ```
 
 This will:
@@ -47,7 +47,7 @@ The current test suite covers:
 
 ## Code Style
 
-The project follows a standard C style with GLib/GTK naming conventions:
+The application entry point and build graph are Zig 0.15.1. The existing GTK modules still follow a standard GLib/GTK style while they are linked through Zig:
 - Use `gchar`, `gboolean`, `gint`, etc., from GLib.
 - Functions use `snake_case`.
 - Static global variables are prefixed with `g_` (e.g., `g_auth_token`).
@@ -59,7 +59,7 @@ Contributions are welcome! Please follow these steps:
 1. Fork the repository.
 2. Create a new branch for your feature or bug fix.
 3. Implement your changes.
-4. Add tests for new functionality in `test_main.c`.
+4. Add tests for new functionality in `src/test_main.zig`.
 5. Ensure all tests pass.
 6. Submit a pull request.
 

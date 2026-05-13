@@ -9,13 +9,12 @@ This guide covers how to build and install Tweeta Desktop from source.
 
 To build the client, you will need the following dependencies installed on your system:
 
-- **GCC**: The GNU Compiler Collection.
-- **Make**: Build automation tool.
-- **Meson**: A high-performance build system.
-- **Ninja**: A small build system with a focus on speed.
+- **Zig 0.15.1**: The supported compiler and build system.
+- **Make**: Optional compatibility wrapper.
 - **GTK+ 3.0**: The GIMP Toolkit for the user interface.
 - **libcurl**: Client-side URL transfer library for networking.
 - **json-glib-1.0**: A library for parsing and generating JSON using GLib and GObject.
+- **GPGME**: GPG integration for encrypted messaging.
 - **pkg-config**: A helper tool used when compiling applications and libraries.
 - **Texinfo**: Required to generate the GNU Info manual (`makeinfo`).
 
@@ -23,31 +22,34 @@ On Debian-based systems (like Ubuntu), you can install these with:
 
 ```bash
 sudo apt update
-sudo apt install build-essential meson ninja-build libgtk-3-dev libcurl4-openssl-dev libjson-glib-dev texinfo pkg-config
+sudo apt install libgtk-3-dev libcurl4-openssl-dev libjson-glib-dev libgpgme-dev texinfo pkg-config
 ```
 
 ## Building
 
-You can build the application using either `make` or `meson`.
+You can build the application using Zig directly or the compatibility Makefile.
+
+### Using Zig
+
+```bash
+zig-0.15.1 build
+```
+
+This will produce an executable at `zig-out/bin/tweeta-desktop`.
+
+To enable native FIDO2/passkey support:
+
+```bash
+zig-0.15.1 build -Dfido2=true
+```
 
 ### Using Make
 
-It is recommended to build in a dedicated build directory to keep the source tree clean, although building in the root directory is still supported.
+Run:
 
-1. Create and enter a build directory:
-   ```bash
-   mkdir -p build
-   cd build
-   ```
-
-2. Run `make` specifying the source directory:
-   ```bash
-   make -f ../Makefile SRCDIR=..
-   ```
-
-This will produce an executable named `tweeta-desktop` in the `build/` directory.
-
-Alternatively, you can still build directly in the root directory by simply running `make`.
+```bash
+make
+```
 
 To build the GNU Info page, run:
 
@@ -55,31 +57,15 @@ To build the GNU Info page, run:
 make info
 ```
 
-### Using Meson
+## Installation
 
-1. Setup the build directory:
-   ```bash
-   meson setup build
-   ```
+### Using Zig
 
-2. Compile the application:
-   ```bash
-   ninja -C build
-   ```
-
-This will produce an executable named `tweeta-desktop` in the `build/` directory.
-
-### Static Building (Make only)
-
-If you wish to build a static binary (if your system supports it and you have the static libraries installed), you can run:
+To install the application system-wide, run:
 
 ```bash
-make static
+sudo zig-0.15.1 build install --prefix /usr/local
 ```
-
-This will produce `tweeta-desktop-static`.
-
-## Installation
 
 ### Using Make
 
@@ -87,14 +73,6 @@ To install the application system-wide, run:
 
 ```bash
 sudo make install
-```
-
-### Using Meson
-
-To install the application system-wide, run:
-
-```bash
-sudo ninja -C build install
 ```
 
 Both methods will perform the following actions:
@@ -112,18 +90,4 @@ To remove the application from your system, run:
 
 ```bash
 sudo make uninstall
-```
-
-### Using Meson
-
-To remove the application installed via Meson, run:
-
-```bash
-sudo ninja -C build uninstall
-```
-
-Or if using a newer Meson version:
-
-```bash
-sudo meson compile -C build uninstall
 ```
