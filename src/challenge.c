@@ -32,12 +32,25 @@ static gchar* cap_prng_gen(const gchar *e, int t_len) {
 }
 
 static guint64 solve_pow(const gchar *salt, const gchar *target_hex) {
-    int target_len = strlen(target_hex) / 2;
+    gsize hex_len = target_hex ? strlen(target_hex) : 0;
+    int target_bits = (int)(hex_len * 4);
+    int full_bytes = target_bits / 8;
+    int partial_bits = target_bits % 8;
+    int target_len = (int)((hex_len + 1) / 2);
+    guint8 partial_mask = partial_bits > 0 ? (guint8)((0xff << (8 - partial_bits)) & 0xff) : 0;
+
     if (target_len > 32) target_len = 32;
-    guint8 target[32];
+    if (full_bytes > 32) full_bytes = 32;
+
+    guint8 target[32] = {0};
     for (int i = 0; i < target_len; i++) {
         unsigned int val;
-        sscanf(target_hex + 2 * i, "%02x", &val);
+        gchar byte_hex[3] = { '0', '0', '\0' };
+        byte_hex[0] = target_hex[2 * i];
+        if ((gsize)(2 * i + 1) < hex_len) {
+            byte_hex[1] = target_hex[2 * i + 1];
+        }
+        sscanf(byte_hex, "%02x", &val);
         target[i] = (guint8)val;
     }
 
@@ -56,11 +69,15 @@ static guint64 solve_pow(const gchar *salt, const gchar *target_hex) {
         g_checksum_get_digest(checksum, digest, &digest_len);
         
         gboolean found = TRUE;
-        for (int i = 0; i < target_len; i++) {
+        for (int i = 0; i < full_bytes; i++) {
             if (digest[i] != target[i]) {
                 found = FALSE;
                 break;
             }
+        }
+        if (found && partial_bits > 0 && full_bytes < 32 &&
+            (digest[full_bytes] & partial_mask) != (target[full_bytes] & partial_mask)) {
+            found = FALSE;
         }
         
         g_free(combined);
@@ -102,6 +119,54 @@ JsonArray* solve_challenge_internal(JsonObject *obj, const gchar *token) {
     return solutions;
 }
 
+static JsonArray*
+solve_challenge_array(JsonArray *challenge_array)
+{
+    JsonArray *solutions = json_array_new();
+    guint length = challenge_array ? json_array_get_length(challenge_array) : 0;
+
+    for (guint i = 0; i < length; i++) {
+        JsonNode *entry_node = json_array_get_element(challenge_array, i);
+        if (!entry_node || !JSON_NODE_HOLDS_ARRAY(entry_node)) {
+            continue;
+        }
+
+        JsonArray *entry = json_node_get_array(entry_node);
+        if (json_array_get_length(entry) < 2) {
+            continue;
+        }
+
+        const gchar *salt = json_array_get_string_element(entry, 0);
+        const gchar *target = json_array_get_string_element(entry, 1);
+        if (!salt || !target) {
+            continue;
+        }
+
+        guint64 nonce = solve_pow(salt, target);
+        json_array_add_int_element(solutions, (gint64)nonce);
+    }
+
+    return solutions;
+}
+
+static JsonArray*
+solve_challenge_node(JsonNode *challenge_node, const gchar *token)
+{
+    if (!challenge_node) {
+        return json_array_new();
+    }
+
+    if (JSON_NODE_HOLDS_ARRAY(challenge_node)) {
+        return solve_challenge_array(json_node_get_array(challenge_node));
+    }
+
+    if (JSON_NODE_HOLDS_OBJECT(challenge_node)) {
+        return solve_challenge_internal(json_node_get_object(challenge_node), token);
+    }
+
+    return json_array_new();
+}
+
 gchar* solve_challenge(const gchar *challenge_json, const gchar *token) {
     JsonParser *parser = json_parser_new();
     if (!json_parser_load_from_data(parser, challenge_json, -1, NULL)) {
@@ -110,12 +175,12 @@ gchar* solve_challenge(const gchar *challenge_json, const gchar *token) {
     }
 
     JsonNode *root = json_parser_get_root(parser);
-    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+    if (!root || (!JSON_NODE_HOLDS_OBJECT(root) && !JSON_NODE_HOLDS_ARRAY(root))) {
         g_object_unref(parser);
         return NULL;
     }
     
-    JsonArray *solutions = solve_challenge_internal(json_node_get_object(root), token);
+    JsonArray *solutions = solve_challenge_node(root, token);
     
     JsonGenerator *gen = json_generator_new();
     JsonNode *solutions_node = json_node_new(JSON_NODE_ARRAY);
@@ -147,9 +212,9 @@ gchar* check_and_solve_challenge(const gchar *response_json) {
 
     if (json_object_has_member(obj, "challenge") && json_object_has_member(obj, "token")) {
         const gchar *token = json_object_get_string_member(obj, "token");
-        JsonObject *challenge_obj = json_object_get_object_member(obj, "challenge");
+        JsonNode *challenge_node = json_object_get_member(obj, "challenge");
         
-        JsonArray *solutions = solve_challenge_internal(challenge_obj, token);
+        JsonArray *solutions = solve_challenge_node(challenge_node, token);
         
         // Prepare redeem request
         JsonBuilder *builder = json_builder_new();

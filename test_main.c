@@ -592,6 +592,24 @@ static void test_challenge_solver(void) {
     g_free(token);
 }
 
+static void test_challenge_solver_array_format(void) {
+    const char *challenge_json = "[[\"array-salt\", \"0\"]]";
+
+    gchar *solutions_json = solve_challenge(challenge_json, NULL);
+    g_assert_nonnull(solutions_json);
+
+    JsonParser *parser = json_parser_new();
+    g_assert_true(json_parser_load_from_data(parser, solutions_json, -1, NULL));
+    JsonNode *root = json_parser_get_root(parser);
+    g_assert_true(JSON_NODE_HOLDS_ARRAY(root));
+    JsonArray *array = json_node_get_array(root);
+    g_assert_cmpint(json_array_get_length(array), ==, 1);
+    g_assert_cmpint(json_array_get_int_element(array, 0), >=, 0);
+
+    g_object_unref(parser);
+    g_free(solutions_json);
+}
+
 // NEW TESTS FOR IMPLEMENTED FEATURES
 
 static void test_parse_tweets_with_poll(void) {
@@ -946,6 +964,7 @@ int main(int argc, char** argv) {
     g_test_add_func("/parsemessages/extended", test_parse_messages_extended);
     g_test_add_func("/parsetweetdetails/basic", test_parse_tweet_details);
     g_test_add_func("/challenge/solver", test_challenge_solver);
+    g_test_add_func("/challenge/solver_array_format", test_challenge_solver_array_format);
     
     // New tests for implemented features
     g_test_add_func("/polls/parse", test_parse_tweets_with_poll);
@@ -980,9 +999,9 @@ int main(int argc, char** argv) {
     // we'll use the exit code to determine failure count
     int failed_count = result;
     
-    // We know we have 41 tests registered
+    // We know we have 42 tests registered
     // This is a workaround since GLib doesn't provide an easy way to get the count
-    int known_total = 41;
+    int known_total = 42;
     total_tests = known_total;
     passed_tests = known_total - failed_count;
     
