@@ -32,7 +32,12 @@ TARGET      = tweeta-desktop
 TEST_TARGET = test_runner
 INFO_SOURCE = tweeta-desktop.texi
 INFO_TARGET = tweeta-desktop.info
+DOC_DIR     = build/docs
+PDF_TARGET  = $(DOC_DIR)/tweeta-desktop.pdf
+HTML_TARGET = $(DOC_DIR)/tweeta-desktop.html
+HTML_SPLIT_DIR = $(DOC_DIR)/html
 MAKEINFO   ?= makeinfo
+TEXI2PDF   ?= texi2pdf
 
 # Define source files (all in src/ directory)
 MAIN_SRC = src/main.c
@@ -60,6 +65,14 @@ $(OBJS) $(TEST_OBJS): $(BUILD_CONFIG)
 
 info: $(INFO_TARGET)
 
+docs: info pdf html html-split
+
+pdf: $(PDF_TARGET)
+
+html: $(HTML_TARGET)
+
+html-split: $(HTML_SPLIT_DIR)/index.html
+
 $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -o $(TARGET) $(OBJS) $(GTK_LIBS)
 
@@ -73,9 +86,25 @@ static: $(OBJS)
 
 clean:
 	rm -f src/*.o *.o $(TARGET) $(TARGET)-static $(TEST_TARGET) $(INFO_TARGET) .build-use-fido2-*
+	rm -rf $(DOC_DIR)
 
 $(INFO_TARGET): $(INFO_SOURCE)
 	$(MAKEINFO) -o $(INFO_TARGET) $(INFO_SOURCE)
+
+$(DOC_DIR):
+	mkdir -p $(DOC_DIR)
+
+$(HTML_SPLIT_DIR):
+	mkdir -p $(HTML_SPLIT_DIR)
+
+$(PDF_TARGET): $(INFO_SOURCE) | $(DOC_DIR)
+	$(TEXI2PDF) --clean -o $(PDF_TARGET) $(INFO_SOURCE)
+
+$(HTML_TARGET): $(INFO_SOURCE) | $(DOC_DIR)
+	$(MAKEINFO) --html --no-split -o $(HTML_TARGET) $(INFO_SOURCE)
+
+$(HTML_SPLIT_DIR)/index.html: $(INFO_SOURCE) | $(HTML_SPLIT_DIR)
+	$(MAKEINFO) --html --split=node -o $(HTML_SPLIT_DIR) $(INFO_SOURCE)
 
 install: all
 	@if [ ! -d "$(DESTDIR)$(PREFIX)" ]; then \
@@ -111,4 +140,4 @@ test: $(TEST_TARGET)
 $(TEST_TARGET): $(TEST_OBJS)
 	$(CC) $(LDFLAGS) -o $(TEST_TARGET) $(TEST_OBJS) $(GTK_LIBS)
 
-.PHONY: all info static clean install uninstall test
+.PHONY: all info docs pdf html html-split static clean install uninstall test

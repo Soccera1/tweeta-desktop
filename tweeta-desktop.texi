@@ -3,6 +3,7 @@
 @setfilename tweeta-desktop.info
 @settitle Tweeta Desktop Manual
 @documentencoding UTF-8
+@documentlanguage en
 
 @dircategory Internet and network applications
 @direntry
@@ -12,7 +13,7 @@
 @copying
 This manual documents @command{tweeta-desktop}.
 
-Copyright @copyright{} 2025 Lily.
+Copyright @copyright{} 2026 Lily.
 
 Permission is granted to copy, distribute and/or modify this document under
 the terms of the GNU Affero General Public License, Version 3 or any later
@@ -35,25 +36,263 @@ version published by the Free Software Foundation.
 
 @insertcopying
 
-Tweeta Desktop is a GTK3 desktop client for the Tweeta/Tweetapus social
-platform.
+Tweeta Desktop is a native GTK3 client for the Tweeta/Tweetapus social
+platform.  It is written in C and uses libcurl for HTTP, json-glib for JSON,
+GPGME for encrypted messaging support, and optionally libfido2 for native
+passkey registration and login.
+
+This manual is the canonical user, administrator, packager, and developer
+reference for the desktop client.  It covers installation, daily use, account
+features, moderation and administration, local storage, build targets,
+architecture, testing, troubleshooting, and the documentation build.
+
+This Texinfo manual replaces the older Markdown documentation tree, which has
+been removed.  Keep user-facing, administrator-facing, packager-facing, and
+developer-facing documentation here so the Info, PDF, single-page HTML, and
+multi-page HTML outputs remain complete and consistent.
+
+@strong{Platform support:} the supported runtime target is Linux.  Other
+systems may compile in limited situations, but runtime support outside Linux is
+not guaranteed.
 
 @menu
-* Overview::
+* Introduction::
+* Quick Start::
+* Installation::
+* Building::
 * Invoking tweeta-desktop::
-* Environment Variables::
-* Files::
-* Feature Summary::
+* User Interface::
+* Accounts and Authentication::
+* Timelines and Posts::
+* Profiles::
+* Search and Discovery::
+* Notifications::
+* Direct Messages::
+* Encrypted Messaging::
+* Communities::
+* Lists::
+* Articles::
+* Settings::
+* Administration::
+* Files and State::
+* Network Configuration::
+* Build and Documentation Targets::
+* Developer Guide::
+* Codebase Operation::
+* Architecture::
+* Testing::
+* Troubleshooting::
+* Security and Privacy::
+* Packaging::
+* Reference::
 * License::
 @end menu
 
-@node Overview
-@chapter Overview
+@node Introduction
+@chapter Introduction
 
-Tweeta Desktop provides a native desktop interface for timelines, profiles,
-search, notifications, direct messages, and moderation/admin features.
+Tweeta Desktop provides a lightweight desktop interface for Tweetapus.  The
+application presents posts, profile data, direct messages, communities, lists,
+articles, discovery feeds, account settings, and administrator tools through
+native GTK widgets.
 
-Current runtime support is Linux.
+The client is intentionally direct: most controls map to one upstream API
+operation, and the interface refreshes the affected view after a successful
+operation.  Network requests run in background GLib threads where needed so the
+GTK main loop remains responsive.
+
+@section What Tweeta Desktop Is For
+
+Tweeta Desktop is useful when you want:
+
+@itemize @bullet
+@item A native Linux client for reading public and following timelines.
+@item A login-capable desktop client for posting, replying, editing, deleting,
+liking, retweeting, quoting, bookmarking, and reacting to posts.
+@item Access to Tweetapus-specific features such as communities, lists,
+articles, profile labels, delegates, shop/payment workflows, polls, muted
+words, and moderation surfaces.
+@item A native administrator console for common site operations.
+@item GPG-backed encrypted messaging experiments in addition to ordinary
+Tweetapus direct messages.
+@end itemize
+
+@section Current Scope
+
+The client is broad but intentionally pragmatic.  It implements a large set of
+server endpoints, but behavior still depends on the server instance.  Some
+features require account privileges, server-side feature flags, a recent
+Tweetapus deployment, or a supported Linux desktop environment.
+
+@node Quick Start
+@chapter Quick Start
+
+Install the build dependencies, build the executable, and start it:
+
+@example
+make
+./tweeta-desktop
+@end example
+
+To generate the complete Texinfo documentation set:
+
+@example
+make docs
+@end example
+
+This produces:
+
+@itemize @bullet
+@item @file{tweeta-desktop.info}
+@item @file{build/docs/tweeta-desktop.pdf}
+@item @file{build/docs/tweeta-desktop.html}
+@item @file{build/docs/html/index.html} and related split HTML files
+@end itemize
+
+To connect to a different Tweetapus instance for a single launch:
+
+@example
+TWEETA_API_BASE_URL="https://example.invalid/api" \
+TWEETA_BASE_DOMAIN="https://example.invalid" \
+./tweeta-desktop
+@end example
+
+Log in with the @samp{Login} button in the header bar or from
+@samp{Settings}.  After login, the compose button and authenticated views
+become available.
+
+@node Installation
+@chapter Installation
+
+@section Required Dependencies
+
+The Makefile build expects a C compiler and pkg-config metadata for:
+
+@itemize @bullet
+@item GTK+ 3.0
+@item libcurl
+@item json-glib 1.0
+@item GPGME
+@item GNU Make
+@item GNU Texinfo for @command{makeinfo} and, for PDF output,
+@command{texi2pdf}
+@end itemize
+
+The optional native passkey build uses libfido2.
+
+On Debian or Ubuntu, a typical dependency set is:
+
+@example
+sudo apt update
+sudo apt install build-essential pkg-config texinfo \
+  libgtk-3-dev libcurl4-openssl-dev libjson-glib-dev libgpgme-dev
+@end example
+
+For native FIDO2/passkey support, also install:
+
+@example
+sudo apt install libfido2-dev
+@end example
+
+@section Installing With Make
+
+Build and install under the default prefix, @file{/usr/local}:
+
+@example
+make
+sudo make install
+@end example
+
+The install target installs:
+
+@itemize @bullet
+@item @file{$(PREFIX)/bin/tweeta-desktop}
+@item @file{$(PREFIX)/share/applications/tweeta-desktop.desktop}
+@item @file{$(PREFIX)/share/pixmaps/tweeta-desktop.png}
+@item @file{$(PREFIX)/share/man/man1/tweeta-desktop.1}
+@item @file{$(PREFIX)/share/info/tweeta-desktop.info}
+@end itemize
+
+Set @code{PREFIX} and @code{DESTDIR} for packaging:
+
+@example
+make PREFIX=/usr
+make DESTDIR="$pkgdir" PREFIX=/usr install
+@end example
+
+Uninstall files installed by the Makefile with:
+
+@example
+sudo make uninstall
+@end example
+
+@section Installing With Meson
+
+Meson builds the application and installs the desktop entry, icon, man page,
+and Info manual when @command{makeinfo} is available:
+
+@example
+meson setup build
+ninja -C build
+sudo ninja -C build install
+@end example
+
+The Makefile remains the most complete documentation build entry point because
+it can generate PDF, Info, single-page HTML, and split HTML from one command.
+
+@node Building
+@chapter Building
+
+@section Makefile Build
+
+The default Makefile target builds @file{./tweeta-desktop}:
+
+@example
+make
+@end example
+
+The Makefile compiles C99 with warnings enabled:
+
+@example
+-Wall -Wextra -pedantic-errors -std=c99 -O3 -Isrc
+@end example
+
+Library and include flags are discovered with @command{pkg-config}.
+
+@section Optional Native Passkey Build
+
+Build with libfido2 support by setting @code{USE_FIDO2=1}:
+
+@example
+make clean
+make USE_FIDO2=1
+@end example
+
+This adds libfido2 compiler and linker flags and defines @code{USE_FIDO2}.
+Without this option, passkey management can still fall back to browser-based
+settings where available.
+
+@section Static Build
+
+The Makefile provides a best-effort static target:
+
+@example
+make static
+@end example
+
+Static GTK builds are frequently not viable because GTK and related libraries
+load modules dynamically.  Treat this target as experimental and distribution
+dependent.
+
+@section Meson Build
+
+The Meson project builds the same application modules and the GLib test runner:
+
+@example
+meson setup build
+ninja -C build
+ninja -C build test
+@end example
 
 @node Invoking tweeta-desktop
 @chapter Invoking tweeta-desktop
@@ -64,59 +303,1928 @@ Run the program as:
 tweeta-desktop
 @end example
 
-Tweeta Desktop does not define custom command-line options. Standard GTK3
-options are supported.
+or, from a source checkout after @command{make}:
 
-@node Environment Variables
-@chapter Environment Variables
+@example
+./tweeta-desktop
+@end example
 
-@table @code
+Tweeta Desktop does not define custom command-line options.  Standard GTK3
+options are accepted by GTK.
+
+@section Environment Variables
+
+@table @env
 @item TWEETA_API_BASE_URL
-Overrides the default API base URL used for API requests.
+Overrides the API base URL.  The default is
+@url{https://tweeta.tiago.zip/api}.
 
 @item TWEETA_BASE_DOMAIN
-Overrides the default site base domain used for absolute web/media URLs.
+Overrides the web/media base domain.  The default is
+@url{https://tweeta.tiago.zip}.
 
 @item XDG_CONFIG_HOME
-Base directory used by GLib for per-user configuration.
+Controls where GLib stores per-user configuration.  Tweeta Desktop stores
+session data under @file{tweeta-desktop/session.json} inside this directory.
 
 @item XDG_CACHE_HOME
-Base directory used by GLib for per-user cache data.
+Controls where GLib stores per-user cache data.  Tweeta Desktop uses a
+@file{tweeta-desktop} subdirectory for cache-related operations.
+
+@item G_MESSAGES_DEBUG
+Enables GLib debug output when set appropriately, for example
+@code{G_MESSAGES_DEBUG=all}.
+
+@item G_DEBUG
+Can be used with GLib debugging modes such as @code{fatal-criticals} while
+developing or diagnosing crashes.
 @end table
 
-@node Files
-@chapter Files
+@node User Interface
+@chapter User Interface
+
+@section Main Window
+
+The main window is a GTK window with a header bar and a stacked content area.
+The stack contains the timeline, profile, search, notifications, messages,
+conversation detail, settings, admin, bookmarks, lists, list detail, explore,
+articles, communities, and community timeline views.
+
+@section Header Controls
+
+The header bar includes:
+
+@table @samp
+@item Search entry
+Enter a query and press @key{Enter} to search users and posts.
+
+@item Back
+Returns from secondary views to the previous or main view.
+
+@item Compose
+Opens the post composer.  It is enabled after login.
+
+@item Alerts
+Opens notifications.
+
+@item Messages
+Opens direct messages and encrypted messaging.
+
+@item Bookmarks
+Opens bookmarked posts.
+
+@item Lists
+Opens owned and followed lists.
+
+@item Explore
+Opens discovery categories such as trends, best of week, top hashtags, and
+leaderboards.
+
+@item Articles
+Opens the article list and article composer.
+
+@item Public/Following
+Toggles the main timeline between the public and following feeds.
+
+@item Settings
+Opens account, appearance, notification, filter, delegate, shop, and data
+settings.
+
+@item Refresh
+Refreshes the active view where refresh is supported.
+
+@item Communities
+Opens the community browser.
+
+@item Admin
+Appears only for administrator sessions.
+
+@item Login/Logout
+Starts login or clears the current session.
+@end table
+
+@section Navigation Model
+
+Most views are loaded lazily.  Opening a view starts an asynchronous request,
+then populates a @code{GtkListBox} when the response is parsed.  Lists that
+support pagination use the scrolled window edge-reached signal to request older
+items.
+
+@node Accounts and Authentication
+@chapter Accounts and Authentication
+
+@section Login
+
+Use @samp{Login} in the header bar or the account section of Settings.
+Successful login stores the bearer token, username, and administrator flag in
+the session file.  On the next launch, Tweeta Desktop loads the session and
+attempts to restore the authenticated state.
+
+If the server reports that the logged-in user is an administrator, the admin
+button appears in the header bar and the native admin view becomes available.
+
+@section Logout
+
+Logging out clears the active token, resets authenticated UI state, and removes
+the local session file.  It does not invalidate every possible server-side
+token unless the server endpoint performs that action.
+
+@section Passkeys
+
+The account settings view includes passkey management.  When the program was
+built with @code{USE_FIDO2=1} and libfido2 is available, Tweeta Desktop can use
+a local FIDO2 security key for passkey registration and authentication.  When
+native support is unavailable, the UI may direct passkey management to the web
+settings flow.
+
+@section Passwords and Account Changes
+
+Settings includes account actions for changing username, changing password,
+private account state, transparency location, community tag, profile outline
+colors, account deletion, follow requests, affiliate requests, and bulk post
+deletion.  These actions require login and depend on server permissions.
+
+@section Delegate Accounts
+
+The Settings view includes delegate management:
+
+@itemize @bullet
+@item Invite another username as a delegate.
+@item View your delegates and accounts you delegate.
+@item Accept, decline, or review invitations.
+@item Switch back to the primary account.
+@item Add or validate linked accounts.
+@end itemize
+
+@node Timelines and Posts
+@chapter Timelines and Posts
+
+@section Public and Following Timelines
+
+The default view shows public posts.  Use the @samp{Public}/@samp{Following}
+toggle to switch timeline type.  Following timeline requests require login.
+
+Infinite scrolling loads older posts when the scrolled window reaches the
+bottom.  The client tracks the last visible post ID and asks the server for
+items before that cursor.
+
+@section Composing Posts
+
+To compose a post:
+
+@enumerate
+@item Log in.
+@item Click @samp{Compose}.
+@item Enter text in the composer.
+@item Optionally attach media or configure a poll when those controls are
+available.
+@item Submit the post.
+@end enumerate
+
+Media uploads are sent to the upload endpoint first.  The returned URL and file
+metadata are then included in the post payload.
+
+@section Interacting With Posts
+
+Post widgets support the operations exposed by the server and current user
+permissions:
+
+@itemize @bullet
+@item Like and unlike.
+@item Retweet or undo retweet.
+@item Quote.
+@item Reply.
+@item Bookmark or remove bookmark.
+@item React with standard or custom emojis.
+@item View reactions, likes, retweets, quotes, or detail pages where supported.
+@item Vote in polls.
+@item Report a post.
+@item Delete or edit your own post where supported.
+@end itemize
+
+The client keeps an in-memory interaction cache for like, retweet, and
+bookmark state so freshly toggled buttons remain coherent when a server
+response omits those fields.
+
+@section Polls
+
+Polls are rendered inline when present in server responses.  Active polls allow
+voting, and closed polls display final results.  The parser handles vote
+counts, percentages, user vote state, active state, expiration, and quiz-style
+score fields where supplied.
+
+@section Media
+
+Images are loaded asynchronously and scaled for display.  Video attachments are
+represented with a control that opens the media URL externally.  Spoiler flags
+and server-provided file metadata are preserved in the parsed attachment data.
+
+@section Notes and Fact Checks
+
+Administrator sessions can add public notes or fact checks to posts from the
+post UI or admin surfaces.  Notes may include severity metadata supplied by the
+server.
+
+@node Profiles
+@chapter Profiles
+
+Profile views show the user's display name, username, avatar, banner, bio,
+details, badges, follower count, following count, post count, and tabbed feeds
+for posts and replies.
+
+@section Profile Actions
+
+Depending on the viewed profile and current login state, the profile view can
+show controls to:
+
+@itemize @bullet
+@item Follow or unfollow.
+@item Enable or disable post alerts for the profile.
+@item Block or unblock.
+@item Mute or unmute.
+@item Report.
+@item Request affiliation.
+@item Open shop or donation flows.
+@end itemize
+
+@section Editing Your Profile
+
+When viewing your own profile, @samp{Edit Profile} opens fields for display
+name, bio, location, website, pronouns, theme, accent color, profile label,
+automated label state, and avatar radius where the account is allowed to set
+one.
+
+The profile view also exposes avatar/banner removal where available.  Avatar
+and banner uploads use the profile media endpoints.
+
+@node Search and Discovery
+@chapter Search and Discovery
+
+@section Search
+
+The header search entry searches both users and posts.  Results are shown in a
+search view with separate tabs.  Selecting a user opens that user's profile;
+selecting a post opens or interacts with that post according to the available
+controls.
+
+@section Explore
+
+The Explore view provides a category selector with server-backed discovery
+feeds:
+
+@itemize @bullet
+@item Trends.
+@item Best of week.
+@item Most bookmarked.
+@item Most discussed.
+@item Longest threads.
+@item Posts with media.
+@item Posts with polls.
+@item Trending users.
+@item Suggested users.
+@item User directory.
+@item Top hashtags.
+@item Digest.
+@item Leaderboard.
+@item Site or explore stats.
+@end itemize
+
+Use @samp{Refresh} in the view to reload the selected category.
+
+@node Notifications
+@chapter Notifications
+
+Notifications show server events such as likes, retweets, replies, follows,
+mentions, quotes, and reactions.  Unread notifications are highlighted.  The
+view provides an action to mark all notifications as read, and individual
+notification rows can be marked read as the server supports it.
+
+Notification preferences are configured in Settings.  Local switches control
+whether notifications, sound effects, and direct-message notifications are
+enabled in the running client.  Push notification subscription management is
+also available from Settings when supported by the server.
+
+@node Direct Messages
+@chapter Direct Messages
+
+@section Conversation List
+
+The Messages view contains ordinary Tweetapus conversations and a separate
+encrypted messaging tab.  The ordinary conversation list displays conversation
+titles, participants, last message previews, timestamps, and unread counts.
+
+@section Conversation Detail
+
+Opening a conversation shows message history and controls for:
+
+@itemize @bullet
+@item Sending a text message.
+@item Attaching a file.
+@item Replying to a message.
+@item Editing or deleting messages where available.
+@item Adding or removing participants.
+@item Renaming group conversations.
+@item Managing disappearing messages.
+@item Creating, revoking, or joining invite links.
+@item Viewing and managing permissions and participant roles.
+@item Viewing pinned messages.
+@item Leaving a conversation.
+@item Requesting payments through the server's payment integration.
+@end itemize
+
+Typing state is sent while the message entry changes, and a conversation is
+marked read when opened.
+
+@section Attachments and Payments
+
+DM attachments are uploaded before message creation.  The message payload then
+includes the uploaded file URL, name, MIME type, and size.  Payment requests
+are created through the MPI request endpoint and then displayed as messages
+when the server accepts them.
+
+@node Encrypted Messaging
+@chapter Encrypted Messaging
+
+Tweeta Desktop includes an experimental encrypted messaging surface backed by
+GPGME.  It is separate from ordinary server-side direct messages.
+
+@section Key Setup
+
+Use @samp{Setup Keys} in the Encrypted tab to initialize local key material.
+The GPGME layer can generate a keypair, export the public key, import contact
+keys, encrypt, decrypt, sign, and verify messages.
+
+@section Contacts
+
+Use @samp{Add Contact} or @samp{Import Key} to add a contact username and
+public key fingerprint.  Contacts are kept in the running encrypted messaging
+session.  Selecting a contact loads the in-memory encrypted conversation with
+that contact.
+
+@section Transports
+
+Two transport modes are exposed:
+
+@table @samp
+@item Direct P2P
+Attempts direct peer networking using a listener and explicit peer
+connections.
+
+@item Relay Mode
+Uses Tweetapus transport endpoints for encrypted payload exchange.  The
+payload is encrypted before transport.
+@end table
+
+Relay mode is the default because it works without inbound connectivity.  The
+direct mode requires the selected host and port to be reachable.
+
+@section Limitations
+
+Encrypted conversations and contacts are session-oriented in the current
+client.  Verify fingerprints out-of-band before trusting a contact key.  The
+server can still observe metadata for relay-mode delivery, such as timing and
+sender/recipient identifiers, even though message content is encrypted.
+
+@node Communities
+@chapter Communities
+
+Communities are topic-based spaces with their own timelines, members, access
+mode, invitations, and moderation operations.
+
+@section Browsing Communities
+
+The Communities view provides:
+
+@itemize @bullet
+@item All communities.
+@item Communities you belong to.
+@item Trending communities.
+@item Recommended communities.
+@item Search by query.
+@item Join by invite.
+@item Create community.
+@end itemize
+
+Opening a community displays its timeline and details.
+
+@section Community Timeline
+
+The community timeline supports normal post rendering and infinite scrolling.
+The header shows the community name and details.  Actions include members,
+invite, manage invites, moderation, style, pin post, edit, access mode, and
+delete where permissions allow.
+
+@section Community Administration
+
+Community moderators or admins can:
+
+@itemize @bullet
+@item View members.
+@item Change member roles.
+@item Ban or unban members.
+@item Review join requests.
+@item Change access mode.
+@item Update icon, banner, or tag.
+@item Pin or unpin posts.
+@item Review moderation logs.
+@item Create or revoke invites.
+@end itemize
+
+@node Lists
+@chapter Lists
+
+The Lists view shows owned and followed lists.  You can create a list, refresh
+the list index, open list details, and manage list membership where permitted.
+
+The list detail view contains tabs for list tweets, members, and followers.
+Controls include follow or unfollow, edit, delete, and add member.
+
+@node Articles
+@chapter Articles
+
+The Articles view shows article entries returned by the server and provides a
+@samp{New Article} action.  Article support is server-dependent.  Article
+records include title and Markdown body fields in the parsed post structures
+when the server supplies them.
+
+@node Settings
+@chapter Settings
+
+Settings is a grouped view for user preferences, account operations, and
+maintenance.
+
+@section Appearance
+
+Appearance settings include:
+
+@itemize @bullet
+@item Light theme.
+@item Dark theme.
+@item System default theme.
+@item Compact mode.
+@end itemize
+
+Theme changes update GTK's dark-theme preference for the running process.
+
+@section Notifications
+
+Notification settings include master enablement, sound effects, direct-message
+notifications, and push notification subscription management.
+
+@section Content Filters
+
+Content filters include muted words and muted conversations.  The view can add
+muted words and refresh muted word/conversation state from the server.
+
+@section For You Interests
+
+The client can display and reset server-side For You interests.  These values
+influence server recommendation behavior where the server implements that
+feature.
+
+@section Scheduled Posts
+
+Settings includes scheduled post management.  You can create a scheduled post
+and refresh pending scheduled posts.
+
+@section Shop
+
+The shop section lists your products, supports product creation, and refreshes
+the shop state.  Profile views may expose shop and donation actions for other
+users.
+
+@section Data and Cache
+
+The data section displays cache size, clears cache files from the XDG cache
+directory, and clears local search history.
+
+@node Administration
+@chapter Administration
+
+The Admin button appears only when the authenticated session is an admin
+session.  Administrative operations call server-side admin endpoints and are
+subject to server authorization.
+
+@section Admin Tabs
+
+The native admin view includes:
+
+@table @samp
+@item Stats
+Site statistics such as users, posts, suspensions, restrictions, and
+verification counts.
+
+@item Users
+User search and user actions.
+
+@item Posts
+Post search and post moderation.
+
+@item Suspensions
+Suspension review and refresh.
+
+@item Reports
+Report review and action.
+
+@item Logs
+Moderation log search.
+
+@item Blocks
+Blocking state review.
+
+@item Emojis
+Custom emoji administration.
+
+@item Badges
+Badge administration.
+
+@item DMs
+Direct-message administration and search.
+
+@item Shop
+Product and purchase administration.
+
+@item Communities
+Community administration.
+
+@item Notifications
+Send a server-side notification to a target user.
+
+@item Clone
+Clone selected user state into a new account according to selected categories.
+
+@item Tools
+Impersonation, restore-admin, post-as-user, and bulk user edit operations.
+@end table
+
+@section Impersonation
+
+The Tools tab can impersonate a user while preserving the original admin token,
+username, and admin flag in the session data.  Use @samp{Restore Admin} to
+return to the preserved admin context.
+
+Because impersonation changes the active token, verify which username is shown
+in the header before taking actions.  The client displays status text when an
+admin session is preserved.
+
+@section Bulk User Edits
+
+The bulk edit tool accepts comma-separated targets and a JSON payload.  The
+payload is sent to the upstream admin API for each selected account.  Validate
+payloads carefully before submitting; this is an intentionally powerful
+administrator operation.
+
+@node Files and State
+@chapter Files and State
+
+@section Source Tree
+
+Important repository paths:
+
+@table @file
+@item src/
+C source and header files.
+
+@item Makefile
+Primary build, test, install, and documentation targets.
+
+@item meson.build
+Meson build definition.
+
+@item tweeta-desktop.texi
+Texinfo manual source.
+
+@item tweeta-desktop.1
+Manual page source.
+
+@item tweeta-desktop.desktop
+Desktop entry.
+
+@item logo.png
+Application icon source installed as @file{tweeta-desktop.png}.
+
+@item tweetapus/
+Reference copy of the upstream server source.  Do not modify this directory
+from the desktop client project.
+@end table
+
+@section Runtime Files
 
 @table @file
 @item $XDG_CONFIG_HOME/tweeta-desktop/session.json
-Stores session token, username, and admin flag after a successful login.
+Session token, username, admin flag, and preserved impersonation admin context.
+The client writes this file with user-only permissions where possible.
 
 @item $XDG_CACHE_HOME/tweeta-desktop/
-Cache directory used by cache management in the Settings view.
+Cache directory used by cache-size display and cache cleanup.
 @end table
 
-@node Feature Summary
-@chapter Feature Summary
+If @env{XDG_CONFIG_HOME} or @env{XDG_CACHE_HOME} is unset, GLib chooses the
+platform default, typically @file{~/.config} and @file{~/.cache} on Linux.
+
+@section Generated Documentation Files
+
+@table @file
+@item tweeta-desktop.info
+Generated GNU Info manual.
+
+@item build/docs/tweeta-desktop.pdf
+Generated PDF manual.
+
+@item build/docs/tweeta-desktop.html
+Generated single-page HTML manual.
+
+@item build/docs/html/
+Generated multi-page HTML manual.
+@end table
+
+@node Network Configuration
+@chapter Network Configuration
+
+@section Default Server
+
+The compiled defaults are:
+
+@table @code
+@item API_BASE_URL
+@url{https://tweeta.tiago.zip/api}
+
+@item BASE_DOMAIN
+@url{https://tweeta.tiago.zip}
+@end table
+
+Runtime environment variables can override both without recompilation.
+
+@section HTTP Behavior
+
+Networking uses libcurl.  Requests include a Tweeta Desktop user agent and an
+@code{X-Tweetapus-Client} header.  Authenticated requests include a bearer
+token when a session is active.
+
+The networking layer handles ordinary GET-style requests, JSON request bodies,
+multipart/media upload helper flows, and challenge retry behavior where the
+server requires a CAP challenge token.
+
+@section API Areas
+
+The client integrates with endpoints for:
 
 @itemize @bullet
-@item Public and following timelines with infinite scroll.
-@item User authentication (login/logout) with session restore.
-@item Composing posts with optional media uploads.
-@item Reply, like, retweet/quote, bookmark, and emoji reaction actions.
-@item Search for users and posts.
-@item Profile views with tweets/replies/followers/following.
-@item Notifications inbox and mark-all-read action.
-@item Direct messages, including encrypted messaging with GPG keys.
-@item Communities browsing and join/leave actions.
-@item Admin views for site stats, users, posts, and moderation actions.
-@item Settings for theme, compact mode, notifications, and cache cleanup.
+@item Authentication, passkeys, account validation, delegates, and profile
+settings.
+@item Public, following, profile, community, list, search, explore, article,
+and scheduled-post timelines.
+@item Post creation, editing, deletion, interactions, reactions, polls, notes,
+outline generation, and bulk deletion.
+@item Bookmarks, notifications, direct messages, message attachments, invites,
+roles, pinned messages, and disappearing messages.
+@item Communities, members, join requests, invites, style, moderation, and
+community timelines.
+@item Blocking, muting, muted words, muted conversations, and reports.
+@item Shop, payments, payment requests, and purchases.
+@item Administration for stats, users, posts, reports, logs, DMs, shop,
+communities, badges, emojis, notifications, clone-user tools, impersonation,
+post-as-user, and bulk edits.
 @end itemize
+
+@node Build and Documentation Targets
+@chapter Build and Documentation Targets
+
+@section Primary Make Targets
+
+@table @command
+@item make
+Build @file{tweeta-desktop}.
+
+@item make static
+Attempt a static binary at @file{tweeta-desktop-static}.
+
+@item make test
+Build and run @file{test_runner}.
+
+@item make install
+Install binary, desktop entry, icon, man page, and Info manual.
+
+@item make uninstall
+Remove files installed by @command{make install}.
+
+@item make clean
+Remove object files, binaries, generated Info output, build config markers,
+and generated documentation under @file{build/docs}.
+@end table
+
+@section Documentation Targets
+
+@table @command
+@item make info
+Generate @file{tweeta-desktop.info} from @file{tweeta-desktop.texi}.
+
+@item make pdf
+Generate @file{build/docs/tweeta-desktop.pdf}.
+
+@item make html
+Generate single-page HTML at @file{build/docs/tweeta-desktop.html}.
+
+@item make html-split
+Generate multi-page HTML rooted at @file{build/docs/html/index.html}.
+
+@item make docs
+Generate Info, PDF, single-page HTML, and multi-page HTML.
+@end table
+
+The documentation targets use @command{makeinfo} and @command{texi2pdf}.  If
+PDF generation fails, confirm that a TeX distribution and GNU Texinfo are
+installed.
+
+@node Developer Guide
+@chapter Developer Guide
+
+@section Coding Style
+
+The project uses procedural C with GLib and GTK conventions:
+
+@itemize @bullet
+@item C99 source.
+@item GLib scalar types such as @code{gchar}, @code{gboolean}, and @code{gint}.
+@item @code{snake_case} functions.
+@item GTK widget pointers stored in shared globals where the existing design
+requires cross-module callbacks.
+@item GLib allocation helpers such as @code{g_new0}, @code{g_strdup}, and
+@code{g_free}.
+@item json-glib builders and parsers instead of ad hoc JSON strings.
+@end itemize
+
+@section Adding a Feature
+
+A typical feature touches:
+
+@enumerate
+@item Endpoint constants in @file{src/constants.h}.
+@item Data structures in @file{src/types.h} if new parsed state is needed.
+@item JSON parsing or payload construction in @file{src/json_utils.c} or a
+local action helper.
+@item Network/action handlers in @file{src/actions.c} or a focused action
+module.
+@item Widgets in @file{src/views.c} or @file{src/ui_components.c}.
+@item Tests in @file{test_main.c}.
+@item Documentation in @file{tweeta-desktop.texi}.
+@end enumerate
+
+@section Threading Rules
+
+Network operations that can block should not update GTK widgets directly from
+worker threads.  Fetch on a worker thread, store parsed results in an
+@code{AsyncData} value, and schedule UI updates with @code{g_idle_add}.
+
+Protect shared state with the existing mutexes where applicable.  The code
+uses request IDs to discard stale async responses after rapid refreshes.
+
+@section Upstream Reference Tree
+
+The @file{tweetapus/} directory may contain upstream server source for
+reference.  Do not modify it from this repository.  Use it only to understand
+request and response shapes when updating the desktop client.
+
+@node Codebase Operation
+@chapter Codebase Operation
+
+This chapter explains how the program operates as a running system and how a
+maintainer should move through the codebase.  It is deliberately more detailed
+than the module map: it follows real control flow, explains ownership and
+threading conventions, calls out the places where state crosses module
+boundaries, and describes the normal way to add or debug features.
+
+The most important rule is that Tweeta Desktop is not organized around a large
+framework.  It is a procedural GTK application.  The user interface is built
+explicitly, callbacks are connected explicitly, HTTP requests are made by
+explicit helper functions, and parsed data is passed into explicit row builders.
+This makes the code easy to search, but it also means maintainers should follow
+the local pattern of the nearest feature instead of inventing a second
+architecture.
+
+@section Startup Sequence
+
+Execution begins in @file{src/main.c}.  The startup sequence is short, but it
+establishes almost every process-wide invariant:
+
+@enumerate
+@item @code{gtk_init} initializes GTK and consumes standard GTK command-line
+arguments.
+
+@item @code{curl_global_init(CURL_GLOBAL_ALL)} initializes libcurl before any
+network helper can run.
+
+@item @code{g_mutex_init(&g_globals_mutex)} initializes the mutex used around
+authentication and other shared global state.
+
+@item @code{g_interaction_cache} is created as a string-keyed hash table.  It
+stores in-memory interaction flags for posts after the user likes, retweets, or
+bookmarks them.
+
+@item A @code{GtkCssProvider} installs application-level CSS classes.  Current
+classes include unread notification highlighting, dim labels, and note
+severity styling.
+
+@item @code{create_window} constructs the window, header bar, every stack view,
+and the long-lived widget globals used by callbacks.
+
+@item @code{load_session} reads the XDG session file into global auth state.
+
+@item @code{update_login_ui} applies the loaded auth state to widgets: compose
+sensitivity, login/logout labels, username display, and admin button
+visibility.
+
+@item @code{gtk_widget_show_all(window)} shows the fully constructed UI.
+
+@item @code{start_loading_tweets(GTK_LIST_BOX(g_main_list_box))} starts the
+initial public-feed load.
+
+@item @code{gtk_main} enters the GTK event loop.
+
+@item After the main loop exits, the process tears down libcurl, interaction
+cache state, authentication strings, community state, encrypted messaging
+session state, P2P networking, GPGME state, and the globals mutex.
+@end enumerate
+
+The ordering is important.  Widgets are created before @code{load_session}, but
+@code{update_login_ui} runs immediately after session loading, so the visible
+window is shown with the correct login state.  If you add a widget whose
+visibility or sensitivity depends on authentication, initialize it in the
+logged-out state in @file{src/views.c}, then update it from
+@code{update_login_ui} or the relevant login/logout path.
+
+Startup also shows a general architectural property: creation and mutation are
+separate.  @file{src/views.c} creates widgets.  @file{src/actions.c} usually
+mutates them after data or state changes.
+
+@section Process-Wide State
+
+Process-wide state lives mostly in @file{src/globals.c} and is declared in
+@file{src/globals.h}.  This includes:
+
+@itemize @bullet
+@item Authentication state such as @code{g_auth_token},
+@code{g_current_username}, @code{g_is_admin}, and impersonation fields.
+@item Navigation state such as the active timeline type, active profile, active
+community ID, and current view widgets.
+@item Widget pointers such as @code{g_stack}, @code{g_main_list_box},
+@code{g_search_entry}, @code{g_admin_button}, @code{g_notifications_list},
+@code{g_conversations_list}, @code{g_dm_messages_list}, and settings widgets.
+@item Local preference state such as notification toggles and compact mode.
+@item The post interaction cache.
+@item The encrypted messaging session and encrypted messaging widgets.
+@end itemize
+
+The codebase uses globals because GTK callbacks often need to update widgets
+that were created far away from the callback.  That is the established pattern,
+but it should still be used deliberately.  Prefer a local context structure
+when data only belongs to one dialog or one asynchronous request.  Use a global
+only when state must outlive the current callback and be reached by unrelated
+callbacks.
+
+Authentication globals should be read or copied through mutex-protected helper
+patterns when accessed off the main thread.  For example, the network layer
+duplicates the current auth token before placing it into an HTTP header.  Do
+not keep raw pointers to global auth strings across asynchronous boundaries.
+
+@section Window and View Construction
+
+@file{src/views.c} owns the main UI layout.  @code{create_window} creates a
+GTK toplevel window, attaches a header bar, creates header controls, and then
+creates a @code{GtkStack}.  Every major screen is added to that stack with a
+stable name such as @samp{timeline}, @samp{profile}, @samp{search},
+@samp{notifications}, @samp{messages}, @samp{settings}, @samp{admin},
+@samp{bookmarks}, @samp{lists}, @samp{list_details}, @samp{explore},
+@samp{articles}, @samp{communities}, and @samp{community_tweets}.
+
+The header controls do very little work directly.  They are wired to callbacks
+in @file{src/actions.c}.  A button callback usually switches the visible stack
+child, shows the back button if the user is leaving the main timeline, and
+starts a loader for the selected view.
+
+Most views are built from standard GTK containers:
+
+@itemize @bullet
+@item @code{GtkHeaderBar} for top-level navigation.
+@item @code{GtkStack} for screen switching.
+@item @code{GtkNotebook} for tabbed profile, search, settings, messages, admin,
+and list-detail screens.
+@item @code{GtkScrolledWindow} plus @code{GtkListBox} for feeds, search
+results, notifications, conversations, communities, lists, and admin rows.
+@item @code{GtkDialog}, @code{GtkGrid}, @code{GtkEntry}, @code{GtkTextView},
+@code{GtkSwitch}, @code{GtkComboBoxText}, and @code{GtkSpinButton} for forms.
+@end itemize
+
+Widget pointers that must be reached by callbacks are stored in
+@file{src/globals.c}.  This is the dominant architecture of the project:
+callbacks in one module can update widgets created in another module by using
+the shared global references declared in @file{src/globals.h}.
+
+The important construction rule is: every long-lived view should be fully
+constructed once, then repopulated.  Do not destroy and recreate whole stack
+children just to refresh data.  Instead, clear the child list box, insert a
+loading row if useful, start a loader, and repopulate the list when the async
+operation completes.
+
+@section Navigation and Refresh Semantics
+
+Navigation is mostly controlled by switching @code{g_stack}.  The code uses
+fixed stack child names rather than dynamically allocated pages.  This means
+callbacks can reliably say:
+
+@example
+gtk_stack_set_visible_child_name(GTK_STACK(g_stack), "messages");
+@end example
+
+The back button is a simple navigation affordance, not a complete history
+stack.  When adding a new secondary view, make sure its entry callback shows
+the back button and its exit path returns to a sensible parent view.
+
+Refresh is centralized through @code{on_refresh_clicked}.  It checks the
+currently visible stack child and dispatches to the correct loader.  When you
+add a new view that should support the header refresh button, update this
+dispatch function.  If a view has its own refresh button, wire that button to
+the same loader or to a small local callback that calls the same loader.
+
+@section Action Callback Pattern
+
+@file{src/actions.c} is the operational center of the application.  It
+contains callbacks for login, logout, refresh, search, compose, post
+interaction buttons, profile actions, settings forms, admin tools, direct
+messages, list operations, community actions, and async loading.
+
+A common callback follows this pattern:
+
+@enumerate
+@item Validate local preconditions, such as login state, selected row data, or
+required text fields.
+@item Build a URL with endpoint constants from @file{src/constants.h}.
+@item Build JSON request data with json-glib when the operation sends a body.
+@item Call the network helper, either directly for small operations or in a
+worker thread for potentially slow loads.
+@item Parse the response or extract an error message.
+@item Update widgets immediately for simple state changes, or schedule a full
+view reload after the server accepts the operation.
+@item Release temporary strings, JSON objects, response buffers, and context
+structures.
+@end enumerate
+
+The code deliberately favors explicit handlers over a generic command
+framework.  That keeps each server operation close to the widget that invokes
+it, but it also means maintainers should search for the visible button label,
+callback name, or endpoint constant when tracing behavior.
+
+Callbacks generally fall into four categories:
+
+@table @asis
+@item View-entry callbacks
+These switch the stack and start loading data.  Examples include
+@code{on_notifications_clicked}, @code{on_messages_clicked},
+@code{on_settings_clicked}, and @code{on_admin_clicked}.
+
+@item Mutating action callbacks
+These perform one operation and then update or reload part of the UI.  Examples
+include like, retweet, bookmark, follow, block, mute, join community, leave
+community, delete post, and admin moderation actions.
+
+@item Dialog callbacks
+These build a dialog, collect values if the response is accepted, then call a
+perform helper.  Profile editing, password changes, passkey management,
+community creation, DM permissions, and admin tools use this pattern.
+
+@item Loader callbacks
+These create @code{AsyncData}, start a worker thread, and schedule a GTK-thread
+completion callback with @code{g_idle_add}.
+@end table
+
+The @code{perform_*} naming convention usually means "execute the server or
+state operation and return success or parsed data."  The @code{on_*} naming
+convention usually means "GTK callback."  The @code{start_loading_*} naming
+convention usually means "begin an asynchronous view reload."
+
+@section The Request Lifecycle
+
+Most server-backed operations follow this lifecycle:
+
+@enumerate
+@item The user activates a widget.
+@item GTK invokes an @code{on_*} callback.
+@item The callback reads widget state, object data, or globals.
+@item The callback validates that required state exists.
+@item A URL is selected from @file{src/constants.h}, sometimes with
+@code{g_strdup_printf} for IDs.
+@item If needed, a @code{JsonBuilder} creates the request body.
+@item The code calls @code{fetch_url}, @code{fetch_url_with_auth_token},
+@code{fetch_url_with_file}, or a higher-level wrapper.
+@item The response is parsed with json-glib or one of the parsing helpers in
+@file{src/json_utils.c}.
+@item The callback updates local state, updates the affected widgets, or calls
+a loader to rebuild the affected view from server state.
+@item Temporary objects are freed.
+@end enumerate
+
+Small operations sometimes execute synchronously in the GTK callback.  Larger
+operations that populate lists generally run in a GLib thread.  If an operation
+may block long enough to make the window feel frozen, use the async loader
+pattern.
+
+@section Loading a Feed
+
+Timeline-like views share a repeatable flow.  For example, loading the public
+timeline works as follows:
+
+@enumerate
+@item A view or refresh callback calls a loader such as
+@code{start_loading_timeline}.
+@item The loader clears or marks the target list box as loading, creates an
+@code{AsyncData} structure, records request context, and starts a GLib thread.
+@item The worker thread constructs the URL and calls @code{fetch_url}.
+@item @code{fetch_url} performs the libcurl request and returns a memory
+buffer.
+@item The worker thread calls a parser such as @code{parse_tweets}.
+@item The worker thread stores parsed data and success flags in
+@code{AsyncData}, then uses @code{g_idle_add} to schedule the UI completion
+callback.
+@item The completion callback runs on the GTK main thread, clears loading
+state, creates row widgets with helpers in @file{src/ui_components.c}, inserts
+them into the list box, frees parsed data, and releases the async context.
+@end enumerate
+
+Pagination uses the same shape with @code{is_append} set in the async context
+and @code{before_id} set to the last visible item.  Scrolled windows emit
+@code{edge-reached}; the handler checks which feed type is attached to the list
+box and requests the next page.
+
+Several list boxes carry a @code{feed_type} object-data value.  This lets the
+shared scroll handler tell whether it is dealing with public timeline,
+following timeline, bookmarks, profile posts, community posts, or another
+paginated feed.  When adding pagination to a new feed, set a stable
+@code{feed_type} on the list box and extend the edge-reached dispatch.
+
+Feed rows should not assume the server returns every field.  The parsers
+already normalize several alternate field names, but UI code should still be
+defensive around optional strings, optional counts, optional attachments, and
+optional nested quote tweets.
+
+@section Async Data Lifetimes
+
+@code{struct AsyncData} in @file{src/types.h} is the generic carrier for many
+background requests.  It can hold a target list box, parsed tweets, users,
+notifications, conversations, messages, communities, lists, a profile, a
+conversation, request IDs, query strings, pagination cursors, and success
+flags.
+
+The normal ownership model is:
+
+@enumerate
+@item The starter allocates @code{AsyncData} with zeroed memory.
+@item The starter stores copied strings and borrowed widget pointers.
+@item The worker thread fills in response-derived data.
+@item The worker thread schedules exactly one completion callback with
+@code{g_idle_add}.
+@item The completion callback owns final cleanup of parsed lists, copied
+strings, and the @code{AsyncData} object.
+@end enumerate
+
+Do not free @code{AsyncData} in the worker thread after scheduling an idle
+callback.  Do not update GTK widgets in the worker thread.  Do not pass stack
+allocated objects through @code{g_idle_add}.
+
+Some loaders use request IDs to prevent stale results from overwriting newer
+results.  The pattern is: increment or record a current request ID when
+starting the request, copy that ID into @code{AsyncData}, and have the
+completion callback compare the copied ID against the current global or widget
+request ID.  If the request is stale, free its data and skip UI mutation.
+
+@section Main-Thread Rules
+
+GTK is not thread-safe.  All widget creation, insertion, label changes, button
+state changes, and stack navigation must happen on the main thread.  Worker
+threads can allocate plain GLib data, call libcurl, parse JSON into detached
+structures, and prepare strings.  They must hand results back with
+@code{g_idle_add} or an equivalent main-context mechanism.
+
+If you see a crash that only happens during fast refreshes or while navigating
+away from a view, inspect the async completion callback first.  Common causes
+are stale callbacks touching widgets that no longer represent the same request,
+missing request-ID checks, or data freed before the idle callback consumes it.
+
+@section Network Request Mechanics
+
+@file{src/network.c} wraps libcurl.  It resolves the API base URL at runtime,
+allowing @env{TWEETA_API_BASE_URL} to override compiled constants.  It also
+resolves the public base domain through @env{TWEETA_BASE_DOMAIN}; this is used
+when the client needs absolute web or media URLs.
+
+Each request allocates a @code{MemoryStruct} response buffer.  libcurl writes
+response bytes through @code{WriteMemoryCallback}.  The request layer sets the
+user agent, the Tweetapus client header, content-type headers when needed, and
+the bearer token header when an authenticated session exists.
+
+When the server requires a CAP challenge token, the network layer can fetch and
+solve a challenge through @file{src/challenge.c}, then retry the original
+request with the challenge result.  This keeps challenge handling out of most
+UI callbacks.
+
+There are two important URL concepts:
+
+@table @code
+@item API_BASE_URL
+The compiled default API root used by endpoint macros.
+
+@item BASE_DOMAIN
+The compiled default web/media origin used when constructing absolute web or
+media URLs.
+@end table
+
+The runtime rewrite helper checks whether a URL starts with the compiled API
+or base domain.  If the user set @env{TWEETA_API_BASE_URL} or
+@env{TWEETA_BASE_DOMAIN}, the prefix is rewritten before libcurl sees the URL.
+This lets the rest of the code keep using constants from @file{src/constants.h}
+without manually threading instance configuration through every call.
+
+The core request helper initializes a response buffer even for empty responses.
+If libcurl fails, it frees that buffer and returns @code{FALSE}.  If libcurl
+succeeds but the server returns an application-level error, the request helper
+usually still returns @code{TRUE}; the caller must parse the response and
+decide whether the operation succeeded.
+
+File uploads use the multipart helper path rather than the JSON helper path.
+If you are adding a file upload, prefer the existing upload helpers instead of
+manually configuring curl MIME state in a feature callback.
+
+@section JSON Parsing and Payload Construction
+
+@file{src/json_utils.c} is the boundary between server JSON and typed C data.
+It parses posts, profiles, users, notifications, conversations, messages,
+communities, lists, admin objects, login responses, upload responses, and
+detail payloads into structures declared in @file{src/types.h}.
+
+Parsers are intentionally tolerant of several server response shapes.  For
+example, post lists may arrive under keys such as @code{posts},
+@code{timeline}, @code{bookmarks}, or @code{tweets}.  Interaction flags may
+also use alternate names.  This tolerance lets the desktop client survive
+small server response changes.
+
+Outbound JSON is built with @code{JsonBuilder} and serialized with
+@code{JsonGenerator}.  Avoid formatting JSON by hand when adding new payloads;
+json-glib keeps string escaping, null handling, booleans, arrays, and nested
+objects correct.
+
+Every parser that allocates nested structures has a matching free function.
+The UI completion path should use those free helpers after rows have copied or
+consumed the needed values.
+
+Parser functions should avoid assuming a field exists unless the server
+contract absolutely requires it.  The existing style is:
+
+@itemize @bullet
+@item Check @code{json_object_has_member}.
+@item Check for JSON null before reading nullable fields.
+@item Use @code{g_strdup} for strings stored in structs.
+@item Initialize booleans and counts to safe defaults.
+@item Parse arrays by iterating elements and appending allocated structures to
+a @code{GList}.
+@item Free partially constructed objects on parser failure.
+@end itemize
+
+When adding a field to a parsed structure, update three places together:
+
+@enumerate
+@item The structure in @file{src/types.h}.
+@item The parser in @file{src/json_utils.c}.
+@item The matching free function in @file{src/json_utils.c}.
+@end enumerate
+
+If the field is rendered, update @file{src/ui_components.c} or the relevant
+view code.  If the field is important behavior, add or update a parser test in
+@file{test_main.c}.
+
+Payload construction has the inverse rule: use @code{JsonBuilder}, include only
+fields that should be sent, and match the server's expected names.  For PATCH
+style operations, omitting a field and sending it as JSON null may have
+different meanings; follow the server endpoint semantics.
+
+@section Widget Row Construction
+
+@file{src/ui_components.c} converts parsed data into concrete GTK rows.  It
+builds tweet rows, user rows, notification rows, conversation rows, message
+rows, community rows, list rows, shop rows, and other repeated UI elements.
+
+Rows often attach identifiers or state pointers with @code{g_object_set_data}
+or @code{g_object_set_data_full}.  Later callbacks retrieve those values to
+know which tweet, user, community, list, conversation, or message the clicked
+button belongs to.  When attaching allocated strings, use the @code{_full}
+variant so GTK releases them with the widget.
+
+Media and avatars are loaded asynchronously by UI utility helpers.  The row can
+show a placeholder immediately while a background fetch obtains and scales the
+image, then schedules a GTK-thread update.
+
+Rows are where many per-object callbacks are connected.  A tweet row may
+contain buttons for reply, like, retweet, quote, bookmark, reactions, notes,
+details, poll voting, report, edit, or delete.  Each button needs enough
+attached object data to let its callback identify the target post and update
+the right visible state.
+
+When wiring row-level callbacks:
+
+@itemize @bullet
+@item Attach immutable identifiers such as tweet ID, user ID, username,
+conversation ID, community ID, list ID, or message ID to the row or button.
+@item Use @code{g_object_set_data_full} for heap strings.
+@item Keep mutable UI counters and booleans in a context object only when the
+callback needs to update the existing row without a full refresh.
+@item If the server response can disagree with an optimistic update, schedule a
+reload or update the interaction cache.
+@item Avoid storing pointers into parsed objects that will be freed after the
+list is populated.
+@end itemize
+
+This last point is critical.  Parsed objects are usually freed after widgets
+are created.  Widget callbacks must own their own copies of identifiers and
+other values they will need later.
+
+@section Session and Authentication State
+
+@file{src/session.c} owns the local session file.  @code{save_session} writes a
+JSON object containing the token, username, admin flag, and optional preserved
+admin impersonation state.  @code{load_session} restores those values into
+globals during startup.  @code{clear_session} removes the file on logout.
+
+Authentication state controls widget sensitivity and visibility.  The compose
+button starts disabled and becomes available after login.  The admin button is
+hidden unless the session is admin.  Authenticated-only views show an error
+dialog or refuse to load when no token is present.
+
+The login path starts in @code{on_login_clicked}.  The dialog collects
+credentials, @code{perform_login} posts them to the basic-login endpoint, and
+@code{parse_login_response} extracts the token, username, and admin status.
+Successful login stores globals, calls @code{save_session}, and updates the UI.
+
+Logout goes through @code{perform_logout}.  It clears in-memory auth state,
+clears the local session file, resets impersonation state, updates UI, and
+returns the app to an unauthenticated posture.
+
+Native passkey support is conditional.  Code should check
+@code{webauthn_fido2_is_enabled} before showing or executing native FIDO2 flows.
+When native support is absent, the UI may fall back to a web settings path.
+
+@section Interaction Cache
+
+The interaction cache exists because server timeline responses may not always
+echo the latest local interaction state immediately or may use different field
+names across endpoints.  @code{update_interaction_cache} stores like,
+retweet, and bookmark booleans by tweet ID.  Parser code consults
+@code{get_cached_liked}, @code{get_cached_retweeted}, and
+@code{get_cached_bookmarked} when response fields are missing.
+
+Use this cache only for short-lived UI coherence.  It is not persistent and is
+not a source of truth.  Server reloads and explicit response fields should
+still win when they are available.
+
+@section Admin and Impersonation Flow
+
+The admin view is a large native GTK surface over server-side admin endpoints.
+It uses the same request, parse, and row-construction model as ordinary user
+views, but the callbacks check for admin context before making privileged
+requests.
+
+Impersonation changes the active token and username to the target user while
+saving the original admin token and username in dedicated globals and the
+session file.  Restore-admin reverses that state.  This lets the client survive
+restart during an impersonation session, but it also means code that performs
+privileged actions must check the preserved admin context where appropriate,
+not only the currently displayed username.
+
+Admin actions are intentionally explicit.  Many of them use wrappers such as
+@code{perform_admin_request} and admin-specific loaders like
+@code{start_loading_admin_users} and @code{start_loading_admin_posts}.  The
+admin view is tab-heavy, so each tab owns its own list widget, search entry,
+and refresh path.
+
+When adding an admin operation:
+
+@enumerate
+@item Add or reuse the endpoint macro in @file{src/constants.h}.
+@item Add the widget controls in the appropriate admin tab in
+@file{src/views.c}.
+@item Connect controls to a clearly named callback in @file{src/actions.c}.
+@item Check admin context before making the request.
+@item Parse the response enough to distinguish success from server error.
+@item Refresh the affected admin list or status label.
+@item Add documentation in the Admin chapter and in this operational chapter if
+the operation introduces a new pattern.
+@end enumerate
+
+@section Direct Message Flow
+
+Ordinary direct messages use server conversations.  The conversation list
+loads summaries.  Opening a conversation stores the conversation ID and parsed
+conversation detail on the messages list widget.  Sending a message reads the
+entry text and any pending attachment context, uploads files first if needed,
+builds a message payload, posts it to the conversation endpoint, clears the
+composer context, and reloads the message list.
+
+Conversation management actions such as rename, add participant, permissions,
+roles, disappearing messages, invite links, pinned messages, leave, edit, and
+delete follow the same pattern: read the active conversation ID from widget
+data, build the request, and refresh the affected conversation view.
+
+DM state is stored partly in globals and partly as object data on
+@code{g_dm_messages_list}.  The list widget can hold the active conversation
+ID, parsed conversation detail, pending reply ID, pending file path, pending
+file type, a composer status label, and P2P recipient context.  This makes the
+message send callback context-sensitive: the same entry and send button can
+send either an ordinary Tweetapus DM or a P2P encrypted message depending on
+the data attached to the list.
+
+When adding a DM feature, first identify whether it belongs to:
+
+@itemize @bullet
+@item The conversation list.
+@item The active conversation header.
+@item Message row actions.
+@item The composer context.
+@item Admin DM tooling.
+@end itemize
+
+Each location has different state ownership.  Message row actions should keep
+message-specific IDs on the row or button.  Conversation-wide actions should
+read the active conversation ID from @code{g_dm_messages_list}.  Composer
+actions should update and clear composer object data consistently.
+
+@section Encrypted Messaging Flow
+
+Encrypted messaging adds two layers.  @file{src/p2p_crypto.c} manages GPGME
+keys and cryptographic operations.  @file{src/p2p_network.c} manages either
+direct peer transport or relay transport through Tweetapus endpoints.
+
+The encrypted tab creates a local P2P session after key setup.  Contacts are
+stored in a hash table keyed by username, and in-memory conversations are
+stored in another hash table.  Sending an encrypted message looks up the
+contact fingerprint, encrypts plaintext, records a local message, then sends
+the encrypted payload through the selected transport.  Relay mode periodically
+polls for incoming encrypted payloads, decrypts them, and inserts them into
+the in-memory conversation.
+
+There are two overlapping encrypted messaging implementations in the codebase:
+UI/session helpers in @file{src/actions.c}, and transport-specific handlers in
+@file{src/actions_p2p_network.c}.  The latter handles transport selection,
+direct listener start/stop, peer connection, and contact creation with
+transport metadata.  The network layer handles message serialization,
+deserialization, relay encoding, direct socket delivery, relay polling, and
+incoming message processing.
+
+The important operational boundaries are:
+
+@itemize @bullet
+@item @file{src/p2p_crypto.c} should know about keys and cryptographic
+transforms, not GTK widgets.
+@item @file{src/p2p_network.c} should know about transports and wire payloads,
+not ordinary Tweetapus UI rows.
+@item The action modules bridge GTK events to crypto/network operations.
+@item The encrypted messaging session is in-memory process state.  Do not
+assume contacts and conversations survive restart unless persistence is added.
+@end itemize
+
+Because encrypted messaging touches threads, GPGME state, network sockets, and
+GTK widgets, changes here should be tested manually with debug output enabled
+and should keep cleanup paths symmetrical.
+
+@section Settings Flow
+
+Settings is not a passive preference screen.  Many sections are active server
+surfaces: muted words, muted conversations, For You interests, scheduled
+posts, shop products, delegates, account requests, passkeys, password change,
+username change, privacy state, profile outlines, moderation history, block
+causes, bulk post deletion, and account deletion.  Each setting either mutates
+local process state, sends a server request, or both.
+
+Local-only toggles such as theme and compact mode update process globals and
+GTK settings.  Server-backed settings build JSON payloads and call profile,
+auth, delegate, or settings endpoints.
+
+Settings is also one of the densest views in the project.  It is built as a
+single scrollable vertical surface with framed sections.  Each section tends to
+own several globals because refresh callbacks need to repopulate many lists at
+once.  The helper @code{on_filters_refresh_clicked} refreshes several settings
+subsystems together: muted words, muted conversations, For You interests,
+scheduled posts, shop products, delegates, and account requests.
+
+When adding settings UI, avoid creating a new toplevel view unless the workflow
+is large enough to justify it.  Most account and preference operations belong
+inside the existing Settings stack child.
+
+@section Communities, Lists, Explore, and Articles
+
+These feature areas follow the same architecture as timelines but with
+feature-specific view state.
+
+Communities use a browser view and a detail/timeline view.  A community row
+stores the community ID.  Clicking the row switches to the community timeline,
+stores the active community ID, loads community details, and loads community
+posts.  Community management actions read the active community ID from widget
+data on the community timeline list.
+
+Lists use an index view for owned and followed lists, then a list-detail view
+with tabs for tweets, members, and followers.  List actions should update the
+detail view and then refresh the index when membership or ownership state
+changes.
+
+Explore is category-driven.  The combo box selects a server discovery endpoint,
+and refresh reloads whichever category is active.  Adding a category means
+updating the combo box labels, the category dispatch, parser handling if the
+shape is new, and documentation.
+
+Articles are exposed as a stack view with a list and a new-article action.
+Article records reuse some post structures because the server can return
+article title and body fields alongside post-like data.
+
+@section Search Flow
+
+Search begins at the header search entry.  Activating the entry calls the
+search callback, which reads the query and runs @code{perform_search}.
+Search results are shown in a stack child with tabs for users and posts.
+
+User search results should open profiles.  Post search results should reuse
+tweet row rendering where possible so interaction behavior remains consistent
+with timeline rows.  When adding new searchable object types, prefer a new tab
+or a clearly separated section instead of mixing unrelated row types in one
+list without labels.
+
+@section Profile Flow
+
+Profiles are loaded by username through @code{show_profile}.  The profile view
+has long-lived widgets for banner, avatar, name, badges, username, bio, status,
+details, stats, action buttons, and tabbed feeds.
+
+Profile data has two layers:
+
+@itemize @bullet
+@item The profile summary object controls header fields and action-button
+visibility.
+@item Profile post/reply/media/highlight feeds populate list boxes in tabs.
+@end itemize
+
+When changing profile behavior, keep those layers separate.  A failed feed load
+should not destroy the profile header.  A profile header reload should not
+silently reuse old action-button object data.
+
+Profile editing is dialog-based.  The dialog copies current profile fields
+into entries and combo boxes, then submits a PATCH-style update.  Avatar and
+banner operations use upload/delete endpoints and then reload the profile.
+
+@section Memory Ownership
+
+The project mixes GTK ownership, GLib containers, and manual C allocation.
+Important ownership rules are:
+
+@itemize @bullet
+@item Strings returned by GLib helpers are usually freed with @code{g_free}.
+@item Parsed lists are freed with @code{g_list_free_full} and the relevant
+structure-specific free function.
+@item json-glib parser, builder, generator, and root node objects must be
+unreferenced or freed after use.
+@item Response buffers allocated by the curl write callback must be freed after
+parsing.
+@item Widget-attached allocated data should use @code{g_object_set_data_full}
+when the widget can own the value.
+@item GTK updates must happen on the main thread.
+@end itemize
+
+The safest way to extend the code is to copy the ownership pattern of the
+nearest existing operation with the same shape.
+
+A more concrete ownership checklist:
+
+@itemize @bullet
+@item If a function returns a newly allocated @code{gchar *}, the caller frees
+it unless the function explicitly documents different ownership.
+@item If a parser appends structs to a @code{GList}, the completion path should
+use the correct @code{free_*} function for each element.
+@item If a widget callback needs an ID after parser data is freed, duplicate
+the ID and attach it with @code{g_object_set_data_full}.
+@item If a dialog allocates a context struct, connect it to the response signal
+and free it in the response handler after reading the widgets.
+@item If a libcurl response buffer is passed to a parser, free the buffer after
+the parser has copied the fields it needs.
+@item If a @code{JsonNode *} is returned by @code{json_builder_get_root}, free
+or unref it according to the exact json-glib ownership used in the surrounding
+code.
+@item If a thread allocates result data for an idle callback, the idle callback
+owns cleanup.
+@end itemize
+
+Leaks in this application commonly come from early returns in dialog code,
+server-error branches that skip response-buffer cleanup, or row callbacks that
+attach heap data without a destroy notifier.
+
+@section Error Handling
+
+Most user-visible failures appear as GTK message dialogs.  Server errors are
+often extracted from an @code{error} JSON field.  Loader failures usually
+replace the target list with a short failure label, while simple button actions
+either show a dialog or leave the current view unchanged.
+
+For developer diagnostics, GLib warnings and debug messages are used in lower
+layers.  Run with @env{G_MESSAGES_DEBUG=all} while diagnosing request and parse
+behavior.
+
+Error handling should be local and visible.  If an operation fails because the
+user is not logged in, show a direct login-required message.  If the server
+returns a structured error, display that text as secondary dialog text when it
+is safe to show.  If a background list load fails, put an explanatory row in
+the list rather than leaving an old loading row forever.
+
+Do not treat HTTP transport success as application success.  Many helpers
+return @code{TRUE} when libcurl successfully received a JSON error response.
+The feature callback must inspect the JSON response when the endpoint returns
+structured success fields.
+
+@section Adding a Server-Backed View
+
+To add a new top-level or secondary server-backed view, follow this sequence:
+
+@enumerate
+@item Add endpoint constants to @file{src/constants.h}.
+@item Add data structures to @file{src/types.h} if existing structs do not fit.
+@item Add parser and free functions to @file{src/json_utils.c}.
+@item Add tests for representative successful, empty, null-field, and error
+payloads in @file{test_main.c}.
+@item Add widget globals to @file{src/globals.h} and @file{src/globals.c} only
+if callbacks need long-lived access.
+@item Add a @code{create_*_view} function or extend an existing view in
+@file{src/views.c}.
+@item Add the stack child in @code{create_window} if it is a new screen.
+@item Add entry, refresh, and back-navigation callbacks in
+@file{src/actions.c}.
+@item Add a @code{start_loading_*} async loader if the view loads remote data.
+@item Add row builders to @file{src/ui_components.c} if the view displays
+repeated objects.
+@item Update @code{on_refresh_clicked} if the header refresh button should
+reload the view.
+@item Update this manual.
+@end enumerate
+
+If the feature is a single button or dialog inside an existing view, skip the
+new stack child and add only the callback, request helper, parser/payload code,
+tests, and documentation.
+
+@section Debugging Workflow
+
+When debugging a behavior problem, start by classifying the failure:
+
+@table @asis
+@item Nothing happens when clicking a control
+Search for the button label in @file{src/views.c} or
+@file{src/ui_components.c}.  Confirm it has a @code{g_signal_connect}.  Then
+inspect the callback's precondition checks.
+
+@item A request is wrong
+Search for the endpoint macro in @file{src/constants.h}, then search for that
+macro's use in @file{src/actions.c}.  Inspect URL formatting and JSON builder
+fields.  Run with @env{G_MESSAGES_DEBUG=all} to see network debug output.
+
+@item A response is fetched but nothing renders
+Inspect the parser in @file{src/json_utils.c}.  Check whether the server shape
+matches the keys the parser accepts.  Add a parser test before changing UI
+code.
+
+@item A row renders but its button affects the wrong object
+Inspect @code{g_object_set_data} calls in the row builder.  The callback is
+probably reading stale, borrowed, or missing object data.
+
+@item A view shows stale data after fast refresh or navigation
+Inspect the async request ID and idle callback cleanup path.
+
+@item A crash happens after closing a dialog or navigating away
+Inspect ownership of context structs, row-attached data, and idle callback
+data.  Use GLib fatal criticals during development to stop at the first
+invalid GTK use.
+@end table
+
+Useful local commands include:
+
+@example
+G_MESSAGES_DEBUG=all ./tweeta-desktop
+G_DEBUG=fatal-criticals G_MESSAGES_DEBUG=all ./tweeta-desktop
+make test
+make docs
+@end example
+
+@section Practical Search Strategy
+
+Because the code is explicit, source search is usually the fastest way to
+orient:
+
+@itemize @bullet
+@item Search a visible button label to find where it is created.
+@item Search a callback name to find both signal connection and implementation.
+@item Search an endpoint macro to find all server operations using it.
+@item Search a struct field to find parser, renderer, and free-function
+updates.
+@item Search a stack child name to find navigation and refresh behavior.
+@end itemize
+
+For example, to trace bookmarks, search for @code{BOOKMARKS_LIST_URL},
+@code{perform_bookmark}, @code{start_loading_bookmarks}, and the bookmark
+button construction in tweet row code.  That reveals the endpoint constants,
+mutation helper, view loader, and row-level UI state.
+
+@node Architecture
+@chapter Architecture
+
+@section Module Map
+
+@table @file
+@item src/main.c
+Application startup, CSS initialization, global cache setup, session load,
+window creation, main loop, and cleanup.
+
+@item src/views.c and src/views.h
+Construction of the main window and primary GTK views.
+
+@item src/actions.c and src/actions.h
+Most event handlers, API operations, async loaders, settings handlers,
+admin actions, post interactions, profile actions, and utility workflows.
+
+@item src/actions_p2p_network.c
+Additional encrypted messaging transport handlers.
+
+@item src/ui_components.c and src/ui_components.h
+Reusable row and widget construction for posts, users, notifications,
+conversations, communities, lists, and related UI elements.
+
+@item src/network.c and src/network.h
+libcurl setup, request dispatch, response buffering, base URL overrides,
+headers, and challenge retry behavior.
+
+@item src/json_utils.c and src/json_utils.h
+Parsing for posts, profiles, users, notifications, conversations, messages,
+communities, lists, admin data, login responses, and payload construction.
+
+@item src/session.c and src/session.h
+Session file path, save, load, and clear operations.
+
+@item src/p2p_crypto.c and src/p2p_crypto.h
+GPGME key generation, export, import, encryption, decryption, signing, and
+verification helpers.
+
+@item src/p2p_network.c and src/p2p_network.h
+Encrypted message transport, direct listener, peer connections, relay polling,
+wire serialization, and encrypted message dispatch.
+
+@item src/webauthn_fido2.c and src/webauthn_fido2.h
+Optional native passkey support using libfido2.
+
+@item src/challenge.c and src/challenge.h
+CAP challenge solving helpers used by the networking layer.
+
+@item src/globals.c and src/globals.h
+Shared application state and widget references.
+
+@item src/types.h
+Shared data structures.
+
+@item src/constants.h
+Default URLs and endpoint format strings.
+@end table
+
+@section UI Layer
+
+GTK widgets are arranged around a @code{GtkStack}.  The header controls switch
+visible stack children and start relevant loaders.  Lists are generally
+@code{GtkListBox} widgets inside @code{GtkScrolledWindow} containers.
+
+@section Network and Parsing Layer
+
+The network layer returns response buffers.  JSON parsing converts buffers into
+typed C structures.  UI code receives lists of parsed structures and constructs
+rows.  Free functions in @file{json_utils.c} release nested data.
+
+@section State Layer
+
+Global state tracks authentication, current username, admin state, active
+profile, active community, current timeline type, notification preferences,
+interaction cache, and widget references.  This keeps callback wiring simple,
+though contributors should avoid adding new globals when a local context
+structure is sufficient.
+
+@node Testing
+@chapter Testing
+
+Run tests with:
+
+@example
+make test
+@end example
+
+The test runner uses GLib's testing framework and links against the modular
+application components.
+
+Current test areas include:
+
+@itemize @bullet
+@item Tweet parsing, including attachments, media, notes, and polls.
+@item Login response parsing and admin flag handling.
+@item JSON payload construction for posts and DMs.
+@item Session save, load, clear, and XDG path override behavior.
+@item Profile and profile replies parsing.
+@item Search user parsing.
+@item Notification parsing.
+@item Conversation and message parsing.
+@item Tweet detail parsing.
+@item Challenge solver behavior.
+@item Poll parsing and memory cleanup.
+@item Community parsing and memory cleanup.
+@item Upload response parsing.
+@item Timeline type validation.
+@item Optional integration login flow controlled by environment variables.
+@end itemize
+
+When adding server-facing behavior, prefer parser and payload tests that cover
+missing fields, null fields, alternate server key names, and failure payloads.
+
+@node Troubleshooting
+@chapter Troubleshooting
+
+@section Build Cannot Find GTK, curl, json-glib, or GPGME
+
+Install the development packages and verify pkg-config:
+
+@example
+pkg-config --cflags gtk+-3.0 json-glib-1.0 gpgme
+pkg-config --libs gtk+-3.0 json-glib-1.0 libcurl gpgme
+@end example
+
+@section PDF Generation Fails
+
+Install GNU Texinfo and a TeX distribution that provides @command{texi2pdf}.
+Then rerun:
+
+@example
+make pdf
+@end example
+
+@section Login Does Not Restore
+
+Check the session file under @file{$XDG_CONFIG_HOME/tweeta-desktop/session.json}
+or @file{~/.config/tweeta-desktop/session.json}.  Logging out removes this
+file.  If the server invalidated the token, log in again.
+
+@section Wrong Server Instance
+
+Confirm both server overrides are set.  The API URL should usually include
+@file{/api}; the base domain should usually not.
+
+@example
+TWEETA_API_BASE_URL="https://host.example/api"
+TWEETA_BASE_DOMAIN="https://host.example"
+@end example
+
+@section UI Does Not Update After an Action
+
+Use the view's refresh button or navigate away and back.  Some server
+operations are eventually consistent or return a minimal response that requires
+a reload before all counts and flags are visible.
+
+@section Passkey Button Opens Browser Flow
+
+Native passkey support requires a build with @code{USE_FIDO2=1}, libfido2 at
+build and runtime, a supported security key, and compatible system device
+permissions.
+
+@section Encrypted Messages Do Not Arrive
+
+For direct P2P mode, verify the listener host and port are reachable from the
+peer.  For relay mode, verify the active account, contact key fingerprint, and
+server relay support.  Also verify the local GPG key can decrypt messages.
+
+@node Security and Privacy
+@chapter Security and Privacy
+
+@section Session Token Storage
+
+The session file contains authentication material.  Tweeta Desktop attempts to
+write it with user-only permissions.  Protect backups and avoid sharing the
+file.  Remove it manually or log out if a token should no longer be used.
+
+@section Administrator Sessions
+
+Admin tools can alter users, posts, communities, notifications, and
+impersonation state.  Use a dedicated admin account where possible, verify the
+active identity in the header, and treat bulk edit JSON as privileged input.
+
+@section Encrypted Messaging Trust
+
+GPG encryption protects message content from passive transport readers when
+keys are correct, but it does not automatically solve key authenticity.
+Confirm fingerprints through a trusted channel.  Relay transport can still
+expose metadata.
+
+@section Local Data
+
+The cache directory may contain downloaded media or derived cache data.  Use
+@samp{Clear Cache} in Settings or remove the XDG cache directory if local
+media residue matters.
+
+@node Packaging
+@chapter Packaging
+
+Packagers should usually build with:
+
+@example
+make PREFIX=/usr
+make DESTDIR="$pkgdir" PREFIX=/usr install
+@end example
+
+Recommended package dependencies:
+
+@itemize @bullet
+@item GTK3 runtime.
+@item libcurl runtime.
+@item json-glib runtime.
+@item GPGME runtime.
+@item libfido2 runtime only when built with @code{USE_FIDO2=1}.
+@end itemize
+
+Recommended package outputs include:
+
+@itemize @bullet
+@item Executable in @file{/usr/bin}.
+@item Desktop file in @file{/usr/share/applications}.
+@item Icon in @file{/usr/share/pixmaps}.
+@item Man page in @file{/usr/share/man/man1}.
+@item Info manual in @file{/usr/share/info}.
+@item License text from @file{COPYING}.
+@end itemize
+
+After installing an Info file, distribution packaging systems often run
+@command{install-info} in maintainer scripts or equivalent package hooks.
+
+@node Reference
+@chapter Reference
+
+@section Environment Reference
+
+@table @env
+@item TWEETA_API_BASE_URL
+API endpoint root.  Example: @code{https://example.invalid/api}.
+
+@item TWEETA_BASE_DOMAIN
+Web and media domain root.  Example: @code{https://example.invalid}.
+
+@item XDG_CONFIG_HOME
+Configuration root used for the session file.
+
+@item XDG_CACHE_HOME
+Cache root used by cache management.
+
+@item G_MESSAGES_DEBUG
+GLib debug category selector.
+
+@item G_DEBUG
+GLib debug behavior selector.
+@end table
+
+@section Make Variable Reference
+
+@table @code
+@item CC
+C compiler.  Defaults to @command{gcc} when unset.
+
+@item PREFIX
+Install prefix.  Defaults to @file{/usr/local}.
+
+@item SRCDIR
+Source directory used by install paths.  Defaults to @file{.}.
+
+@item USE_FIDO2
+Set to @code{1} to compile native libfido2 passkey support.
+
+@item MAKEINFO
+Texinfo Info/HTML generator.  Defaults to @command{makeinfo}.
+
+@item TEXI2PDF
+Texinfo PDF generator.  Defaults to @command{texi2pdf}.
+
+@item DESTDIR
+Packaging staging root used by @command{make install}.
+@end table
+
+@section Exit Behavior
+
+The graphical application normally exits when the main window closes.  Build
+and documentation commands use the exit status of the compiler or Texinfo tool
+that failed.
 
 @node License
 @chapter License
 
 Tweeta Desktop is licensed under the GNU Affero General Public License v3.0
-(AGPLv3). See the @file{COPYING} file distributed with the source code for the
-full license text.
+or later.  See @file{COPYING} in the source tree for the full license text.
+
+This manual is distributed under the same terms.
 
 @bye
